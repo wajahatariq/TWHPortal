@@ -224,6 +224,7 @@ async def save_lead(
     order_id: Optional[str] = Form(None),
     provider: Optional[str] = Form(None),
     pin_code: Optional[str] = Form(""),
+    account_number: Optional[str] = Form(""),  
     record_id: Optional[str] = Form(None),
     timestamp_mode: Optional[str] = Form("keep"),
     original_timestamp: Optional[str] = Form(None),
@@ -247,20 +248,24 @@ async def save_lead(
     if is_edit == 'false':
         final_status = "Pending"
 
+    # CONSOLIDATE PIN AND ACCOUNT NUMBER INTO ONE COLUMN
+    final_code = pin_code if pin_code else account_number if account_number else ""
+
     if type == 'billing':
-        row_data = [primary_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), charge_amt, llc, provider, date_str, final_status, timestamp_str, pin_code]
+        # final_code goes into the last column (Column Q usually, Index 16)
+        row_data = [primary_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), charge_amt, llc, provider, date_str, final_status, timestamp_str, final_code]
+        # Range ends at Q, not R
+        range_end = f"Q{row_index}"
     else:
         row_data = [primary_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), charge_amt, llc, date_str, final_status, timestamp_str]
+        range_end = f"O{row_index}"
 
     try:
         if is_edit == 'true' and row_index:
-            # Update specific row based on index passed from frontend
             range_start = f"A{row_index}"
-            range_end = f"Q{row_index}" if type == 'billing' else f"O{row_index}"
             ws.update(f"{range_start}:{range_end}", [row_data])
             return {"status": "success", "message": "Lead Updated Successfully"}
         else:
-            # REMOVED DUPLICATE CHECK - Allow submitting same ID multiple times
             ws.append_row(row_data)
             send_pushbullet(f"New {type.title()} Lead", f"{agent} - ${charge_amt}")
             return {"status": "success", "message": "Lead Submitted Successfully"}
@@ -285,7 +290,6 @@ async def get_lead(type: str, id: str, row_index: Optional[int] = None):
     ws = get_worksheet(type)
     if not ws: return JSONResponse({"status": "error"}, 500)
     try:
-        # If specific row index is provided, return that exact row
         if row_index:
             row_values = ws.row_values(row_index)
             headers = ws.row_values(1)
@@ -293,25 +297,19 @@ async def get_lead(type: str, id: str, row_index: Optional[int] = None):
             data['row_index'] = row_index
             return {"status": "success", "data": data}
 
-        # Otherwise search for all matches
         cells = ws.findall(id, in_column=1)
-        
-        if not cells: 
-            return JSONResponse({"status": "error", "message": "Not Found"}, 404)
+        if not cells: return JSONResponse({"status": "error", "message": "Not Found"}, 404)
         
         if len(cells) == 1:
-            # Single match, return data
             row_values = ws.row_values(cells[0].row)
             headers = ws.row_values(1)
             data = dict(zip(headers, row_values))
             data['row_index'] = cells[0].row
             return {"status": "success", "data": data}
         else:
-            # Multiple matches, return candidates list
             candidates = []
             headers = ws.row_values(1)
             for cell in cells:
-                # Optimized: get specific columns if possible, but row_values is safer for now
                 r_vals = ws.row_values(cell.row)
                 d = dict(zip(headers, r_vals))
                 candidates.append({
@@ -367,5 +365,3 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "error", "message": "ID not found"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
-
