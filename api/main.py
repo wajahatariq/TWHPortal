@@ -20,15 +20,12 @@ load_dotenv()
 app = FastAPI()
 
 # --- SETUP (UPDATED FOR VERCEL) ---
-# Calculate the absolute path to the project root
-# Since main.py is in /api/, the root is one level up (..)
+# This tells Python to look one level up (..) from api/ to find the root folders
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Define absolute paths for templates and static
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
-# Mount using the absolute paths
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -370,4 +367,5 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
                 return {"status": "error", "message": "Status column missing"}
         return {"status": "error", "message": "ID not found"}
     except Exception as e:
+
         return {"status": "error", "message": str(e)}
