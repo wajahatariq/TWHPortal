@@ -57,19 +57,14 @@
                 <div><label class="block text-sm font-medium mb-2">LLC</label><select name="llc" id="llc" required class="input-field"><option value="">Select LLC</option>{% for llc in llcs %}<option value="{{ llc }}">{{ llc }}</option>{% endfor %}</select></div>
 
                 <div><label class="block text-sm font-medium mb-2">Email</label><input type="email" name="email" id="email" required class="input-field"></div>
-                <div>
-                    <label class="block text-sm font-medium mb-2">Provider</label>
-                    <select name="provider" id="providerSelect" required class="input-field" onchange="toggleProviderFields()">
-                        <option value="">Select Provider</option>
-                        {% for p in providers %}
-                        <option value="{{ p }}">{{ p }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
+                <div><label class="block text-sm font-medium mb-2">Provider</label><select name="provider" id="providerSelect" required class="input-field" onchange="toggleProviderFields()"><option value="">Select Provider</option>{% for p in providers %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select></div>
 
-                <div><label class="block text-sm font-medium mb-2">Card Holder Name</label><input type="text" name="card_holder" id="card_holder" required class="input-field"></div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">Card Holder Name</label>
+                    <input type="text" name="card_holder" id="card_holder" required class="input-field">
+                </div>
                 
-                <div class="relative">
+                <div class="flex flex-col gap-6">
                     <div id="pinContainer" class="hidden">
                         <label class="block text-sm font-medium mb-2 text-yellow-400">4-Digit PIN Code</label>
                         <input type="text" name="pin_code" id="pin_code" class="input-field border-yellow-500">
@@ -78,11 +73,13 @@
                         <label class="block text-sm font-medium mb-2 text-yellow-400">Account Number</label>
                         <input type="text" name="account_number" id="account_number" class="input-field border-yellow-500">
                     </div>
-                    <div id="providerPlaceholder" class="hidden md:block h-full"></div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Date of Charge</label>
+                        <input type="text" id="displayDate" class="input-field bg-slate-700/50 text-slate-400 cursor-not-allowed" readonly>
+                    </div>
                 </div>
 
-                <div class="hidden md:block"></div> 
-                <div><label class="block text-sm font-medium mb-2">Date of Charge</label><input type="text" id="displayDate" class="input-field bg-slate-700/50 text-slate-400 cursor-not-allowed" readonly></div>
             </div>
 
             <div id="editOptions" class="hidden bg-slate-700/50 p-6 rounded-xl border border-blue-500/30 mt-8">
