@@ -50,6 +50,23 @@ if(!document.getElementById('recordId').value) {
     document.getElementById('recordId').value = crypto.randomUUID();
 }
 
+// --- NEW CLEAR FORM ---
+function clearForm() {
+    const form = document.getElementById('insuranceForm');
+    const submitBtn = document.getElementById('submitBtn');
+    
+    form.reset();
+    document.getElementById('isEdit').value = 'false';
+    document.getElementById('searchId').value = '';
+    document.getElementById('editOptions').classList.add('hidden');
+    
+    submitBtn.innerText = "Submit Insurance";
+    submitBtn.classList.replace('bg-green-600', 'bg-green-600'); // Ensure green
+    document.getElementById('recordId').value = crypto.randomUUID();
+    
+    showToast("Form Cleared");
+}
+
 async function searchLead() {
     const id = document.getElementById('searchId').value;
     if(!id) return showToast("Enter Record ID", true);
@@ -81,7 +98,6 @@ async function searchLead() {
             document.getElementById('exp_date').value = d['Expiry Date'];
             document.getElementById('cvc').value = d['CVC'];
             
-            // FIX: Clean Charge
             const cleanCharge = String(d['Charge']).replace(/[^0-9.]/g, '');
             document.getElementById('charge_amt').value = cleanCharge;
             
@@ -108,12 +124,7 @@ document.getElementById('insuranceForm').addEventListener('submit', async (e) =>
         
         if (data.status === 'success') {
             showToast(data.message);
-            e.target.reset();
-            document.getElementById('isEdit').value = 'false';
-            document.getElementById('searchId').value = '';
-            document.getElementById('editOptions').classList.add('hidden');
-            document.getElementById('submitBtn').innerText = "Submit Insurance";
-            document.getElementById('recordId').value = crypto.randomUUID();
+            // DO NOT RESET FORM
             fetchNightStats();
         } else {
             showToast(data.message, true);
