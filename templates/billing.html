@@ -9,6 +9,15 @@
 </head>
 <body class="bg-slate-900 text-slate-200 py-10">
     
+    <div id="duplicateModal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+        <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 w-96 shadow-2xl">
+            <h3 class="text-xl font-bold text-white mb-4">Select Record to Edit</h3>
+            <p class="text-slate-400 text-sm mb-4">Multiple records found with this ID.</p>
+            <div id="duplicateList" class="space-y-2 max-h-60 overflow-y-auto"></div>
+            <button onclick="document.getElementById('duplicateModal').classList.add('hidden')" class="mt-4 w-full bg-slate-700 hover:bg-slate-600 py-2 rounded-lg text-white">Cancel</button>
+        </div>
+    </div>
+
     <div class="fixed top-5 right-5 z-50 bg-gradient-to-br from-cyan-400 to-teal-500 rounded-xl p-4 shadow-2xl text-center min-w-[220px] border border-cyan-300/50 backdrop-blur-md">
         <div class="text-xs text-slate-900 font-extrabold uppercase tracking-wider mb-2">Night Charged Total</div>
         <div class="relative mb-2">
@@ -37,6 +46,7 @@
             <input type="hidden" name="type" value="billing">
             <input type="hidden" name="is_edit" id="isEdit" value="false">
             <input type="hidden" name="original_timestamp" id="original_timestamp">
+            <input type="hidden" name="row_index" id="row_index">
 
             <div><label class="block text-sm font-medium mb-2">Agent Name</label><select name="agent" id="agent" required class="input-field">{% for agent in agents %}<option value="{{ agent }}">{{ agent }}</option>{% endfor %}</select></div>
             <div><label class="block text-sm font-medium mb-2">LLC</label><select name="llc" id="llc" required class="input-field">{% for llc in llcs %}<option value="{{ llc }}">{{ llc }}</option>{% endfor %}</select></div>
@@ -56,24 +66,14 @@
             <div id="editOptions" class="hidden md:col-span-2 bg-slate-700/50 p-6 rounded-xl border border-blue-500/30 mt-4">
                 <h3 class="text-blue-300 font-bold mb-4 flex items-center gap-2">Edit Options</h3>
                 <div class="flex gap-6">
-                    <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-slate-600 transition w-full border border-slate-600 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-500/10">
-                        <input type="radio" name="timestamp_mode" value="keep" checked class="w-5 h-5 text-blue-500">
-                        <div><div class="font-bold">Keep Original Time</div><div class="text-xs text-slate-400">Preserve date</div></div>
-                    </label>
-                    <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-slate-600 transition w-full border border-slate-600 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-500/10">
-                        <input type="radio" name="timestamp_mode" value="update" class="w-5 h-5 text-blue-500">
-                        <div><div class="font-bold">Update to Now</div><div class="text-xs text-slate-400">Refresh time</div></div>
-                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-slate-600 transition w-full border border-slate-600 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-500/10"><input type="radio" name="timestamp_mode" value="keep" checked class="w-5 h-5 text-blue-500"><div><div class="font-bold">Keep Original Time</div><div class="text-xs text-slate-400">Preserve date</div></div></label>
+                    <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-slate-600 transition w-full border border-slate-600 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-500/10"><input type="radio" name="timestamp_mode" value="update" class="w-5 h-5 text-blue-500"><div><div class="font-bold">Update to Now</div><div class="text-xs text-slate-400">Refresh time</div></div></label>
                 </div>
             </div>
 
             <div class="md:col-span-2 flex gap-4">
-                <button type="submit" id="submitBtn" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-blue-500/30">
-                    Submit Billing
-                </button>
-                <button type="button" onclick="clearForm()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 px-8 rounded-xl transition-all">
-                    Clear Form
-                </button>
+                <button type="submit" id="submitBtn" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-blue-500/30">Submit Billing</button>
+                <button type="button" onclick="clearForm()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 px-8 rounded-xl transition-all">Clear Form</button>
             </div>
         </form>
     </div>
