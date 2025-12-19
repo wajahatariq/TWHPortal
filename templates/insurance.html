@@ -9,15 +9,6 @@
 </head>
 <body class="bg-slate-900 text-slate-200 py-10">
     
-    <div id="duplicateModal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center hidden">
-        <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 w-96 shadow-2xl">
-            <h3 class="text-xl font-bold text-white mb-4">Select Record to Edit</h3>
-            <p class="text-slate-400 text-sm mb-4">Multiple records found with this ID.</p>
-            <div id="duplicateList" class="space-y-2 max-h-60 overflow-y-auto"></div>
-            <button onclick="document.getElementById('duplicateModal').classList.add('hidden')" class="mt-4 w-full bg-slate-700 hover:bg-slate-600 py-2 rounded-lg text-white">Cancel</button>
-        </div>
-    </div>
-
     <div class="fixed top-5 right-5 z-50 bg-gradient-to-br from-cyan-400 to-teal-500 rounded-xl p-4 shadow-2xl text-center min-w-[220px] border border-cyan-300/50 backdrop-blur-md">
         <div class="text-xs text-slate-900 font-extrabold uppercase tracking-wider mb-2">Night Charged Total</div>
         <div class="relative mb-2">
@@ -30,50 +21,130 @@
         <div id="nightBreakdown" class="text-left text-xs text-slate-900 font-semibold space-y-1 border-t border-slate-900/10 pt-2 hidden"></div>
     </div>
 
-    <div class="max-w-4xl mx-auto bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700">
-        <div class="flex justify-between items-center mb-6">
+    <div class="max-w-6xl mx-auto bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700">
+        
+        <div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
             <h1 class="text-3xl font-bold text-green-400">Insurance Submission</h1>
-            <a href="/" class="text-sm text-slate-400 hover:text-white">← Back Home</a>
+            
+            <div class="flex gap-2 w-full md:w-auto">
+                <input type="text" id="searchId" placeholder="Edit Record ID..." class="input-field py-2 text-sm">
+                <button onclick="searchLead()" class="bg-green-600 hover:bg-green-500 px-4 rounded-lg text-white font-bold transition-colors">Find</button>
+            </div>
+            <a href="/" class="text-sm text-slate-400 hover:text-white absolute top-4 left-4 md:static">← Back Home</a>
         </div>
 
-        <div class="flex gap-2 mb-8">
-            <input type="text" id="searchId" placeholder="Edit Record ID..." class="input-field py-2 text-sm">
-            <button onclick="searchLead()" class="bg-green-600 hover:bg-green-500 px-4 rounded-lg text-white font-bold transition-colors">Find</button>
-        </div>
-
-        <form id="insuranceForm" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <form id="insuranceForm">
             <input type="hidden" name="type" value="insurance">
             <input type="hidden" name="is_edit" id="isEdit" value="false">
             <input type="hidden" name="record_id" id="recordId">
             <input type="hidden" name="original_timestamp" id="original_timestamp">
             <input type="hidden" name="row_index" id="row_index">
 
-            <div><label class="block text-sm font-medium mb-2">Agent Name</label><select name="agent" id="agent" required class="input-field">{% for agent in agents %}<option value="{{ agent }}">{{ agent }}</option>{% endfor %}</select></div>
-            <div><label class="block text-sm font-medium mb-2">LLC</label><select name="llc" id="llc" required class="input-field">{% for llc in llcs %}<option value="{{ llc }}">{{ llc }}</option>{% endfor %}</select></div>
-            <div class="md:col-span-2"><label class="block text-sm font-medium mb-2">Client Name</label><input type="text" name="client_name" id="client_name" required class="input-field"></div>
-            <div><label class="block text-sm font-medium mb-2">Phone</label><input type="text" name="phone" id="phone" required class="input-field"></div>
-            <div><label class="block text-sm font-medium mb-2">Address</label><input type="text" name="address" id="address" required class="input-field"></div>
-            <div class="md:col-span-2"><label class="block text-sm font-medium mb-2">Email</label><input type="email" name="email" id="email" required class="input-field"></div>
-            <div><label class="block text-sm font-medium mb-2">Card Holder</label><input type="text" name="card_holder" id="card_holder" required class="input-field"></div>
-            <div class="md:col-span-2"><label class="block text-sm font-medium mb-2">Card Number</label><input type="text" name="card_number" id="card_number" required class="input-field"></div>
-            <div><label class="block text-sm font-medium mb-2">Expiration</label><input type="text" name="exp_date" id="exp_date" placeholder="MM/YY" required class="input-field"></div>
-            <div><label class="block text-sm font-medium mb-2">CVC</label><input type="text" name="cvc" id="cvc" required class="input-field"></div>
-            <div><label class="block text-sm font-medium mb-2">Charge Amount ($)</label><input type="number" step="0.01" name="charge_amt" id="charge_amt" required class="input-field"></div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
 
-            <div id="editOptions" class="hidden md:col-span-2 bg-slate-700/50 p-6 rounded-xl border border-green-500/30 mt-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Agent Name</label>
+                    <select name="agent" id="agent" required class="input-field">
+                        <option value="">Select Agent</option>
+                        {% for agent in agents %}
+                        <option value="{{ agent }}">{{ agent }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">Card Number</label>
+                    <input type="text" name="card_number" id="card_number" required class="input-field">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium mb-2">Client Name</label>
+                    <input type="text" name="client_name" id="client_name" required class="input-field">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">Expiry Date (MM/YY)</label>
+                    <input type="text" name="exp_date" id="exp_date" placeholder="MM/YY" required class="input-field">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium mb-2">Phone Number</label>
+                    <input type="text" name="phone" id="phone" required class="input-field">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">CVC</label>
+                    <input type="text" name="cvc" id="cvc" required class="input-field">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium mb-2">Address</label>
+                    <input type="text" name="address" id="address" required class="input-field">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">Charge Amount</label>
+                    <input type="number" step="0.01" name="charge_amt" id="charge_amt" required class="input-field">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium mb-2">Email</label>
+                    <input type="email" name="email" id="email" required class="input-field">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">LLC</label>
+                    <select name="llc" id="llc" required class="input-field">
+                        <option value="">Select LLC</option>
+                        {% for llc in llcs %}
+                        <option value="{{ llc }}">{{ llc }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium mb-2">Card Holder Name</label>
+                    <input type="text" name="card_holder" id="card_holder" required class="input-field">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">Date of Charge</label>
+                    <input type="text" id="displayDate" class="input-field bg-slate-700/50 text-slate-400 cursor-not-allowed" readonly>
+                </div>
+
+            </div>
+
+            <div id="editOptions" class="hidden bg-slate-700/50 p-6 rounded-xl border border-green-500/30 mt-8">
                 <h3 class="text-green-300 font-bold mb-4 flex items-center gap-2">Edit Options</h3>
                 <div class="flex gap-6">
-                    <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-slate-600 transition w-full border border-slate-600 has-[:checked]:border-green-500 has-[:checked]:bg-green-500/10"><input type="radio" name="timestamp_mode" value="keep" checked class="w-5 h-5 text-green-500"><div><div class="font-bold">Keep Original Time</div><div class="text-xs text-slate-400">Preserve date</div></div></label>
-                    <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-slate-600 transition w-full border border-slate-600 has-[:checked]:border-green-500 has-[:checked]:bg-green-500/10"><input type="radio" name="timestamp_mode" value="update" class="w-5 h-5 text-green-500"><div><div class="font-bold">Update to Now</div><div class="text-xs text-slate-400">Refresh time</div></div></label>
+                    <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-slate-600 transition w-full border border-slate-600 has-[:checked]:border-green-500 has-[:checked]:bg-green-500/10">
+                        <input type="radio" name="timestamp_mode" value="keep" checked class="w-5 h-5 text-green-500">
+                        <div><div class="font-bold">Keep Original Time</div><div class="text-xs text-slate-400">Preserve date</div></div>
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-slate-600 transition w-full border border-slate-600 has-[:checked]:border-green-500 has-[:checked]:bg-green-500/10">
+                        <input type="radio" name="timestamp_mode" value="update" class="w-5 h-5 text-green-500">
+                        <div><div class="font-bold">Update to Now</div><div class="text-xs text-slate-400">Refresh time</div></div>
+                    </label>
                 </div>
             </div>
 
-            <div class="md:col-span-2 flex gap-4">
-                <button type="submit" id="submitBtn" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-green-500/30">Submit Insurance</button>
-                <button type="button" onclick="clearForm()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 px-8 rounded-xl transition-all">Clear Form</button>
+            <div class="flex gap-4 mt-8">
+                <button type="submit" id="submitBtn" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-green-500/30">
+                    Submit Insurance
+                </button>
+                <button type="button" onclick="clearForm()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 px-8 rounded-xl transition-all">
+                    Clear Form
+                </button>
             </div>
         </form>
     </div>
+
+    <div id="duplicateModal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+        <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 w-96 shadow-2xl">
+            <h3 class="text-xl font-bold text-white mb-4">Select Record to Edit</h3>
+            <div id="duplicateList" class="space-y-2 max-h-60 overflow-y-auto"></div>
+            <button onclick="document.getElementById('duplicateModal').classList.add('hidden')" class="mt-4 w-full bg-slate-700 hover:bg-slate-600 py-2 rounded-lg text-white">Cancel</button>
+        </div>
+    </div>
+
     <script src="/static/js/insurance.js"></script>
+    <script>
+        // Set today's date
+        document.getElementById('displayDate').value = new Date().toISOString().split('T')[0].replace(/-/g, '/');
+    </script>
 </body>
 </html>
