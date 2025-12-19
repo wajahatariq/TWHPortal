@@ -145,7 +145,7 @@ function updateAgentSelector() {
     agents.forEach(agent => { if(agent) { const opt = document.createElement('option'); opt.value = agent; opt.innerText = agent; selector.appendChild(opt); } });
 }
 
-// --- UPDATED DYNAMIC TABLE RENDERER ---
+// --- UPDATED TABLE RENDERER ---
 function renderAnalysis() {
     const type = document.getElementById('analysisSheetSelector').value;
     const search = document.getElementById('analysisSearch').value.toLowerCase();
@@ -162,7 +162,6 @@ function renderAnalysis() {
         return JSON.stringify(row).toLowerCase().includes(search);
     });
 
-    // 1. Calculate Totals & Chart (Logic Unchanged)
     let total = 0; let hours = {};
     filtered.forEach(r => {
         const raw = String(r['Charge']).replace(/[^0-9.]/g, '');
@@ -187,46 +186,68 @@ function renderAnalysis() {
     if(myChart) myChart.destroy();
     myChart = new Chart(ctx, { type: 'line', data: { labels: sortedHours, datasets: [{ label: 'Hourly Charged', data: values, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', tension: 0.4, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#334155' } }, x: { grid: { display: false } } } } });
 
-    // 2. DYNAMIC TABLE GENERATION
+    // --- FORCE SPECIFIC COLUMNS ---
+    // If user is on Billing, use the full list including Order ID/Provider/PIN
+    // If Insurance, use Record ID/LLC
+    
+    // Note: The sheet headers for "Order ID" might be "Record_ID" in the backend dict.
+    // I'll map them carefully.
+    
+    let columns = [];
+    if(type === 'billing') {
+        columns = [
+            "Record_ID", "Agent Name", "Name", "Ph Number", "Address", "Email", 
+            "Card Holder Name", "Card Number", "Expiry Date", "CVC", "Charge", 
+            "LLC", "Provider", "Date of Charge", "Status", "Timestamp", "PIN Code"
+        ];
+    } else {
+        // Insurance typically has fewer specific fields, but using same list minus Provider/PIN
+        columns = [
+            "Record_ID", "Agent Name", "Name", "Ph Number", "Address", "Email", 
+            "Card Holder Name", "Card Number", "Expiry Date", "CVC", "Charge", 
+            "LLC", "Date of Charge", "Status", "Timestamp"
+        ];
+    }
+
     const tbody = document.getElementById('analysisBody');
     const thead = document.getElementById('analysisHeader');
-    
-    // Clear existing
     thead.innerHTML = '';
     tbody.innerHTML = '';
 
+    // Generate Headers
+    let headerHtml = '';
+    columns.forEach(col => {
+        // Rename for display if needed (e.g. Record_ID -> ID)
+        let display = col.replace('_', ' ');
+        if(col === 'Record_ID') display = (type === 'billing') ? 'Order ID' : 'Record ID';
+        headerHtml += `<th class="p-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">${display}</th>`;
+    });
+    thead.innerHTML = headerHtml;
+
+    // Generate Body
     if (filtered.length > 0) {
-        // Get all keys (columns) from the first row of data
-        const columns = Object.keys(filtered[0]);
-
-        // Generate Header Row
-        let headerHtml = '';
-        columns.forEach(col => {
-            headerHtml += `<th class="p-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">${col}</th>`;
-        });
-        thead.innerHTML = headerHtml;
-
-        // Generate Body Rows
         const bodyHtml = filtered.map(row => {
             let rowHtml = `<tr class="hover:bg-slate-800 transition-colors border-b border-slate-800">`;
             
             columns.forEach(col => {
-                let val = row[col] || '';
+                // Determine value. Handle potential key mismatches from Sheet
+                // e.g. Sheet says "Client Name" but backend dict might have "Name" if you mapped it manually previously.
+                // Based on your backend rows_to_dict, keys match Sheet Headers exactly.
+                // Common aliases: Name vs Client Name
+                let val = row[col] || row[col.replace('Name', 'Client Name')] || row[col.replace('Client Name', 'Name')] || '';
+                
                 let classes = "p-3 text-slate-300 text-sm whitespace-nowrap";
 
-                // Special Styling for Status
                 if (col === 'Status') {
                     if(val === 'Charged') classes += ' text-green-400 font-bold';
                     else if(val === 'Declined') classes += ' text-red-400';
                     else if(val === 'Pending') classes += ' text-yellow-400';
                 }
-                // Styling for ID
-                else if (col === 'Record_ID' || col === 'Order ID') {
-                    classes += ' font-mono text-blue-300';
-                }
-                // Styling for Charge
                 else if (col === 'Charge' || col === 'Charge Amount') {
-                    classes += ' font-bold';
+                    classes += ' text-green-400 font-mono';
+                }
+                else if (col.includes('ID')) {
+                    classes += ' font-mono text-blue-300';
                 }
 
                 rowHtml += `<td class="${classes}">${val}</td>`;
@@ -235,7 +256,6 @@ function renderAnalysis() {
             rowHtml += `</tr>`;
             return rowHtml;
         }).join('');
-        
         tbody.innerHTML = bodyHtml;
     } else {
         tbody.innerHTML = `<tr><td colspan="100%" class="p-8 text-center text-slate-500">No records found.</td></tr>`;
@@ -273,9 +293,8 @@ async function searchForEdit() {
         if(type === 'billing') document.getElementById('e_order_id').value = d['Record_ID'];
         else document.getElementById('e_record_id').value = d['Record_ID'];
         
-        // Populate hidden fields for logic if needed, though mostly visual edit
+        // Populate hidden fields
         document.getElementById('h_agent').value = d['Agent Name'];
-        // ... (rest of hidden fields populate if you need deep editing, but main status/charge is usually enough)
     } else if (json.status === 'multiple') {
         alert("Multiple records found. Please use the Billing/Insurance portal to edit specific duplicates.");
     } else { 
@@ -288,9 +307,7 @@ document.getElementById('editForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     if(!confirm("Update?")) return;
     const formData = new FormData(e.target);
-    // Add is_edit flag implicitly handled by backend finding the ID
     formData.append('is_edit', 'true'); 
-    
     const res = await fetch('/api/save-lead', { method: 'POST', body: formData });
     const data = await res.json();
     if(data.status === 'success') { alert("Updated"); fetchData(); document.getElementById('editForm').classList.add('hidden'); document.getElementById('editSearchId').value=""; } 
