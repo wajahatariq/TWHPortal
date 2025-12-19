@@ -54,10 +54,10 @@ def get_worksheet(sheet_type):
     return None
 
 # --- CONSTANTS ---
-AGENTS_BILLING = ["Arham Kaleem", "Arham Ali", "Haziq"]
-AGENTS_INSURANCE = ["Select Agent", "Arham Kaleem", "Arham Ali", "Haziq", "Usama", "Areeb"]
-PROVIDERS = ["Spectrum", "Insurance", "Xfinity", "Frontier", "Optimum"]
-LLC_SPEC = ["Bite Bazaar LLC", "Apex Prime Solutions"]
+AGENTS_BILLING = ["Select Agent", "Arham Kaleem", "Arham Ali", "Haziq", "Anus"]
+AGENTS_INSURANCE = ["Select Agent", "Saad"]
+PROVIDERS = ["Select Provider", "Spectrum", "Insurance", "Xfinity", "Frontier", "Optimum"]
+LLC_SPEC = ["Select LLC", "Visionary Pathways"]
 LLC_INS = ["Select LLC", "LMI"]
 
 # --- UTILS ---
@@ -367,3 +367,4 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "error", "message": "ID not found"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
