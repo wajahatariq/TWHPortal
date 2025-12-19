@@ -26,11 +26,23 @@ function updateNightWidget() {
 }
 fetchNightStats(); setInterval(fetchNightStats, 30000); 
 
-function togglePin() {
+function toggleProviderFields() {
     const provider = document.getElementById('providerSelect').value;
     const pinDiv = document.getElementById('pinContainer');
-    if (provider === 'Spectrum') pinDiv.classList.remove('hidden');
-    else pinDiv.classList.add('hidden');
+    const accDiv = document.getElementById('accountContainer');
+    const placeholder = document.getElementById('providerPlaceholder');
+
+    pinDiv.classList.add('hidden');
+    accDiv.classList.add('hidden');
+    if(placeholder) placeholder.classList.remove('hidden');
+
+    if (provider === 'Spectrum') {
+        pinDiv.classList.remove('hidden');
+        if(placeholder) placeholder.classList.add('hidden');
+    } else if (provider === 'Optimum') {
+        accDiv.classList.remove('hidden');
+        if(placeholder) placeholder.classList.add('hidden');
+    }
 }
 
 function showToast(msg, isError=false) {
@@ -56,9 +68,11 @@ function clearForm() {
     document.getElementById('order_id').readOnly = false;
     document.getElementById('editOptions').classList.add('hidden');
     document.getElementById('row_index').value = '';
+    
     submitBtn.innerText = "Submit Billing";
     submitBtn.classList.replace('bg-green-600', 'bg-blue-600');
-    togglePin();
+    
+    toggleProviderFields();
     showToast("Form Cleared");
 }
 
@@ -77,7 +91,6 @@ async function searchLead(rowIndex = null) {
         const json = await res.json();
         
         if(json.status === 'multiple') {
-            // Show Modal for Selection
             const list = document.getElementById('duplicateList');
             list.innerHTML = '';
             json.candidates.forEach(c => {
@@ -91,7 +104,7 @@ async function searchLead(rowIndex = null) {
                 list.appendChild(item);
             });
             document.getElementById('duplicateModal').classList.remove('hidden');
-            return; // Stop here, wait for user selection
+            return; 
         }
 
         if(json.status === 'success') {
@@ -121,10 +134,14 @@ async function searchLead(rowIndex = null) {
             document.getElementById('charge_amt').value = cleanCharge;
             document.getElementById('llc').value = d['LLC'];
             document.getElementById('providerSelect').value = d['Provider'];
-            document.getElementById('pin_code').value = d['PIN Code'] || '';
             
-            togglePin();
-            showToast("Lead Loaded. You can now edit.");
+            // Populate BOTH with the single value (toggleProviderFields will hide the wrong one)
+            const savedCode = d['PIN Code'] || '';
+            document.getElementById('pin_code').value = savedCode;
+            document.getElementById('account_number').value = savedCode;
+            
+            toggleProviderFields();
+            showToast("Lead Loaded.");
         } else {
             showToast("Order ID not found.", true);
         }
