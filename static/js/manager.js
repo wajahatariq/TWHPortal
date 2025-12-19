@@ -99,9 +99,12 @@ function renderPendingCards() {
         const id = row['Record_ID'];
         const providerOrLLC = pendingSubTab === 'billing' ? row['Provider'] : row['LLC'];
         
-        // FIX: Remove $ if present
         const cleanCharge = String(row['Charge'] || '').replace(/[^0-9.]/g, '');
         
+        // CLEAN CARD AND EXPIRY
+        const cleanCard = String(row['Card Number'] || '').replace(/\s+/g, ''); // Remove spaces
+        const cleanExpiry = String(row['Expiry Date'] || '').replace(/[\/\\]/g, ''); // Remove / and \
+
         const fullName = row['Card Holder Name'] || '';
         const nameParts = fullName.trim().split(' ');
         const firstName = nameParts[0] || '';
@@ -118,8 +121,8 @@ function renderPendingCards() {
                 <div class="text-xs text-slate-500 mt-1">(${providerOrLLC}) <span class="ml-2 font-mono bg-slate-800 px-1 rounded text-blue-300">${id}</span></div>
             </div>
             <div class="p-4 space-y-2 text-sm font-mono text-slate-300">
-                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Card Number:</span><span class="text-white tracking-widest font-bold">${row['Card Number']}</span></div>
-                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Expiry Date:</span><span class="text-white">${row['Expiry Date']}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Card Number:</span><span class="text-white tracking-widest font-bold">${cleanCard}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Expiry Date:</span><span class="text-white">${cleanExpiry}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Charge:</span><span class="text-green-400 font-bold">$${cleanCharge}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">First Name:</span><span class="text-white">${firstName}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Last Name:</span><span class="text-white">${lastName}</span></div>
@@ -196,7 +199,6 @@ function renderAnalysis() {
         if(row['Status'] === 'Declined') statusColor = 'text-red-400';
         if(row['Status'] === 'Pending') statusColor = 'text-yellow-400';
         
-        // FIX: Clean Charge here too
         const cleanCharge = String(row['Charge'] || '').replace(/[^0-9.]/g, '');
         
         let html = `<tr class="hover:bg-slate-800 transition-colors border-b border-slate-800"><td class="p-3 text-xs text-slate-500 whitespace-nowrap">${row['Timestamp']}</td><td class="p-3 text-xs font-mono text-blue-300">${row['Record_ID']}</td><td class="p-3 text-white">${row['Agent Name']}</td><td class="p-3 text-slate-300">${row['Name']}</td><td class="p-3 text-green-400">$${cleanCharge}</td><td class="p-3 ${statusColor}">${row['Status']}</td>`;
@@ -206,7 +208,7 @@ function renderAnalysis() {
     }).join('');
 }
 
-// Actions (Unchanged)
+// ... Actions (Unchanged)
 async function setStatus(type, id, status, btnElement) {
     const card = btnElement.closest('.pending-card');
     const btns = card.querySelectorAll('button');
