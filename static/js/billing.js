@@ -26,12 +26,14 @@ function updateNightWidget() {
 }
 fetchNightStats(); setInterval(fetchNightStats, 30000); 
 
+// --- CORRECTED TOGGLE FUNCTION ---
 function toggleProviderFields() {
     const provider = document.getElementById('providerSelect').value;
     const pinDiv = document.getElementById('pinContainer');
     const accDiv = document.getElementById('accountContainer');
     const placeholder = document.getElementById('providerPlaceholder');
 
+    // Default: Hide Inputs, Show Placeholder
     pinDiv.classList.add('hidden');
     accDiv.classList.add('hidden');
     if(placeholder) placeholder.classList.remove('hidden');
@@ -135,7 +137,7 @@ async function searchLead(rowIndex = null) {
             document.getElementById('llc').value = d['LLC'];
             document.getElementById('providerSelect').value = d['Provider'];
             
-            // Populate BOTH with the single value (toggleProviderFields will hide the wrong one)
+            // Populate BOTH with the single value
             const savedCode = d['PIN Code'] || '';
             document.getElementById('pin_code').value = savedCode;
             document.getElementById('account_number').value = savedCode;
