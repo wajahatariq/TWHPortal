@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+gspread
+pandas
+pydantic
+python-multipart
+requests
+pytz
+jinja2
+python-dotenv
