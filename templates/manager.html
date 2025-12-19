@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manager Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-200">
+    
+    <div id="loginModal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center">
+        <div class="bg-slate-800 p-8 rounded-2xl border border-slate-700 w-96 shadow-2xl">
+            <h2 class="text-2xl font-bold mb-6 text-center text-white">Manager Login</h2>
+            <form id="loginForm" class="space-y-4">
+                <input type="text" name="user_id" placeholder="User ID" class="input-field w-full" required>
+                <input type="password" name="password" placeholder="Password" class="input-field w-full" required>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 py-2 rounded-lg text-white font-semibold">Login</button>
+            </form>
+            <p id="loginError" class="text-red-400 text-sm mt-4 text-center hidden">Invalid credentials</p>
+        </div>
+    </div>
+
+    <div id="dashboard" class="hidden min-h-screen flex flex-col">
+        <header class="bg-slate-800 border-b border-slate-700 p-4 flex justify-between items-center sticky top-0 z-40 shadow-lg">
+            <div class="flex items-center gap-6">
+                <h1 class="text-xl font-bold text-blue-400">TWH Manager</h1>
+                <nav class="flex space-x-2 bg-slate-900/50 p-1 rounded-lg">
+                    <button onclick="switchMainTab('stats')" id="navStats" class="px-4 py-1 rounded-md text-sm font-medium transition-colors bg-blue-600 text-white">Dashboard</button>
+                    <button onclick="switchMainTab('pending')" id="navPending" class="px-4 py-1 rounded-md text-sm font-medium transition-colors text-slate-400 hover:text-white">Pending Charges</button>
+                    <button onclick="switchMainTab('edit')" id="navEdit" class="px-4 py-1 rounded-md text-sm font-medium transition-colors text-slate-400 hover:text-white">Edit Transaction</button>
+                </nav>
+            </div>
+            
+            <div class="flex gap-4 items-center">
+                <button onclick="fetchData()" class="text-slate-400 hover:text-white"><ion-icon name="refresh-outline" size="large"></ion-icon></button>
+                <button onclick="logout()" class="bg-red-900/50 text-red-300 px-4 py-2 rounded hover:bg-red-900 text-sm">Logout</button>
+            </div>
+        </header>
+
+        <main class="p-6 flex-1 overflow-auto">
+            
+            <div id="viewStats" class="space-y-8">
+                
+                <div>
+                    <h2 class="text-white text-lg font-bold mb-4 border-l-4 border-blue-500 pl-3">Billing Overview</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700">
+                            <h3 class="text-slate-400 text-sm">Billing Today</h3>
+                            <p class="text-3xl font-bold text-green-400 mt-2" id="billToday">$0.00</p>
+                        </div>
+                        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700">
+                            <h3 class="text-slate-400 text-sm">Billing Night</h3>
+                            <p class="text-3xl font-bold text-purple-400 mt-2" id="billNight">$0.00</p>
+                        </div>
+                        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700">
+                            <h3 class="text-slate-400 text-sm">Billing Pending</h3>
+                            <p class="text-3xl font-bold text-yellow-400 mt-2" id="billPending">0</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h2 class="text-white text-lg font-bold mb-4 border-l-4 border-green-500 pl-3">Insurance Overview</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700">
+                            <h3 class="text-slate-400 text-sm">Insurance Today</h3>
+                            <p class="text-3xl font-bold text-green-400 mt-2" id="insToday">$0.00</p>
+                        </div>
+                        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700">
+                            <h3 class="text-slate-400 text-sm">Insurance Night</h3>
+                            <p class="text-3xl font-bold text-purple-400 mt-2" id="insNight">$0.00</p>
+                        </div>
+                        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700">
+                            <h3 class="text-slate-400 text-sm">Insurance Pending</h3>
+                            <p class="text-3xl font-bold text-yellow-400 mt-2" id="insPending">0</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="viewPending" class="hidden space-y-6">
+                <div class="flex gap-4 border-b border-slate-700 pb-2">
+                    <button onclick="switchPendingSubTab('billing')" id="subBill" class="text-lg font-bold text-blue-400 border-b-2 border-blue-400 pb-1">Billing</button>
+                    <button onclick="switchPendingSubTab('insurance')" id="subIns" class="text-lg font-bold text-slate-500 hover:text-white pb-1">Insurance</button>
+                </div>
+
+                <div id="pendingContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    </div>
+            </div>
+
+            <div id="viewEdit" class="hidden max-w-4xl mx-auto">
+                <div class="bg-slate-800 p-8 rounded-2xl border border-slate-700 shadow-xl">
+                    <h2 class="text-2xl font-bold mb-6 text-white border-b border-slate-700 pb-4">Edit Transaction Status</h2>
+                    <div class="flex gap-4 mb-8">
+                        <select id="editSheetType" class="input-field w-48">
+                            <option value="billing">Spectrum (Sheet1)</option>
+                            <option value="insurance">Insurance (Sheet2)</option>
+                        </select>
+                        <input type="text" id="editSearchId" placeholder="Enter Record ID" class="input-field flex-1">
+                        <button onclick="searchForEdit()" class="bg-blue-600 hover:bg-blue-500 text-white px-8 rounded-lg font-bold">Search</button>
+                    </div>
+
+                    <form id="editForm" class="hidden grid grid-cols-2 gap-6">
+                         <div><label class="text-xs text-slate-500">Agent</label><input type="text" id="e_agent" class="input-field opacity-50 cursor-not-allowed" readonly></div>
+                         <div><label class="text-xs text-slate-500">Client</label><input type="text" id="e_client" class="input-field opacity-50 cursor-not-allowed" readonly></div>
+                         <div><label class="text-xs text-slate-500">Phone</label><input type="text" id="e_phone" class="input-field opacity-50 cursor-not-allowed" readonly></div>
+                         <div><label class="text-xs text-slate-500">Email</label><input type="text" id="e_email" class="input-field opacity-50 cursor-not-allowed" readonly></div>
+                         
+                         <div>
+                            <label class="text-xs text-slate-400">Charge Amount</label>
+                            <input type="text" id="e_charge" name="charge_amt" class="input-field border-blue-500/50">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-400">Status</label>
+                            <select id="e_status" name="status" class="input-field border-blue-500/50">
+                                <option value="Pending">Pending</option>
+                                <option value="Submitted">Submitted</option>
+                                <option value="Charged">Charged</option>
+                                <option value="Declined">Declined</option>
+                                <option value="Charge Back">Charge Back</option>
+                            </select>
+                        </div>
+
+                        <input type="hidden" name="type" id="e_type">
+                        <input type="hidden" name="is_edit" value="true">
+                        <input type="hidden" name="record_id" id="e_record_id">
+                        <input type="hidden" name="order_id" id="e_order_id">
+                        
+                        <input type="hidden" name="agent" id="h_agent">
+                        <input type="hidden" name="client_name" id="h_client">
+                        <input type="hidden" name="phone" id="h_phone">
+                        <input type="hidden" name="address" id="h_address">
+                        <input type="hidden" name="email" id="h_email">
+                        <input type="hidden" name="card_holder" id="h_card_holder">
+                        <input type="hidden" name="card_number" id="h_card_number">
+                        <input type="hidden" name="exp_date" id="h_exp">
+                        <input type="hidden" name="cvc" id="h_cvc">
+                        <input type="hidden" name="llc" id="h_llc">
+                        <input type="hidden" name="provider" id="h_provider">
+                        <input type="hidden" name="pin_code" id="h_pin">
+
+                        <div class="col-span-2 flex gap-4 mt-4 pt-4 border-t border-slate-700">
+                            <button type="submit" class="flex-1 bg-green-600 hover:bg-green-500 text-white py-3 rounded-xl font-bold">Update Record</button>
+                            <button type="button" onclick="deleteCurrentRecord()" class="bg-red-900/80 hover:bg-red-800 text-red-200 px-6 rounded-xl font-bold">Delete Record</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+        </main>
+    </div>
+    <script src="/static/js/manager.js"></script>
+</body>
+</html>
