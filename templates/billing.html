@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Billing Submission</title>
-    <link rel="icon" type="image/png" href="/static/img/logo.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
@@ -25,10 +24,7 @@
     <div class="max-w-6xl mx-auto bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700">
         
         <div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-            <div class="flex items-center gap-4">
-                <img src="/static/img/logo.png" alt="Logo" class="h-12 w-auto">
-                <h1 class="text-3xl font-bold text-blue-400">Billing Submission</h1>
-            </div>
+            <h1 class="text-3xl font-bold text-blue-400">Billing Submission</h1>
             
             <div class="flex gap-2 w-full md:w-auto">
                 <input type="text" id="searchId" placeholder="Edit Order ID..." class="input-field py-2 text-sm">
@@ -63,7 +59,10 @@
                 <div><label class="block text-sm font-medium mb-2">Email</label><input type="email" name="email" id="email" required class="input-field"></div>
                 <div><label class="block text-sm font-medium mb-2">Provider</label><select name="provider" id="providerSelect" required class="input-field" onchange="toggleProviderFields()"><option value="">Select Provider</option>{% for p in providers %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select></div>
 
-                <div><label class="block text-sm font-medium mb-2">Card Holder Name</label><input type="text" name="card_holder" id="card_holder" required class="input-field"></div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">Card Holder Name</label>
+                    <input type="text" name="card_holder" id="card_holder" required class="input-field">
+                </div>
                 
                 <div class="flex flex-col gap-6">
                     <div id="pinContainer" class="hidden">
@@ -74,11 +73,13 @@
                         <label class="block text-sm font-medium mb-2 text-yellow-400">Account Number</label>
                         <input type="text" name="account_number" id="account_number" class="input-field border-yellow-500">
                     </div>
+                    
                     <div>
                         <label class="block text-sm font-medium mb-2">Date of Charge</label>
                         <input type="text" id="displayDate" class="input-field bg-slate-700/50 text-slate-400 cursor-not-allowed" readonly>
                     </div>
                 </div>
+
             </div>
 
             <div id="editOptions" class="hidden bg-slate-700/50 p-6 rounded-xl border border-blue-500/30 mt-8">
@@ -105,6 +106,8 @@
     </div>
 
     <script src="/static/js/billing.js"></script>
-    <script>document.getElementById('displayDate').value = new Date().toISOString().split('T')[0].replace(/-/g, '/');</script>
+    <script>
+        document.getElementById('displayDate').value = new Date().toISOString().split('T')[0].replace(/-/g, '/');
+    </script>
 </body>
 </html>
