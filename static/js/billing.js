@@ -11,13 +11,11 @@ async function fetchNightStats() {
 function updateNightWidget() {
     const type = document.getElementById('nightWidgetSelect').value;
     const data = nightStats[type] || {total:0, breakdown:{}};
-    
     document.getElementById('nightWidgetAmount').innerText = '$' + data.total.toFixed(2);
     
     const listDiv = document.getElementById('nightBreakdown');
     listDiv.innerHTML = '';
     
-    // Render Agent Breakdown
     if (data.breakdown && Object.keys(data.breakdown).length > 0) {
         listDiv.classList.remove('hidden');
         for (const [agent, amount] of Object.entries(data.breakdown)) {
@@ -55,6 +53,24 @@ function showToast(msg, isError=false) {
     setTimeout(() => { toast.classList.remove('show'); }, 3000);
 }
 
+// --- NEW CLEAR FORM FUNCTION ---
+function clearForm() {
+    const form = document.getElementById('billingForm');
+    const submitBtn = document.getElementById('submitBtn');
+    
+    form.reset();
+    document.getElementById('isEdit').value = 'false';
+    document.getElementById('searchId').value = '';
+    document.getElementById('order_id').readOnly = false;
+    document.getElementById('editOptions').classList.add('hidden');
+    
+    submitBtn.innerText = "Submit Billing";
+    submitBtn.classList.replace('bg-green-600', 'bg-blue-600');
+    
+    togglePin();
+    showToast("Form Cleared");
+}
+
 async function searchLead() {
     const id = document.getElementById('searchId').value;
     if(!id) return showToast("Enter an Order ID", true);
@@ -89,7 +105,6 @@ async function searchLead() {
             document.getElementById('exp_date').value = d['Expiry Date'];
             document.getElementById('cvc').value = d['CVC'];
             
-            // FIX: Clean Charge (Remove $)
             const cleanCharge = String(d['Charge']).replace(/[^0-9.]/g, '');
             document.getElementById('charge_amt').value = cleanCharge;
             
@@ -98,7 +113,7 @@ async function searchLead() {
             document.getElementById('pin_code').value = d['PIN Code'] || '';
             
             togglePin();
-            showToast("Lead Loaded.");
+            showToast("Lead Loaded. You can now edit.");
         } else {
             showToast("Order ID not found.", true);
         }
@@ -121,14 +136,7 @@ document.getElementById('billingForm').addEventListener('submit', async (e) => {
         
         if (data.status === 'success') {
             showToast(data.message);
-            // Reset to Default State
-            e.target.reset();
-            document.getElementById('isEdit').value = 'false';
-            document.getElementById('searchId').value = '';
-            document.getElementById('order_id').readOnly = false;
-            document.getElementById('editOptions').classList.add('hidden');
-            btn.innerText = "Submit Billing";
-            btn.classList.replace('bg-green-600', 'bg-blue-600');
+            // DO NOT RESET FORM AUTOMATICALLY
             fetchNightStats(); 
         } else {
             showToast(data.message, true);
