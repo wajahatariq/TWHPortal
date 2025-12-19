@@ -5,6 +5,7 @@ import pandas as pd
 import pytz
 import requests
 import hashlib
+import re
 from datetime import datetime, timedelta, time
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -17,20 +18,13 @@ load_dotenv()
 
 app = FastAPI()
 
-# --- VERCEL PATH SETUP (CRITICAL FIX) ---
-# This finds the absolute path to the folder containing this file (api/)
-# Then it goes up one level to the root (..) to find 'templates' and 'static'
+# --- SETUP ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
-# Mount using these absolute paths
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-# ... (The rest of your code: TZ_KARACHI, SHEETS SETUP, etc. remains the same)
-
 TZ_KARACHI = pytz.timezone("Asia/Karachi")
 
 # --- SHEETS SETUP ---
@@ -38,13 +32,10 @@ gc = None
 try:
     service_file = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE")
     service_json = os.getenv("GCP_SERVICE_ACCOUNT") 
-    
     if service_file and os.path.exists(service_file):
         gc = gspread.service_account(filename=service_file)
     elif service_json:
-        # Load from Vercel Environment Variable
-        creds_dict = json.loads(service_json)
-        gc = gspread.service_account_from_dict(creds_dict)
+        gc = gspread.service_account_from_dict(json.loads(service_json))
     else:
         print("WARNING: No Credentials found.")
 except Exception as e:
@@ -63,10 +54,10 @@ def get_worksheet(sheet_type):
     return None
 
 # --- CONSTANTS ---
-AGENTS_BILLING = ["Select Agent", "Arham Kaleem", "Arham Ali", "Haziq", "Anus"]
-AGENTS_INSURANCE = ["Select Agent", "Saad"]
-PROVIDERS = ["Select Provider", "Spectrum", "Insurance", "Xfinity", "Frontier", "Optimum"]
-LLC_SPEC = ["Select LLC", "Visionary Pathways"]
+AGENTS_BILLING = ["Arham Kaleem", "Arham Ali", "Haziq"]
+AGENTS_INSURANCE = ["Select Agent", "Arham Kaleem", "Arham Ali", "Haziq", "Usama", "Areeb"]
+PROVIDERS = ["Spectrum", "Insurance", "Xfinity", "Frontier", "Optimum"]
+LLC_SPEC = ["Bite Bazaar LLC", "Apex Prime Solutions"]
 LLC_INS = ["Select LLC", "LMI"]
 
 # --- UTILS ---
@@ -201,23 +192,17 @@ async def get_public_stats():
     try:
         ws_bill = get_worksheet('billing')
         ws_ins = get_worksheet('insurance')
-        
         bill_data = rows_to_dict(ws_bill.get_all_values()) if ws_bill else []
         ins_data = rows_to_dict(ws_ins.get_all_values()) if ws_ins else []
-        
         stats_bill = calculate_stats(pd.DataFrame(bill_data))
         stats_ins = calculate_stats(pd.DataFrame(ins_data))
-        
         return {
             "billing": { "total": stats_bill['night'], "breakdown": stats_bill['breakdown'] },
             "insurance": { "total": stats_ins['night'], "breakdown": stats_ins['breakdown'] }
         }
     except Exception as e:
         print(f"Stats Error: {e}")
-        return {
-            "billing": {"total": 0, "breakdown": {}}, 
-            "insurance": {"total": 0, "breakdown": {}}
-        }
+        return {"billing": {"total": 0, "breakdown": {}}, "insurance": {"total": 0, "breakdown": {}}}
 
 @app.post("/api/save-lead")
 async def save_lead(
@@ -241,7 +226,8 @@ async def save_lead(
     pin_code: Optional[str] = Form(""),
     record_id: Optional[str] = Form(None),
     timestamp_mode: Optional[str] = Form("keep"),
-    original_timestamp: Optional[str] = Form(None)
+    original_timestamp: Optional[str] = Form(None),
+    row_index: Optional[int] = Form(None)
 ):
     ws = get_worksheet(type)
     if not ws: return JSONResponse({"status": "error", "message": "DB Connection Failed"}, 500)
@@ -267,22 +253,14 @@ async def save_lead(
         row_data = [primary_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), charge_amt, llc, date_str, final_status, timestamp_str]
 
     try:
-        if is_edit == 'true':
-            cell = ws.find(primary_id, in_column=1)
-            if cell:
-                range_start = f"A{cell.row}"
-                range_end = f"Q{cell.row}" if type == 'billing' else f"O{cell.row}"
-                ws.update(f"{range_start}:{range_end}", [row_data])
-                return {"status": "success", "message": "Lead Updated Successfully"}
-            else:
-                return JSONResponse({"status": "error", "message": "ID not found for update"}, 404)
+        if is_edit == 'true' and row_index:
+            # Update specific row based on index passed from frontend
+            range_start = f"A{row_index}"
+            range_end = f"Q{row_index}" if type == 'billing' else f"O{row_index}"
+            ws.update(f"{range_start}:{range_end}", [row_data])
+            return {"status": "success", "message": "Lead Updated Successfully"}
         else:
-            records = ws.get_all_records()
-            df = pd.DataFrame(records)
-            col_name = 'Record_ID' if 'Record_ID' in df.columns else 'Order ID'
-            if not df.empty and col_name in df.columns:
-                if str(primary_id) in df[col_name].astype(str).values:
-                    return JSONResponse({"status": "error", "message": f"ID {primary_id} already exists!"})
+            # REMOVED DUPLICATE CHECK - Allow submitting same ID multiple times
             ws.append_row(row_data)
             send_pushbullet(f"New {type.title()} Lead", f"{agent} - ${charge_amt}")
             return {"status": "success", "message": "Lead Submitted Successfully"}
@@ -303,16 +281,46 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
         return {"status": "error", "message": str(e)}
 
 @app.get("/api/get-lead")
-async def get_lead(type: str, id: str):
+async def get_lead(type: str, id: str, row_index: Optional[int] = None):
     ws = get_worksheet(type)
     if not ws: return JSONResponse({"status": "error"}, 500)
     try:
-        cell = ws.find(id, in_column=1)
-        if not cell: return JSONResponse({"status": "error", "message": "Not Found"}, 404)
-        row_values = ws.row_values(cell.row)
-        headers = ws.row_values(1)
-        data = dict(zip(headers, row_values))
-        return {"status": "success", "data": data}
+        # If specific row index is provided, return that exact row
+        if row_index:
+            row_values = ws.row_values(row_index)
+            headers = ws.row_values(1)
+            data = dict(zip(headers, row_values))
+            data['row_index'] = row_index
+            return {"status": "success", "data": data}
+
+        # Otherwise search for all matches
+        cells = ws.findall(id, in_column=1)
+        
+        if not cells: 
+            return JSONResponse({"status": "error", "message": "Not Found"}, 404)
+        
+        if len(cells) == 1:
+            # Single match, return data
+            row_values = ws.row_values(cells[0].row)
+            headers = ws.row_values(1)
+            data = dict(zip(headers, row_values))
+            data['row_index'] = cells[0].row
+            return {"status": "success", "data": data}
+        else:
+            # Multiple matches, return candidates list
+            candidates = []
+            headers = ws.row_values(1)
+            for cell in cells:
+                # Optimized: get specific columns if possible, but row_values is safer for now
+                r_vals = ws.row_values(cell.row)
+                d = dict(zip(headers, r_vals))
+                candidates.append({
+                    "row_index": cell.row,
+                    "Client Name": d.get('Client Name', d.get('Name', 'Unknown')),
+                    "Timestamp": d.get('Timestamp', 'Unknown')
+                })
+            return {"status": "multiple", "candidates": candidates}
+
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, 500)
 
@@ -336,22 +344,11 @@ async def manager_login(user_id: str = Form(...), password: str = Form(...)):
 async def get_manager_data(token: str):
     ws_bill = get_worksheet('billing')
     ws_ins = get_worksheet('insurance')
-    
-    raw_bill = ws_bill.get_all_values() if ws_bill else []
-    raw_ins = ws_ins.get_all_values() if ws_ins else []
-    
-    data_bill = rows_to_dict(raw_bill)
-    data_ins = rows_to_dict(raw_ins)
-    
-    stats_bill = calculate_stats(pd.DataFrame(data_bill))
-    stats_ins = calculate_stats(pd.DataFrame(data_ins))
-    
-    return {
-        "billing": data_bill,
-        "insurance": data_ins,
-        "stats_bill": stats_bill,
-        "stats_ins": stats_ins
-    }
+    bill_data = rows_to_dict(ws_bill.get_all_values()) if ws_bill else []
+    ins_data = rows_to_dict(ws_ins.get_all_values()) if ws_ins else []
+    stats_bill = calculate_stats(pd.DataFrame(bill_data))
+    stats_ins = calculate_stats(pd.DataFrame(ins_data))
+    return {"billing": bill_data, "insurance": ins_data, "stats_bill": stats_bill, "stats_ins": stats_ins}
 
 @app.post("/api/manager/update_status")
 async def update_status(type: str = Form(...), id: str = Form(...), status: str = Form(...)):
@@ -369,7 +366,4 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
                 return {"status": "error", "message": "Status column missing"}
         return {"status": "error", "message": "ID not found"}
     except Exception as e:
-
         return {"status": "error", "message": str(e)}
-
-
