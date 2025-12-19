@@ -1,4 +1,3 @@
-
 import os
 import json
 import gspread
@@ -6,7 +5,6 @@ import pandas as pd
 import pytz
 import requests
 import hashlib
-import re
 from datetime import datetime, timedelta, time
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -19,15 +17,19 @@ load_dotenv()
 
 app = FastAPI()
 
-# --- SETUP (UPDATED FOR VERCEL) ---
-# This tells Python to look one level up (..) from api/ to find the root folders
+# --- VERCEL PATH SETUP (CRITICAL FIX) ---
+# This finds the absolute path to the folder containing this file (api/)
+# Then it goes up one level to the root (..) to find 'templates' and 'static'
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
+# Mount using these absolute paths
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+# ... (The rest of your code: TZ_KARACHI, SHEETS SETUP, etc. remains the same)
 
 TZ_KARACHI = pytz.timezone("Asia/Karachi")
 
@@ -369,3 +371,4 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
     except Exception as e:
 
         return {"status": "error", "message": str(e)}
+
