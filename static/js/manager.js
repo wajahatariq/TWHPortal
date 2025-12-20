@@ -1,5 +1,78 @@
-// ... (Auth & Fetch Data same as before) ...
+let allData = { 
+    billing: [], 
+    insurance: [], 
+    stats_bill: {today:0, night:0, pending:0}, 
+    stats_ins: {today:0, night:0, pending:0} 
+};
+let pendingSubTab = 'billing';
+let myChart = null;
 
+// --- AUTHENTICATION & INITIAL LOAD ---
+const token = sessionStorage.getItem('twh_token');
+if (token) {
+    document.getElementById('loginModal').classList.add('hidden');
+    document.getElementById('dashboard').classList.remove('hidden');
+    
+    // Set Date Inputs to Today
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('dateStart').value = today;
+    document.getElementById('dateEnd').value = today;
+    
+    fetchData();
+}
+
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const res = await fetch('/api/manager/login', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.status === 'success') {
+        sessionStorage.setItem('twh_token', data.token);
+        document.getElementById('loginModal').classList.add('hidden');
+        document.getElementById('dashboard').classList.remove('hidden');
+        
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('dateStart').value = today;
+        document.getElementById('dateEnd').value = today;
+        
+        fetchData();
+    } else { 
+        document.getElementById('loginError').classList.remove('hidden'); 
+    }
+});
+
+function logout() { 
+    sessionStorage.removeItem('twh_token'); 
+    window.location.reload(); 
+}
+
+// --- DATA FETCHING ---
+async function fetchData() {
+    const t = sessionStorage.getItem('twh_token');
+    if (!t) return;
+    
+    try {
+        const res = await fetch(`/api/manager/data?token=${t}`);
+        const json = await res.json();
+        
+        allData.billing = json.billing || [];
+        allData.insurance = json.insurance || [];
+        allData.stats_bill = json.stats_bill || {today:0, night:0, pending:0, breakdown:{}};
+        allData.stats_ins = json.stats_ins || {today:0, night:0, pending:0, breakdown:{}};
+        
+        updateDashboardStats();
+        renderPendingCards();
+        updateAgentSelector();
+        
+        if(!document.getElementById('viewAnalysis').classList.contains('hidden')) {
+            renderAnalysis();
+        }
+    } catch(e) {
+        console.error("Fetch Error:", e);
+    }
+}
+
+// --- DASHBOARD LOGIC ---
 function updateDashboardStats() {
     const dept = document.getElementById('statsSelector').value;
     const stats = dept === 'billing' ? allData.stats_bill : allData.stats_ins;
@@ -9,18 +82,16 @@ function updateDashboardStats() {
     document.getElementById('dispNight').innerText = '$' + stats.night.toFixed(2);
     document.getElementById('dispPending').innerText = stats.pending;
 
-    // 2. Render Agent Performance (NIGHT ONLY)
+    // 2. Render Agent Performance (NIGHT WINDOW ONLY)
     // We use stats.breakdown which comes directly from the backend's night logic
     const breakdown = stats.breakdown || {};
-    
-    // Sort by amount descending
     const sortedAgents = Object.entries(breakdown).sort((a, b) => b[1] - a[1]);
     
     const listContainer = document.getElementById('agentPerformanceList');
     listContainer.innerHTML = '';
 
     if (sortedAgents.length === 0) {
-        listContainer.innerHTML = '<div class="text-slate-500 col-span-full">No night sales found yet.</div>';
+        listContainer.innerHTML = '<div class="text-slate-500 col-span-full italic">No night shift sales found yet.</div>';
     } else {
         sortedAgents.forEach(([agent, amount]) => {
             const item = document.createElement('div');
@@ -34,35 +105,149 @@ function updateDashboardStats() {
     }
 }
 
-// ... (Tabs & Pending Logic same as before) ...
+// --- TAB SWITCHING ---
+function switchMainTab(tab) {
+    ['viewStats', 'viewPending', 'viewAnalysis', 'viewEdit'].forEach(id => document.getElementById(id).classList.add('hidden'));
+    
+    // Reset Nav Styles
+    ['navStats', 'navPending', 'navAnalysis', 'navEdit'].forEach(id => {
+        const el = document.getElementById(id);
+        el.classList.remove('bg-blue-600', 'text-white', 'shadow-lg', 'shadow-blue-500/20');
+        el.classList.add('text-slate-400');
+    });
 
-// --- UPDATED ANALYSIS RENDERER WITH STATUS FILTER ---
+    const viewId = 'view' + tab.charAt(0).toUpperCase() + tab.slice(1);
+    const navId = 'nav' + tab.charAt(0).toUpperCase() + tab.slice(1);
+    
+    document.getElementById(viewId).classList.remove('hidden');
+    
+    const activeNav = document.getElementById(navId);
+    activeNav.classList.remove('text-slate-400');
+    activeNav.classList.add('bg-blue-600', 'text-white', 'shadow-lg', 'shadow-blue-500/20');
+
+    if(tab === 'pending') renderPendingCards();
+    if(tab === 'analysis') { 
+        updateAgentSelector(); 
+        renderAnalysis(); 
+    }
+}
+
+function switchPendingSubTab(tab) {
+    pendingSubTab = tab;
+    const btnBill = document.getElementById('subBill');
+    const btnIns = document.getElementById('subIns');
+    
+    if(tab === 'billing') {
+        btnBill.className = "text-lg font-bold text-blue-400 border-b-2 border-blue-400 pb-1";
+        btnIns.className = "text-lg font-bold text-slate-500 hover:text-white pb-1";
+    } else {
+        btnIns.className = "text-lg font-bold text-green-400 border-b-2 border-green-400 pb-1";
+        btnBill.className = "text-lg font-bold text-slate-500 hover:text-white pb-1";
+    }
+    renderPendingCards();
+}
+
+// --- PENDING CARDS LOGIC ---
+function renderPendingCards() {
+    const container = document.getElementById('pendingContainer');
+    container.innerHTML = '';
+    const rawData = pendingSubTab === 'billing' ? allData.billing : allData.insurance;
+    const data = rawData.filter(row => row['Status'] === 'Pending').slice().reverse();
+
+    if(data.length === 0) {
+        container.innerHTML = `<div class="col-span-3 text-center text-slate-500 py-10">No pending orders.</div>`;
+        return;
+    }
+
+    data.forEach(row => {
+        const id = row['Record_ID'];
+        const cleanCharge = String(row['Charge'] || '').replace(/[^0-9.]/g, '');
+        const cleanCard = String(row['Card Number'] || '').replace(/\s+/g, ''); 
+        const cleanExpiry = String(row['Expiry Date'] || '').replace(/[\/\\]/g, ''); 
+
+        const fullName = row['Card Holder Name'] || '';
+        const nameParts = fullName.trim().split(' ');
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.slice(1).join(' ') || '';
+
+        const card = document.createElement('div');
+        card.className = "pending-card fade-in p-0 bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-lg hover:border-blue-500/50 transition-all";
+        card.innerHTML = `
+            <div class="bg-slate-900/50 p-4 border-b border-slate-700">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-white font-bold text-lg truncate">${row['Agent Name']} — <span class="text-green-400">$${cleanCharge}</span></h3>
+                    <div class="text-xs text-slate-400">(${row['LLC']})</div>
+                </div>
+            </div>
+            <div class="p-4 space-y-2 text-sm font-mono text-slate-300">
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Card Number:</span><span class="text-white tracking-widest font-bold">${cleanCard}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Expiry Date:</span><span class="text-white">${cleanExpiry}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Charge:</span><span class="text-green-400 font-bold">$${cleanCharge}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">First Name:</span><span class="text-white">${firstName}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Last Name:</span><span class="text-white">${lastName}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Address:</span><span class="text-white break-words w-full">${row['Address']}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">CVC:</span><span class="text-red-400 font-bold">${row['CVC']}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Card Holder Name:</span><span class="text-white">${fullName}</span></div>
+            </div>
+            <div class="grid grid-cols-2 gap-3 p-4 pt-0">
+                <button onclick="setStatus('${pendingSubTab}', '${id}', 'Charged', this)" class="bg-green-600 hover:bg-green-500 text-white py-2 rounded-lg font-bold flex items-center justify-center gap-2 shadow-lg shadow-green-900/20 active:scale-95 transition">Approve</button>
+                <button onclick="setStatus('${pendingSubTab}', '${id}', 'Declined', this)" class="bg-red-600 hover:bg-red-500 text-white py-2 rounded-lg font-bold flex items-center justify-center gap-2 shadow-lg shadow-red-900/20 active:scale-95 transition">Decline</button>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+// --- ANALYSIS LOGIC ---
+
+function updateAgentSelector() {
+    const type = document.getElementById('analysisSheetSelector').value;
+    const data = type === 'billing' ? allData.billing : allData.insurance;
+    
+    const agents = [...new Set(data.map(item => item['Agent Name']))].sort();
+    const selector = document.getElementById('analysisAgentSelector');
+    
+    selector.innerHTML = '<option value="all">All Agents</option>';
+    agents.forEach(agent => { 
+        if(agent) { 
+            const opt = document.createElement('option'); 
+            opt.value = agent; 
+            opt.innerText = agent; 
+            selector.appendChild(opt); 
+        } 
+    });
+}
+
 function renderAnalysis() {
     const type = document.getElementById('analysisSheetSelector').value;
     const search = document.getElementById('analysisSearch').value.toLowerCase();
     const agentFilter = document.getElementById('analysisAgentSelector').value;
-    const statusFilter = document.getElementById('analysisStatusSelector').value; // Get Status
+    const statusFilter = document.getElementById('analysisStatusSelector').value;
     
     const dStart = new Date(document.getElementById('dateStart').value);
     const dEnd = new Date(document.getElementById('dateEnd').value);
     dEnd.setHours(23, 59, 59);
 
     const data = (type === 'billing' ? allData.billing : allData.insurance).slice().reverse();
+    
     const filtered = data.filter(row => {
         const t = new Date(row['Timestamp']);
         if(t < dStart || t > dEnd) return false;
-        if(agentFilter !== 'all' && row['Agent Name'] !== agentFilter) return false;
         
-        // APPLY STATUS FILTER
+        if(agentFilter !== 'all' && row['Agent Name'] !== agentFilter) return false;
         if(statusFilter !== 'all' && row['Status'] !== statusFilter) return false;
 
         return JSON.stringify(row).toLowerCase().includes(search);
     });
 
-    let total = 0; let hours = {};
+    // Stats Calculation
+    let total = 0; 
+    let hours = {};
+    
     filtered.forEach(r => {
         const raw = String(r['Charge']).replace(/[^0-9.]/g, '');
         const val = parseFloat(raw) || 0;
+        
         if(r['Status'] === 'Charged') {
             total += val;
             const hour = r['Timestamp'].substring(11, 13) + ":00";
@@ -73,16 +258,46 @@ function renderAnalysis() {
     document.getElementById('anaTotal').innerText = '$' + total.toLocaleString('en-US', {minimumFractionDigits: 2});
     document.getElementById('anaCount').innerText = filtered.length;
     document.getElementById('anaAvg').innerText = filtered.length ? '$' + (total/filtered.length).toFixed(2) : '$0.00';
-    let peak = '-'; let maxVal = 0;
-    for(const [h, val] of Object.entries(hours)) { if(val > maxVal) { maxVal = val; peak = h; } }
+    
+    let peak = '-'; 
+    let maxVal = 0;
+    for(const [h, val] of Object.entries(hours)) { 
+        if(val > maxVal) { maxVal = val; peak = h; } 
+    }
     document.getElementById('anaPeak').innerText = peak;
 
+    // Chart Logic
     const ctx = document.getElementById('analysisChart').getContext('2d');
     const sortedHours = Object.keys(hours).sort();
     const values = sortedHours.map(h => hours[h]);
+    
     if(myChart) myChart.destroy();
-    myChart = new Chart(ctx, { type: 'line', data: { labels: sortedHours, datasets: [{ label: 'Hourly Charged', data: values, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', tension: 0.4, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#334155' } }, x: { grid: { display: false } } } } });
+    
+    myChart = new Chart(ctx, { 
+        type: 'line', 
+        data: { 
+            labels: sortedHours, 
+            datasets: [{ 
+                label: 'Hourly Charged', 
+                data: values, 
+                borderColor: '#3b82f6', 
+                backgroundColor: 'rgba(59, 130, 246, 0.1)', 
+                tension: 0.4, 
+                fill: true 
+            }] 
+        }, 
+        options: { 
+            responsive: true, 
+            maintainAspectRatio: false, 
+            plugins: { legend: { display: false } }, 
+            scales: { 
+                y: { beginAtZero: true, grid: { color: '#334155' } }, 
+                x: { grid: { display: false } } 
+            } 
+        } 
+    });
 
+    // Define Specific Columns
     let columns = [];
     if(type === 'billing') {
         columns = [
@@ -98,6 +313,7 @@ function renderAnalysis() {
         ];
     }
 
+    // Render Table
     const tbody = document.getElementById('analysisBody');
     const thead = document.getElementById('analysisHeader');
     thead.innerHTML = '';
@@ -114,6 +330,7 @@ function renderAnalysis() {
     if (filtered.length > 0) {
         const bodyHtml = filtered.map(row => {
             let rowHtml = `<tr class="hover:bg-slate-800 transition-colors border-b border-slate-800">`;
+            
             columns.forEach(col => {
                 let val = row[col] || row[col.replace('Name', 'Client Name')] || row[col.replace('Client Name', 'Name')] || '';
                 let classes = "p-3 text-slate-300 text-sm whitespace-nowrap";
@@ -132,6 +349,7 @@ function renderAnalysis() {
 
                 rowHtml += `<td class="${classes}">${val}</td>`;
             });
+
             rowHtml += `</tr>`;
             return rowHtml;
         }).join('');
@@ -140,4 +358,110 @@ function renderAnalysis() {
         tbody.innerHTML = `<tr><td colspan="100%" class="p-8 text-center text-slate-500">No records found.</td></tr>`;
     }
 }
-// ... (Edit/Delete Logic Unchanged) ...
+
+// --- ACTIONS (Status Update / Edit / Delete) ---
+
+async function setStatus(type, id, status, btnElement) {
+    const card = btnElement.closest('.pending-card');
+    const btns = card.querySelectorAll('button');
+    
+    btns.forEach(b => { b.disabled = true; b.classList.add('opacity-50'); });
+    btnElement.innerText = "...";
+    
+    const formData = new FormData(); 
+    formData.append('type', type); 
+    formData.append('id', id); 
+    formData.append('status', status);
+    
+    const res = await fetch('/api/manager/update_status', { method: 'POST', body: formData });
+    const data = await res.json();
+    
+    if(data.status === 'success') { 
+        card.style.transition = "all 0.5s"; 
+        card.style.opacity = "0"; 
+        card.style.transform = "scale(0.9)"; 
+        setTimeout(() => { fetchData(); }, 500); 
+    } else { 
+        alert(data.message); 
+        btns.forEach(b => { b.disabled = false; b.classList.remove('opacity-50'); }); 
+    }
+}
+
+async function searchForEdit() {
+    const type = document.getElementById('editSheetType').value;
+    const id = document.getElementById('editSearchId').value;
+    
+    if(!id) return alert("Enter ID");
+    
+    const res = await fetch(`/api/get-lead?type=${type}&id=${id}`);
+    const json = await res.json();
+    
+    if(json.status === 'success') {
+        const d = json.data;
+        document.getElementById('editForm').classList.remove('hidden');
+        document.getElementById('e_agent').value = d['Agent Name'];
+        document.getElementById('e_client').value = d['Name'] || d['Client Name'];
+        document.getElementById('e_phone').value = d['Ph Number'];
+        document.getElementById('e_email').value = d['Email'];
+        document.getElementById('e_charge').value = d['Charge'];
+        document.getElementById('e_status').value = d['Status'];
+        document.getElementById('e_type').value = type;
+        
+        if(type === 'billing') {
+            document.getElementById('e_order_id').value = d['Record_ID'];
+        } else {
+            document.getElementById('e_record_id').value = d['Record_ID'];
+        }
+        
+        document.getElementById('h_agent').value = d['Agent Name'];
+        
+    } else if (json.status === 'multiple') {
+        alert("Multiple records found. Please use the Billing/Insurance portal to edit specific duplicates.");
+    } else { 
+        alert("Not Found"); 
+        document.getElementById('editForm').classList.add('hidden'); 
+    }
+}
+
+document.getElementById('editForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if(!confirm("Update?")) return;
+    
+    const formData = new FormData(e.target);
+    formData.append('is_edit', 'true'); 
+    
+    const res = await fetch('/api/save-lead', { method: 'POST', body: formData });
+    const data = await res.json();
+    
+    if(data.status === 'success') { 
+        alert("Updated"); 
+        fetchData(); 
+        document.getElementById('editForm').classList.add('hidden'); 
+        document.getElementById('editSearchId').value=""; 
+    } else {
+        alert(data.message);
+    }
+});
+
+async function deleteCurrentRecord() {
+    if(!confirm("Delete?")) return;
+    
+    const type = document.getElementById('e_type').value;
+    const id = type === 'billing' ? document.getElementById('e_order_id').value : document.getElementById('e_record_id').value;
+    
+    const formData = new FormData(); 
+    formData.append('type', type); 
+    formData.append('id', id);
+    
+    const res = await fetch('/api/delete-lead', { method: 'POST', body: formData });
+    const data = await res.json();
+    
+    if(data.status === 'success') { 
+        alert("Deleted"); 
+        fetchData(); 
+        document.getElementById('editForm').classList.add('hidden'); 
+        document.getElementById('editSearchId').value=""; 
+    } else {
+        alert(data.message);
+    }
+}
