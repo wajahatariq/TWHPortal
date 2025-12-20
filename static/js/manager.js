@@ -7,17 +7,13 @@ let allData = {
 let pendingSubTab = 'billing';
 let myChart = null;
 
-// --- AUTHENTICATION & INITIAL LOAD ---
 const token = sessionStorage.getItem('twh_token');
 if (token) {
     document.getElementById('loginModal').classList.add('hidden');
     document.getElementById('dashboard').classList.remove('hidden');
-    
-    // Set Date Inputs to Today
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('dateStart').value = today;
     document.getElementById('dateEnd').value = today;
-    
     fetchData();
 }
 
@@ -30,113 +26,54 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
         sessionStorage.setItem('twh_token', data.token);
         document.getElementById('loginModal').classList.add('hidden');
         document.getElementById('dashboard').classList.remove('hidden');
-        
-        const today = new Date().toISOString().split('T')[0];
-        document.getElementById('dateStart').value = today;
-        document.getElementById('dateEnd').value = today;
-        
         fetchData();
-    } else { 
-        document.getElementById('loginError').classList.remove('hidden'); 
-    }
+    } else { document.getElementById('loginError').classList.remove('hidden'); }
 });
 
-function logout() { 
-    sessionStorage.removeItem('twh_token'); 
-    window.location.reload(); 
-}
+function logout() { sessionStorage.removeItem('twh_token'); window.location.reload(); }
 
-// --- DATA FETCHING ---
 async function fetchData() {
     const t = sessionStorage.getItem('twh_token');
     if (!t) return;
-    
-    try {
-        const res = await fetch(`/api/manager/data?token=${t}`);
-        const json = await res.json();
-        
-        allData.billing = json.billing || [];
-        allData.insurance = json.insurance || [];
-        allData.stats_bill = json.stats_bill || {today:0, night:0, pending:0, breakdown:{}};
-        allData.stats_ins = json.stats_ins || {today:0, night:0, pending:0, breakdown:{}};
-        
-        updateDashboardStats();
-        renderPendingCards();
-        updateAgentSelector();
-        
-        if(!document.getElementById('viewAnalysis').classList.contains('hidden')) {
-            renderAnalysis();
-        }
-    } catch(e) {
-        console.error("Fetch Error:", e);
-    }
+    const res = await fetch(`/api/manager/data?token=${t}`);
+    const json = await res.json();
+    allData.billing = json.billing || [];
+    allData.insurance = json.insurance || [];
+    allData.stats_bill = json.stats_bill || {today:0, night:0, pending:0};
+    allData.stats_ins = json.stats_ins || {today:0, night:0, pending:0};
+    updateDashboardStats();
+    renderPendingCards();
+    updateAgentSelector();
+    if(!document.getElementById('viewAnalysis').classList.contains('hidden')) renderAnalysis();
 }
 
-// --- DASHBOARD LOGIC ---
 function updateDashboardStats() {
     const dept = document.getElementById('statsSelector').value;
     const stats = dept === 'billing' ? allData.stats_bill : allData.stats_ins;
-    
-    // 1. Update Top Cards
     document.getElementById('dispToday').innerText = '$' + stats.today.toFixed(2);
     document.getElementById('dispNight').innerText = '$' + stats.night.toFixed(2);
     document.getElementById('dispPending').innerText = stats.pending;
-
-    // 2. Render Agent Performance (NIGHT WINDOW ONLY)
-    // We use stats.breakdown which comes directly from the backend's night logic
-    const breakdown = stats.breakdown || {};
-    const sortedAgents = Object.entries(breakdown).sort((a, b) => b[1] - a[1]);
-    
-    const listContainer = document.getElementById('agentPerformanceList');
-    listContainer.innerHTML = '';
-
-    if (sortedAgents.length === 0) {
-        listContainer.innerHTML = '<div class="text-slate-500 col-span-full italic">No night shift sales found yet.</div>';
-    } else {
-        sortedAgents.forEach(([agent, amount]) => {
-            const item = document.createElement('div');
-            item.className = "flex justify-between items-center bg-slate-700/50 p-3 rounded-lg border border-slate-600 hover:bg-slate-700 transition";
-            item.innerHTML = `
-                <span class="font-bold text-white">${agent}</span>
-                <span class="font-mono text-blue-300 font-bold">$${amount.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
-            `;
-            listContainer.appendChild(item);
-        });
-    }
 }
 
-// --- TAB SWITCHING ---
 function switchMainTab(tab) {
     ['viewStats', 'viewPending', 'viewAnalysis', 'viewEdit'].forEach(id => document.getElementById(id).classList.add('hidden'));
-    
-    // Reset Nav Styles
     ['navStats', 'navPending', 'navAnalysis', 'navEdit'].forEach(id => {
-        const el = document.getElementById(id);
-        el.classList.remove('bg-blue-600', 'text-white', 'shadow-lg', 'shadow-blue-500/20');
-        el.classList.add('text-slate-400');
+        document.getElementById(id).classList.remove('bg-blue-600', 'text-white');
+        document.getElementById(id).classList.add('text-slate-400');
     });
-
     const viewId = 'view' + tab.charAt(0).toUpperCase() + tab.slice(1);
     const navId = 'nav' + tab.charAt(0).toUpperCase() + tab.slice(1);
-    
     document.getElementById(viewId).classList.remove('hidden');
-    
-    const activeNav = document.getElementById(navId);
-    activeNav.classList.remove('text-slate-400');
-    activeNav.classList.add('bg-blue-600', 'text-white', 'shadow-lg', 'shadow-blue-500/20');
-
+    document.getElementById(navId).classList.remove('text-slate-400');
+    document.getElementById(navId).classList.add('bg-blue-600', 'text-white');
     if(tab === 'pending') renderPendingCards();
-    if(tab === 'analysis') { 
-        updateAgentSelector(); 
-        renderAnalysis(); 
-    }
+    if(tab === 'analysis') { updateAgentSelector(); renderAnalysis(); }
 }
 
 function switchPendingSubTab(tab) {
     pendingSubTab = tab;
     const btnBill = document.getElementById('subBill');
     const btnIns = document.getElementById('subIns');
-    
     if(tab === 'billing') {
         btnBill.className = "text-lg font-bold text-blue-400 border-b-2 border-blue-400 pb-1";
         btnIns.className = "text-lg font-bold text-slate-500 hover:text-white pb-1";
@@ -147,7 +84,6 @@ function switchPendingSubTab(tab) {
     renderPendingCards();
 }
 
-// --- PENDING CARDS LOGIC ---
 function renderPendingCards() {
     const container = document.getElementById('pendingContainer');
     container.innerHTML = '';
@@ -161,6 +97,8 @@ function renderPendingCards() {
 
     data.forEach(row => {
         const id = row['Record_ID'];
+        const providerOrLLC = pendingSubTab === 'billing' ? row['Provider'] : row['LLC'];
+        
         const cleanCharge = String(row['Charge'] || '').replace(/[^0-9.]/g, '');
         const cleanCard = String(row['Card Number'] || '').replace(/\s+/g, ''); 
         const cleanExpiry = String(row['Expiry Date'] || '').replace(/[\/\\]/g, ''); 
@@ -198,56 +136,36 @@ function renderPendingCards() {
     });
 }
 
-// --- ANALYSIS LOGIC ---
-
 function updateAgentSelector() {
     const type = document.getElementById('analysisSheetSelector').value;
     const data = type === 'billing' ? allData.billing : allData.insurance;
-    
     const agents = [...new Set(data.map(item => item['Agent Name']))].sort();
     const selector = document.getElementById('analysisAgentSelector');
-    
     selector.innerHTML = '<option value="all">All Agents</option>';
-    agents.forEach(agent => { 
-        if(agent) { 
-            const opt = document.createElement('option'); 
-            opt.value = agent; 
-            opt.innerText = agent; 
-            selector.appendChild(opt); 
-        } 
-    });
+    agents.forEach(agent => { if(agent) { const opt = document.createElement('option'); opt.value = agent; opt.innerText = agent; selector.appendChild(opt); } });
 }
 
+// --- UPDATED TABLE RENDERER ---
 function renderAnalysis() {
     const type = document.getElementById('analysisSheetSelector').value;
     const search = document.getElementById('analysisSearch').value.toLowerCase();
     const agentFilter = document.getElementById('analysisAgentSelector').value;
-    const statusFilter = document.getElementById('analysisStatusSelector').value;
-    
     const dStart = new Date(document.getElementById('dateStart').value);
     const dEnd = new Date(document.getElementById('dateEnd').value);
     dEnd.setHours(23, 59, 59);
 
     const data = (type === 'billing' ? allData.billing : allData.insurance).slice().reverse();
-    
     const filtered = data.filter(row => {
         const t = new Date(row['Timestamp']);
         if(t < dStart || t > dEnd) return false;
-        
         if(agentFilter !== 'all' && row['Agent Name'] !== agentFilter) return false;
-        if(statusFilter !== 'all' && row['Status'] !== statusFilter) return false;
-
         return JSON.stringify(row).toLowerCase().includes(search);
     });
 
-    // Stats Calculation
-    let total = 0; 
-    let hours = {};
-    
+    let total = 0; let hours = {};
     filtered.forEach(r => {
         const raw = String(r['Charge']).replace(/[^0-9.]/g, '');
         const val = parseFloat(raw) || 0;
-        
         if(r['Status'] === 'Charged') {
             total += val;
             const hour = r['Timestamp'].substring(11, 13) + ":00";
@@ -258,46 +176,23 @@ function renderAnalysis() {
     document.getElementById('anaTotal').innerText = '$' + total.toLocaleString('en-US', {minimumFractionDigits: 2});
     document.getElementById('anaCount').innerText = filtered.length;
     document.getElementById('anaAvg').innerText = filtered.length ? '$' + (total/filtered.length).toFixed(2) : '$0.00';
-    
-    let peak = '-'; 
-    let maxVal = 0;
-    for(const [h, val] of Object.entries(hours)) { 
-        if(val > maxVal) { maxVal = val; peak = h; } 
-    }
+    let peak = '-'; let maxVal = 0;
+    for(const [h, val] of Object.entries(hours)) { if(val > maxVal) { maxVal = val; peak = h; } }
     document.getElementById('anaPeak').innerText = peak;
 
-    // Chart Logic
     const ctx = document.getElementById('analysisChart').getContext('2d');
     const sortedHours = Object.keys(hours).sort();
     const values = sortedHours.map(h => hours[h]);
-    
     if(myChart) myChart.destroy();
-    
-    myChart = new Chart(ctx, { 
-        type: 'line', 
-        data: { 
-            labels: sortedHours, 
-            datasets: [{ 
-                label: 'Hourly Charged', 
-                data: values, 
-                borderColor: '#3b82f6', 
-                backgroundColor: 'rgba(59, 130, 246, 0.1)', 
-                tension: 0.4, 
-                fill: true 
-            }] 
-        }, 
-        options: { 
-            responsive: true, 
-            maintainAspectRatio: false, 
-            plugins: { legend: { display: false } }, 
-            scales: { 
-                y: { beginAtZero: true, grid: { color: '#334155' } }, 
-                x: { grid: { display: false } } 
-            } 
-        } 
-    });
+    myChart = new Chart(ctx, { type: 'line', data: { labels: sortedHours, datasets: [{ label: 'Hourly Charged', data: values, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', tension: 0.4, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#334155' } }, x: { grid: { display: false } } } } });
 
-    // Define Specific Columns
+    // --- FORCE SPECIFIC COLUMNS ---
+    // If user is on Billing, use the full list including Order ID/Provider/PIN
+    // If Insurance, use Record ID/LLC
+    
+    // Note: The sheet headers for "Order ID" might be "Record_ID" in the backend dict.
+    // I'll map them carefully.
+    
     let columns = [];
     if(type === 'billing') {
         columns = [
@@ -306,6 +201,7 @@ function renderAnalysis() {
             "LLC", "Provider", "Date of Charge", "Status", "Timestamp", "PIN Code"
         ];
     } else {
+        // Insurance typically has fewer specific fields, but using same list minus Provider/PIN
         columns = [
             "Record_ID", "Agent Name", "Name", "Ph Number", "Address", "Email", 
             "Card Holder Name", "Card Number", "Expiry Date", "CVC", "Charge", 
@@ -313,26 +209,33 @@ function renderAnalysis() {
         ];
     }
 
-    // Render Table
     const tbody = document.getElementById('analysisBody');
     const thead = document.getElementById('analysisHeader');
     thead.innerHTML = '';
     tbody.innerHTML = '';
 
+    // Generate Headers
     let headerHtml = '';
     columns.forEach(col => {
+        // Rename for display if needed (e.g. Record_ID -> ID)
         let display = col.replace('_', ' ');
         if(col === 'Record_ID') display = (type === 'billing') ? 'Order ID' : 'Record ID';
         headerHtml += `<th class="p-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">${display}</th>`;
     });
     thead.innerHTML = headerHtml;
 
+    // Generate Body
     if (filtered.length > 0) {
         const bodyHtml = filtered.map(row => {
             let rowHtml = `<tr class="hover:bg-slate-800 transition-colors border-b border-slate-800">`;
             
             columns.forEach(col => {
+                // Determine value. Handle potential key mismatches from Sheet
+                // e.g. Sheet says "Client Name" but backend dict might have "Name" if you mapped it manually previously.
+                // Based on your backend rows_to_dict, keys match Sheet Headers exactly.
+                // Common aliases: Name vs Client Name
                 let val = row[col] || row[col.replace('Name', 'Client Name')] || row[col.replace('Client Name', 'Name')] || '';
+                
                 let classes = "p-3 text-slate-300 text-sm whitespace-nowrap";
 
                 if (col === 'Status') {
@@ -359,43 +262,24 @@ function renderAnalysis() {
     }
 }
 
-// --- ACTIONS (Status Update / Edit / Delete) ---
-
 async function setStatus(type, id, status, btnElement) {
     const card = btnElement.closest('.pending-card');
     const btns = card.querySelectorAll('button');
-    
     btns.forEach(b => { b.disabled = true; b.classList.add('opacity-50'); });
     btnElement.innerText = "...";
-    
-    const formData = new FormData(); 
-    formData.append('type', type); 
-    formData.append('id', id); 
-    formData.append('status', status);
-    
+    const formData = new FormData(); formData.append('type', type); formData.append('id', id); formData.append('status', status);
     const res = await fetch('/api/manager/update_status', { method: 'POST', body: formData });
     const data = await res.json();
-    
-    if(data.status === 'success') { 
-        card.style.transition = "all 0.5s"; 
-        card.style.opacity = "0"; 
-        card.style.transform = "scale(0.9)"; 
-        setTimeout(() => { fetchData(); }, 500); 
-    } else { 
-        alert(data.message); 
-        btns.forEach(b => { b.disabled = false; b.classList.remove('opacity-50'); }); 
-    }
+    if(data.status === 'success') { card.style.transition = "all 0.5s"; card.style.opacity = "0"; card.style.transform = "scale(0.9)"; setTimeout(() => { fetchData(); }, 500); } 
+    else { alert(data.message); btns.forEach(b => { b.disabled = false; b.classList.remove('opacity-50'); }); }
 }
 
 async function searchForEdit() {
     const type = document.getElementById('editSheetType').value;
     const id = document.getElementById('editSearchId').value;
-    
     if(!id) return alert("Enter ID");
-    
     const res = await fetch(`/api/get-lead?type=${type}&id=${id}`);
     const json = await res.json();
-    
     if(json.status === 'success') {
         const d = json.data;
         document.getElementById('editForm').classList.remove('hidden');
@@ -406,15 +290,11 @@ async function searchForEdit() {
         document.getElementById('e_charge').value = d['Charge'];
         document.getElementById('e_status').value = d['Status'];
         document.getElementById('e_type').value = type;
+        if(type === 'billing') document.getElementById('e_order_id').value = d['Record_ID'];
+        else document.getElementById('e_record_id').value = d['Record_ID'];
         
-        if(type === 'billing') {
-            document.getElementById('e_order_id').value = d['Record_ID'];
-        } else {
-            document.getElementById('e_record_id').value = d['Record_ID'];
-        }
-        
+        // Populate hidden fields
         document.getElementById('h_agent').value = d['Agent Name'];
-        
     } else if (json.status === 'multiple') {
         alert("Multiple records found. Please use the Billing/Insurance portal to edit specific duplicates.");
     } else { 
@@ -426,42 +306,21 @@ async function searchForEdit() {
 document.getElementById('editForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     if(!confirm("Update?")) return;
-    
     const formData = new FormData(e.target);
     formData.append('is_edit', 'true'); 
-    
     const res = await fetch('/api/save-lead', { method: 'POST', body: formData });
     const data = await res.json();
-    
-    if(data.status === 'success') { 
-        alert("Updated"); 
-        fetchData(); 
-        document.getElementById('editForm').classList.add('hidden'); 
-        document.getElementById('editSearchId').value=""; 
-    } else {
-        alert(data.message);
-    }
+    if(data.status === 'success') { alert("Updated"); fetchData(); document.getElementById('editForm').classList.add('hidden'); document.getElementById('editSearchId').value=""; } 
+    else alert(data.message);
 });
 
 async function deleteCurrentRecord() {
     if(!confirm("Delete?")) return;
-    
     const type = document.getElementById('e_type').value;
     const id = type === 'billing' ? document.getElementById('e_order_id').value : document.getElementById('e_record_id').value;
-    
-    const formData = new FormData(); 
-    formData.append('type', type); 
-    formData.append('id', id);
-    
+    const formData = new FormData(); formData.append('type', type); formData.append('id', id);
     const res = await fetch('/api/delete-lead', { method: 'POST', body: formData });
     const data = await res.json();
-    
-    if(data.status === 'success') { 
-        alert("Deleted"); 
-        fetchData(); 
-        document.getElementById('editForm').classList.add('hidden'); 
-        document.getElementById('editSearchId').value=""; 
-    } else {
-        alert(data.message);
-    }
+    if(data.status === 'success') { alert("Deleted"); fetchData(); document.getElementById('editForm').classList.add('hidden'); document.getElementById('editSearchId').value=""; }
+    else alert(data.message);
 }
