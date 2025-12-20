@@ -41,18 +41,55 @@ async function fetchData() {
     allData.insurance = json.insurance || [];
     allData.stats_bill = json.stats_bill || {today:0, night:0, pending:0};
     allData.stats_ins = json.stats_ins || {today:0, night:0, pending:0};
+    
     updateDashboardStats();
     renderPendingCards();
     updateAgentSelector();
+    
     if(!document.getElementById('viewAnalysis').classList.contains('hidden')) renderAnalysis();
 }
 
 function updateDashboardStats() {
     const dept = document.getElementById('statsSelector').value;
     const stats = dept === 'billing' ? allData.stats_bill : allData.stats_ins;
+    
+    // 1. Update Cards
     document.getElementById('dispToday').innerText = '$' + stats.today.toFixed(2);
     document.getElementById('dispNight').innerText = '$' + stats.night.toFixed(2);
     document.getElementById('dispPending').innerText = stats.pending;
+
+    // 2. Render Agent Comparison (Total Charged per Agent)
+    const rawData = dept === 'billing' ? allData.billing : allData.insurance;
+    const agentTotals = {};
+
+    rawData.forEach(row => {
+        if (row['Status'] === 'Charged') {
+            const agent = row['Agent Name'] || 'Unknown';
+            const cleanCharge = String(row['Charge'] || '').replace(/[^0-9.]/g, '');
+            const val = parseFloat(cleanCharge) || 0;
+            agentTotals[agent] = (agentTotals[agent] || 0) + val;
+        }
+    });
+
+    // Sort by amount descending
+    const sortedAgents = Object.entries(agentTotals).sort((a, b) => b[1] - a[1]);
+    
+    const listContainer = document.getElementById('agentPerformanceList');
+    listContainer.innerHTML = '';
+
+    if (sortedAgents.length === 0) {
+        listContainer.innerHTML = '<div class="text-slate-500 col-span-full">No sales found for this department.</div>';
+    } else {
+        sortedAgents.forEach(([agent, amount]) => {
+            const item = document.createElement('div');
+            item.className = "flex justify-between items-center bg-slate-700/50 p-3 rounded-lg border border-slate-600";
+            item.innerHTML = `
+                <span class="font-bold text-white">${agent}</span>
+                <span class="font-mono text-green-400 font-bold">$${amount.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+            `;
+            listContainer.appendChild(item);
+        });
+    }
 }
 
 function switchMainTab(tab) {
@@ -97,8 +134,6 @@ function renderPendingCards() {
 
     data.forEach(row => {
         const id = row['Record_ID'];
-        const providerOrLLC = pendingSubTab === 'billing' ? row['Provider'] : row['LLC'];
-        
         const cleanCharge = String(row['Charge'] || '').replace(/[^0-9.]/g, '');
         const cleanCard = String(row['Card Number'] || '').replace(/\s+/g, ''); 
         const cleanExpiry = String(row['Expiry Date'] || '').replace(/[\/\\]/g, ''); 
@@ -145,11 +180,12 @@ function updateAgentSelector() {
     agents.forEach(agent => { if(agent) { const opt = document.createElement('option'); opt.value = agent; opt.innerText = agent; selector.appendChild(opt); } });
 }
 
-// --- UPDATED TABLE RENDERER ---
 function renderAnalysis() {
     const type = document.getElementById('analysisSheetSelector').value;
     const search = document.getElementById('analysisSearch').value.toLowerCase();
     const agentFilter = document.getElementById('analysisAgentSelector').value;
+    const statusFilter = document.getElementById('analysisStatusSelector').value; // NEW
+    
     const dStart = new Date(document.getElementById('dateStart').value);
     const dEnd = new Date(document.getElementById('dateEnd').value);
     dEnd.setHours(23, 59, 59);
@@ -159,6 +195,10 @@ function renderAnalysis() {
         const t = new Date(row['Timestamp']);
         if(t < dStart || t > dEnd) return false;
         if(agentFilter !== 'all' && row['Agent Name'] !== agentFilter) return false;
+        
+        // NEW STATUS FILTER
+        if(statusFilter !== 'all' && row['Status'] !== statusFilter) return false;
+
         return JSON.stringify(row).toLowerCase().includes(search);
     });
 
@@ -186,13 +226,6 @@ function renderAnalysis() {
     if(myChart) myChart.destroy();
     myChart = new Chart(ctx, { type: 'line', data: { labels: sortedHours, datasets: [{ label: 'Hourly Charged', data: values, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', tension: 0.4, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#334155' } }, x: { grid: { display: false } } } } });
 
-    // --- FORCE SPECIFIC COLUMNS ---
-    // If user is on Billing, use the full list including Order ID/Provider/PIN
-    // If Insurance, use Record ID/LLC
-    
-    // Note: The sheet headers for "Order ID" might be "Record_ID" in the backend dict.
-    // I'll map them carefully.
-    
     let columns = [];
     if(type === 'billing') {
         columns = [
@@ -201,7 +234,6 @@ function renderAnalysis() {
             "LLC", "Provider", "Date of Charge", "Status", "Timestamp", "PIN Code"
         ];
     } else {
-        // Insurance typically has fewer specific fields, but using same list minus Provider/PIN
         columns = [
             "Record_ID", "Agent Name", "Name", "Ph Number", "Address", "Email", 
             "Card Holder Name", "Card Number", "Expiry Date", "CVC", "Charge", 
@@ -214,28 +246,19 @@ function renderAnalysis() {
     thead.innerHTML = '';
     tbody.innerHTML = '';
 
-    // Generate Headers
     let headerHtml = '';
     columns.forEach(col => {
-        // Rename for display if needed (e.g. Record_ID -> ID)
         let display = col.replace('_', ' ');
         if(col === 'Record_ID') display = (type === 'billing') ? 'Order ID' : 'Record ID';
         headerHtml += `<th class="p-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">${display}</th>`;
     });
     thead.innerHTML = headerHtml;
 
-    // Generate Body
     if (filtered.length > 0) {
         const bodyHtml = filtered.map(row => {
             let rowHtml = `<tr class="hover:bg-slate-800 transition-colors border-b border-slate-800">`;
-            
             columns.forEach(col => {
-                // Determine value. Handle potential key mismatches from Sheet
-                // e.g. Sheet says "Client Name" but backend dict might have "Name" if you mapped it manually previously.
-                // Based on your backend rows_to_dict, keys match Sheet Headers exactly.
-                // Common aliases: Name vs Client Name
                 let val = row[col] || row[col.replace('Name', 'Client Name')] || row[col.replace('Client Name', 'Name')] || '';
-                
                 let classes = "p-3 text-slate-300 text-sm whitespace-nowrap";
 
                 if (col === 'Status') {
@@ -252,7 +275,6 @@ function renderAnalysis() {
 
                 rowHtml += `<td class="${classes}">${val}</td>`;
             });
-
             rowHtml += `</tr>`;
             return rowHtml;
         }).join('');
@@ -292,8 +314,6 @@ async function searchForEdit() {
         document.getElementById('e_type').value = type;
         if(type === 'billing') document.getElementById('e_order_id').value = d['Record_ID'];
         else document.getElementById('e_record_id').value = d['Record_ID'];
-        
-        // Populate hidden fields
         document.getElementById('h_agent').value = d['Agent Name'];
     } else if (json.status === 'multiple') {
         alert("Multiple records found. Please use the Billing/Insurance portal to edit specific duplicates.");
