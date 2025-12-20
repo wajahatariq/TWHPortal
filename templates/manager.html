@@ -4,174 +4,200 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manager Portal</title>
+    <link rel="icon" type="image/png" href="/static/img/logo.png">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="/static/css/style.css">
-    <script type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body class="bg-slate-900 text-slate-200">
-    
-    <div id="loginModal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center">
-        <div class="bg-slate-800 p-8 rounded-2xl border border-slate-700 w-96 shadow-2xl">
-            <h2 class="text-2xl font-bold mb-6 text-center text-white">Manager Login</h2>
+
+    <div id="loginModal" class="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center">
+        <div class="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700 w-96">
+            <h1 class="text-2xl font-bold text-center mb-6 text-blue-400">Manager Login</h1>
             <form id="loginForm" class="space-y-4">
-                <input type="text" name="user_id" placeholder="User ID" class="input-field w-full" required>
+                <input type="text" name="user_id" placeholder="ID" class="input-field w-full" required>
                 <input type="password" name="password" placeholder="Password" class="input-field w-full" required>
-                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 py-2 rounded-lg text-white font-semibold">Login</button>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg transition">Login</button>
             </form>
-            <p id="loginError" class="text-red-400 text-sm mt-4 text-center hidden">Invalid credentials</p>
+            <div id="loginError" class="text-red-400 text-center mt-4 hidden text-sm font-bold">Invalid Credentials</div>
         </div>
     </div>
 
-    <div id="dashboard" class="hidden min-h-screen flex flex-col">
-        <header class="bg-slate-800 border-b border-slate-700 p-4 flex justify-between items-center sticky top-0 z-40 shadow-lg">
-            <div class="flex items-center gap-6">
-                <h1 class="text-xl font-bold text-blue-400">TWH Manager</h1>
-                <nav class="flex space-x-2 bg-slate-900/50 p-1 rounded-lg">
-                    <button onclick="switchMainTab('stats')" id="navStats" class="px-4 py-1 rounded-md text-sm font-medium transition-colors bg-blue-600 text-white">Dashboard</button>
-                    <button onclick="switchMainTab('pending')" id="navPending" class="px-4 py-1 rounded-md text-sm font-medium transition-colors text-slate-400 hover:text-white">Pending</button>
-                    <button onclick="switchMainTab('analysis')" id="navAnalysis" class="px-4 py-1 rounded-md text-sm font-medium transition-colors text-slate-400 hover:text-white">Analysis</button>
-                    <button onclick="switchMainTab('edit')" id="navEdit" class="px-4 py-1 rounded-md text-sm font-medium transition-colors text-slate-400 hover:text-white">Edit</button>
-                </nav>
+    <div id="dashboard" class="hidden min-h-screen flex flex-col md:flex-row">
+        
+        <div class="w-full md:w-64 bg-slate-800 border-r border-slate-700 flex-shrink-0">
+            <div class="p-6 border-b border-slate-700 flex items-center gap-3">
+                <img src="/static/img/logo.png" alt="Logo" class="h-8 w-auto">
+                <span class="font-bold text-lg tracking-wide">Manager</span>
             </div>
-            <div class="flex gap-3 items-center">
-                <a href="/" class="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm transition-colors"><ion-icon name="home-outline"></ion-icon> Home</a>
-                <button onclick="fetchData()" class="text-slate-400 hover:text-white p-2"><ion-icon name="refresh-outline" size="large"></ion-icon></button>
-                <button onclick="logout()" class="bg-red-900/50 text-red-300 px-4 py-1.5 rounded hover:bg-red-900 text-sm">Logout</button>
-            </div>
-        </header>
+            <nav class="p-4 space-y-2">
+                <button id="navStats" onclick="switchMainTab('stats')" class="w-full text-left px-4 py-3 rounded-xl bg-blue-600 text-white font-bold transition flex items-center gap-3">
+                    <span>📊</span> Dashboard
+                </button>
+                <button id="navPending" onclick="switchMainTab('pending')" class="w-full text-left px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-700 hover:text-white transition flex items-center gap-3">
+                    <span>⏳</span> Pending
+                </button>
+                <button id="navAnalysis" onclick="switchMainTab('analysis')" class="w-full text-left px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-700 hover:text-white transition flex items-center gap-3">
+                    <span>📈</span> Analysis
+                </button>
+                <button id="navEdit" onclick="switchMainTab('edit')" class="w-full text-left px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-700 hover:text-white transition flex items-center gap-3">
+                    <span>✏️</span> Edit / Delete
+                </button>
+                <button onclick="logout()" class="w-full text-left px-4 py-3 rounded-xl text-red-400 hover:bg-red-900/20 transition flex items-center gap-3 mt-8">
+                    <span>🚪</span> Logout
+                </button>
+            </nav>
+        </div>
 
-        <main class="p-6 flex-1 overflow-auto">
-            <div id="viewStats" class="space-y-8">
-                <div class="flex justify-between items-center border-b border-slate-700 pb-4">
-                    <h2 class="text-2xl font-bold text-white">Performance Overview</h2>
-                    <div class="flex items-center gap-3">
-                        <label class="text-slate-400 text-sm">Select Department:</label>
-                        <select id="statsSelector" onchange="updateDashboardStats()" class="bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white outline-none focus:border-blue-500">
-                            <option value="billing">Billing Portal</option>
-                            <option value="insurance">Insurance Portal</option>
-                        </select>
-                    </div>
+        <main class="flex-1 p-6 md:p-10 overflow-y-auto">
+            
+            <div id="viewStats" class="space-y-8 fade-in">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-3xl font-bold">Overview</h2>
+                    <select id="statsSelector" onchange="updateDashboardStats()" class="bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 outline-none focus:border-blue-500">
+                        <option value="billing">Billing</option>
+                        <option value="insurance">Insurance</option>
+                    </select>
                 </div>
+
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div class="bg-slate-800 p-8 rounded-2xl border border-slate-700 shadow-lg relative overflow-hidden">
-                        <div class="absolute top-0 right-0 p-4 opacity-10 text-6xl">🌞</div>
-                        <h3 class="text-slate-400 text-sm font-bold uppercase tracking-wider">Today's Sales</h3>
-                        <p class="text-4xl font-extrabold text-green-400 mt-2" id="dispToday">$0.00</p>
+                    <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg">
+                        <div class="text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">Today's Total</div>
+                        <div id="dispToday" class="text-4xl font-black text-green-400">$0.00</div>
                     </div>
-                    <div class="bg-slate-800 p-8 rounded-2xl border border-slate-700 shadow-lg relative overflow-hidden">
-                        <div class="absolute top-0 right-0 p-4 opacity-10 text-6xl">🌙</div>
-                        <h3 class="text-slate-400 text-sm font-bold uppercase tracking-wider">Night Charged</h3>
-                        <p class="text-4xl font-extrabold text-purple-400 mt-2" id="dispNight">$0.00</p>
+                    <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg">
+                        <div class="text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">Night Total</div>
+                        <div id="dispNight" class="text-4xl font-black text-blue-400">$0.00</div>
                     </div>
-                    <div class="bg-slate-800 p-8 rounded-2xl border border-slate-700 shadow-lg relative overflow-hidden">
-                        <div class="absolute top-0 right-0 p-4 opacity-10 text-6xl">⏳</div>
-                        <h3 class="text-slate-400 text-sm font-bold uppercase tracking-wider">Pending Orders</h3>
-                        <p class="text-4xl font-extrabold text-yellow-400 mt-2" id="dispPending">0</p>
+                    <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg">
+                        <div class="text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">Pending Orders</div>
+                        <div id="dispPending" class="text-4xl font-black text-yellow-400">0</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg">
+                    <h3 class="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">Agent Performance (Charged)</h3>
+                    <div id="agentPerformanceList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div class="text-slate-500 italic">Loading...</div>
                     </div>
                 </div>
             </div>
 
-            <div id="viewPending" class="hidden space-y-6">
-                <div class="flex gap-4 border-b border-slate-700 pb-2">
-                    <button onclick="switchPendingSubTab('billing')" id="subBill" class="text-lg font-bold text-blue-400 border-b-2 border-blue-400 pb-1">Billing Pending</button>
-                    <button onclick="switchPendingSubTab('insurance')" id="subIns" class="text-lg font-bold text-slate-500 hover:text-white pb-1">Insurance Pending</button>
+            <div id="viewPending" class="space-y-6 hidden fade-in">
+                <div class="flex items-center gap-6 border-b border-slate-700 pb-4">
+                    <h2 class="text-3xl font-bold">Pending Approvals</h2>
+                    <div class="flex gap-4 ml-auto">
+                        <button id="subBill" onclick="switchPendingSubTab('billing')" class="text-lg font-bold text-blue-400 border-b-2 border-blue-400 pb-1">Billing</button>
+                        <button id="subIns" onclick="switchPendingSubTab('insurance')" class="text-lg font-bold text-slate-500 hover:text-white pb-1">Insurance</button>
+                    </div>
                 </div>
                 <div id="pendingContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
             </div>
 
-            <div id="viewAnalysis" class="hidden h-full flex flex-col space-y-6">
-                <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 grid grid-cols-1 md:grid-cols-5 gap-4">
-                    <select id="analysisSheetSelector" onchange="renderAnalysis()" class="input-field">
-                        <option value="billing">Billing Data</option>
-                        <option value="insurance">Insurance Data</option>
-                    </select>
-                    <select id="analysisAgentSelector" onchange="renderAnalysis()" class="input-field">
-                        <option value="all">All Agents</option>
-                    </select>
-                    <input type="date" id="dateStart" onchange="renderAnalysis()" class="input-field">
-                    <input type="date" id="dateEnd" onchange="renderAnalysis()" class="input-field">
-                    <input type="text" id="analysisSearch" onkeyup="renderAnalysis()" placeholder="Search..." class="input-field">
+            <div id="viewAnalysis" class="space-y-6 hidden fade-in">
+                <div class="flex flex-col md:flex-row justify-between items-end md:items-center gap-4 bg-slate-800 p-4 rounded-xl border border-slate-700">
+                    <div class="flex gap-4 w-full md:w-auto">
+                        <div class="flex flex-col gap-1">
+                            <label class="text-xs text-slate-400 font-bold uppercase">Start Date</label>
+                            <input type="date" id="dateStart" onchange="renderAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="text-xs text-slate-400 font-bold uppercase">End Date</label>
+                            <input type="date" id="dateEnd" onchange="renderAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none">
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-2 w-full md:w-auto flex-wrap">
+                        <select id="analysisSheetSelector" onchange="updateAgentSelector(); renderAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm outline-none font-bold">
+                            <option value="billing">Billing</option>
+                            <option value="insurance">Insurance</option>
+                        </select>
+                        <select id="analysisAgentSelector" onchange="renderAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm outline-none">
+                            <option value="all">All Agents</option>
+                        </select>
+                        
+                        <select id="analysisStatusSelector" onchange="renderAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm outline-none font-bold text-yellow-400">
+                            <option value="all" class="text-white">All Statuses</option>
+                            <option value="Charged" class="text-green-400">Charged</option>
+                            <option value="Declined" class="text-red-400">Declined</option>
+                            <option value="Pending" class="text-yellow-400">Pending</option>
+                        </select>
+                        
+                        <input type="text" id="analysisSearch" onkeyup="renderAnalysis()" placeholder="Search anything..." class="bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm outline-none w-full md:w-48">
+                    </div>
                 </div>
 
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
-                        <div class="text-xs text-slate-400 uppercase">Total Charge</div>
-                        <div class="text-xl font-bold text-green-400" id="anaTotal">$0.00</div>
+                        <div class="text-xs text-slate-400 uppercase font-bold">Total Charged</div>
+                        <div id="anaTotal" class="text-2xl font-black text-green-400">$0.00</div>
                     </div>
                     <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
-                        <div class="text-xs text-slate-400 uppercase">Transactions</div>
-                        <div class="text-xl font-bold text-blue-400" id="anaCount">0</div>
+                        <div class="text-xs text-slate-400 uppercase font-bold">Count</div>
+                        <div id="anaCount" class="text-2xl font-bold text-white">0</div>
                     </div>
                     <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
-                        <div class="text-xs text-slate-400 uppercase">Avg / Transaction</div>
-                        <div class="text-xl font-bold text-purple-400" id="anaAvg">$0.00</div>
+                        <div class="text-xs text-slate-400 uppercase font-bold">Avg Sale</div>
+                        <div id="anaAvg" class="text-2xl font-bold text-blue-400">$0.00</div>
                     </div>
                     <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
-                        <div class="text-xs text-slate-400 uppercase">Peak Hour</div>
-                        <div class="text-xl font-bold text-yellow-400" id="anaPeak">-</div>
+                        <div class="text-xs text-slate-400 uppercase font-bold">Peak Hour</div>
+                        <div id="anaPeak" class="text-2xl font-bold text-purple-400">-</div>
                     </div>
                 </div>
 
-                <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 h-64 w-full">
+                <div class="h-64 bg-slate-800 p-4 rounded-xl border border-slate-700">
                     <canvas id="analysisChart"></canvas>
                 </div>
 
-                <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden flex-1 relative min-h-[300px]">
-                    <div class="absolute inset-0 overflow-auto">
-                        <table class="w-full text-left text-sm text-slate-300">
-                            <thead class="bg-slate-900 text-slate-200 uppercase font-bold text-xs sticky top-0 shadow-md">
-                                <tr id="analysisHeader"></tr>
-                            </thead>
-                            <tbody id="analysisBody" class="divide-y divide-slate-700 font-mono"></tbody>
-                        </table>
-                    </div>
+                <div class="overflow-x-auto bg-slate-800 rounded-xl border border-slate-700">
+                    <table class="w-full">
+                        <thead class="bg-slate-900/50 border-b border-slate-700">
+                            <tr id="analysisHeader"></tr>
+                        </thead>
+                        <tbody id="analysisBody"></tbody>
+                    </table>
                 </div>
             </div>
 
-            <div id="viewEdit" class="hidden max-w-4xl mx-auto">
-                <div class="bg-slate-800 p-8 rounded-2xl border border-slate-700 shadow-xl">
-                    <h2 class="text-2xl font-bold mb-6 text-white border-b border-slate-700 pb-4">Edit Transaction</h2>
-                    <div class="flex gap-4 mb-8">
-                        <select id="editSheetType" class="input-field w-48">
+            <div id="viewEdit" class="space-y-8 hidden fade-in max-w-2xl mx-auto mt-10">
+                <div class="bg-slate-800 p-8 rounded-2xl border border-slate-700 shadow-2xl">
+                    <h2 class="text-2xl font-bold mb-6 text-red-400">Edit or Delete Record</h2>
+                    <div class="flex gap-2 mb-6">
+                        <select id="editSheetType" class="bg-slate-900 border border-slate-600 rounded px-3 py-2 outline-none">
                             <option value="billing">Billing</option>
                             <option value="insurance">Insurance</option>
                         </select>
-                        <input type="text" id="editSearchId" placeholder="Enter Record ID" class="input-field flex-1">
-                        <button onclick="searchForEdit()" class="bg-blue-600 hover:bg-blue-500 text-white px-8 rounded-lg font-bold">Search</button>
+                        <input type="text" id="editSearchId" placeholder="Enter ID to find..." class="bg-slate-900 border border-slate-600 rounded px-3 py-2 w-full outline-none">
+                        <button onclick="searchForEdit()" class="bg-blue-600 hover:bg-blue-500 px-6 rounded font-bold text-white">Search</button>
                     </div>
-                    <form id="editForm" class="hidden grid grid-cols-2 gap-6">
-                         <div><label class="text-xs text-slate-500">Agent</label><input type="text" id="e_agent" class="input-field opacity-50 cursor-not-allowed" readonly></div>
-                         <div><label class="text-xs text-slate-500">Client</label><input type="text" id="e_client" class="input-field opacity-50 cursor-not-allowed" readonly></div>
-                         <div><label class="text-xs text-slate-500">Phone</label><input type="text" id="e_phone" class="input-field opacity-50 cursor-not-allowed" readonly></div>
-                         <div><label class="text-xs text-slate-500">Email</label><input type="text" id="e_email" class="input-field opacity-50 cursor-not-allowed" readonly></div>
-                         
-                         <div><label class="text-xs text-slate-400">Charge ($)</label><input type="text" id="e_charge" name="charge_amt" class="input-field border-blue-500/50"></div>
-                         <div>
-                            <label class="text-xs text-slate-400">Status</label>
-                            <select id="e_status" name="status" class="input-field border-blue-500/50">
-                                <option value="Pending">Pending</option>
-                                <option value="Submitted">Submitted</option>
-                                <option value="Charged">Charged</option>
-                                <option value="Declined">Declined</option>
-                                <option value="Charge Back">Charge Back</option>
-                            </select>
-                        </div>
-                        <input type="hidden" name="type" id="e_type">
-                        <input type="hidden" name="is_edit" value="true">
-                        <input type="hidden" name="record_id" id="e_record_id">
-                        <input type="hidden" name="order_id" id="e_order_id">
-                        <input type="hidden" name="agent" id="h_agent"><input type="hidden" name="client_name" id="h_client"><input type="hidden" name="phone" id="h_phone"><input type="hidden" name="address" id="h_address"><input type="hidden" name="email" id="h_email"><input type="hidden" name="card_holder" id="h_card_holder"><input type="hidden" name="card_number" id="h_card_number"><input type="hidden" name="exp_date" id="h_exp"><input type="hidden" name="cvc" id="h_cvc"><input type="hidden" name="llc" id="h_llc"><input type="hidden" name="provider" id="h_provider"><input type="hidden" name="pin_code" id="h_pin">
 
-                        <div class="col-span-2 flex gap-4 mt-4 pt-4 border-t border-slate-700">
-                            <button type="submit" class="flex-1 bg-green-600 hover:bg-green-500 text-white py-3 rounded-xl font-bold">Update Record</button>
-                            <button type="button" onclick="deleteCurrentRecord()" class="bg-red-900/80 hover:bg-red-800 text-red-200 px-6 rounded-xl font-bold">Delete Record</button>
+                    <form id="editForm" class="space-y-4 hidden">
+                        <input type="hidden" name="type" id="e_type">
+                        <input type="hidden" name="order_id" id="e_order_id">
+                        <input type="hidden" name="record_id" id="e_record_id">
+                        <input type="hidden" name="agent" id="h_agent">
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><label class="block text-xs text-slate-400 mb-1">Agent</label><input type="text" id="e_agent" disabled class="input-field w-full opacity-50"></div>
+                            <div><label class="block text-xs text-slate-400 mb-1">Status</label><select name="status" id="e_status" class="input-field w-full"><option value="Pending">Pending</option><option value="Charged">Charged</option><option value="Declined">Declined</option></select></div>
+                            <div><label class="block text-xs text-slate-400 mb-1">Client Name</label><input type="text" name="client_name" id="e_client" required class="input-field w-full"></div>
+                            <div><label class="block text-xs text-slate-400 mb-1">Charge ($)</label><input type="text" name="charge_amt" id="e_charge" required class="input-field w-full"></div>
+                            <div><label class="block text-xs text-slate-400 mb-1">Phone</label><input type="text" name="phone" id="e_phone" required class="input-field w-full"></div>
+                            <div><label class="block text-xs text-slate-400 mb-1">Email</label><input type="text" name="email" id="e_email" required class="input-field w-full"></div>
+                        </div>
+
+                        <div class="flex gap-4 mt-6 pt-6 border-t border-slate-700">
+                            <button type="submit" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg">Save Changes</button>
+                            <button type="button" onclick="deleteCurrentRecord()" class="bg-red-900/50 hover:bg-red-900 text-red-400 border border-red-900 font-bold px-6 rounded-lg">Delete</button>
                         </div>
                     </form>
                 </div>
             </div>
+
         </main>
     </div>
+
     <script src="/static/js/manager.js"></script>
 </body>
 </html>
