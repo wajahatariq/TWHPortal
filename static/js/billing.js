@@ -24,7 +24,7 @@ function updateNightWidget() {
         }
     } else { listDiv.classList.add('hidden'); }
 }
-fetchNightStats(); setInterval(fetchNightStats, 30000); 
+fetchNightStats(); setInterval(fetchNightStats, 120000); 
 
 // --- CORRECTED TOGGLE FUNCTION ---
 function toggleProviderFields() {
@@ -168,3 +168,4 @@ document.getElementById('billingForm').addEventListener('submit', async (e) => {
     } catch (err) { showToast('Submission Failed', true); } 
     finally { btn.innerText = originalText; btn.disabled = false; }
 });
+
