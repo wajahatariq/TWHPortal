@@ -399,6 +399,17 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
             try:
                 status_col_index = headers.index("Status") + 1
                 ws.update_cell(cell.row, status_col_index, status)
+                STATS_CACHE["last_updated"] = 0
+                
+                # --- TRIGGER PUSHER (SECURE) ---
+                try:
+                    pusher_client.trigger('techware-channel', 'status-update', {
+                        'id': id,
+                        'status': status,
+                        'type': type
+                    })
+                except Exception as e: print(f"Pusher Error: {e}")
+
                 return {"status": "success"}
             except ValueError:
                 return {"status": "error", "message": "Status column missing"}
