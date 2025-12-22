@@ -393,22 +393,26 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
     ws = get_worksheet(type)
     if not ws: return JSONResponse({"status": "error"}, 500)
     try:
+        # 1. USE YOUR WORKING LOGIC
         cell = ws.find(id, in_column=1)
         if cell:
             headers = ws.row_values(1)
             try:
                 status_col_index = headers.index("Status") + 1
                 ws.update_cell(cell.row, status_col_index, status)
+
+                # --- ADDED: Clear Cache (So widgets update instantly) ---
                 STATS_CACHE["last_updated"] = 0
-                
-                # --- TRIGGER PUSHER (SECURE) ---
+
+                # --- ADDED: Trigger Pusher (So sound plays) ---
                 try:
                     pusher_client.trigger('techware-channel', 'status-update', {
                         'id': id,
                         'status': status,
                         'type': type
                     })
-                except Exception as e: print(f"Pusher Error: {e}")
+                except Exception as p_error:
+                    print(f"Pusher Error: {p_error}")
 
                 return {"status": "success"}
             except ValueError:
