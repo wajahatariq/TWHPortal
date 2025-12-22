@@ -406,4 +406,3 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-See this it was the last time approve or decline was working
