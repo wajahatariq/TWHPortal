@@ -24,7 +24,7 @@ function updateNightWidget() {
         }
     } else { listDiv.classList.add('hidden'); }
 }
-fetchNightStats(); setInterval(fetchNightStats, 30000); 
+fetchNightStats(); setInterval(fetchNightStats, 120000); 
 
 function showToast(msg, isError=false) {
     let toast = document.getElementById('toast');
@@ -136,3 +136,4 @@ document.getElementById('insuranceForm').addEventListener('submit', async (e) =>
     } catch (err) { showToast('Failed', true); } 
     finally { btn.innerText = originalText; btn.disabled = false; }
 });
+
