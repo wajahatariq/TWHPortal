@@ -15,27 +15,29 @@ document.body.addEventListener('click', () => {
     soundSuccess.load();
 }, { once: true });
 
-// --- PUSHER SETUP ---
-const pusher = new Pusher('0f50a053d6d1585433c9', {
-    cluster: 'ap1'
-});
+// --- PUSHER SETUP (SECURE) ---
+if (window.PUSHER_KEY) {
+    const pusher = new Pusher(window.PUSHER_KEY, {
+        cluster: window.PUSHER_CLUSTER || 'ap1'
+    });
+    const channel = pusher.subscribe('techware-channel');
 
-const channel = pusher.subscribe('techware-channel');
+    // 1. New Lead Event
+    channel.bind('new-lead', function(data) {
+        soundNewLead.play().catch(() => console.log('Interact first'));
+        fetchData();
+    });
 
-// 1. New Lead Event
-channel.bind('new-lead', function(data) {
-    soundNewLead.play().catch(() => console.log('Interact first'));
-    // Refresh Data
-    fetchData();
-});
-
-// 2. Status Update Event (e.g. from another manager)
-channel.bind('status-update', function(data) {
-    if(data.status === 'Charged') {
-        soundSuccess.play().catch(() => console.log('Interact first'));
-    }
-    fetchData();
-});
+    // 2. Status Update Event
+    channel.bind('status-update', function(data) {
+        if(data.status === 'Charged') {
+            soundSuccess.play().catch(() => console.log('Interact first'));
+        }
+        fetchData();
+    });
+} else {
+    console.error("Pusher Key not found in configuration.");
+}
 
 const token = sessionStorage.getItem('twh_token');
 if (token) {
@@ -60,7 +62,6 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('dateStart').value = today;
         document.getElementById('dateEnd').value = today;
-        
         fetchData();
     } else { document.getElementById('loginError').classList.remove('hidden'); }
 });
@@ -362,3 +363,31 @@ async function deleteCurrentRecord() {
     if(data.status === 'success') { alert("Deleted"); fetchData(); document.getElementById('editForm').classList.add('hidden'); document.getElementById('editSearchId').value=""; }
     else alert(data.message);
 }
+
+// =======================
+// NEW REFRESH BUTTON LOGIC
+// =======================
+async function manualRefresh() {
+    const btn = document.getElementById('refreshBtn');
+    const icon = btn.querySelector('svg');
+    
+    // Start Animation
+    icon.classList.add('animate-spin'); 
+    btn.disabled = true;
+    btn.classList.add('opacity-50');
+
+    await fetchData(); // Force reload
+
+    // Stop Animation
+    setTimeout(() => {
+        icon.classList.remove('animate-spin');
+        btn.disabled = false;
+        btn.classList.remove('opacity-50');
+    }, 500);
+}
+
+// Safe Auto-Refresh (Every 60 Seconds)
+setInterval(() => {
+    console.log("Auto-refreshing data...");
+    fetchData();
+}, 60000);
