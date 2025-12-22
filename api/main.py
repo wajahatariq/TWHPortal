@@ -6,7 +6,6 @@ import pytz
 import requests
 import hashlib
 import re
-import time as time_module  # Renamed to avoid conflict with datetime.time
 from datetime import datetime, timedelta, time
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -14,37 +13,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from typing import Optional
 from dotenv import load_dotenv
-import pusher
 
 load_dotenv()
 
 app = FastAPI()
 
-# --- CACHE SETUP (PREVENTS GOOGLE QUOTA ERRORS) ---
-# We store the night stats here for 60 seconds.
-STATS_CACHE = {
-    "last_updated": 0,
-    "data": {
-        "billing": {"total": 0, "breakdown": {}}, 
-        "insurance": {"total": 0, "breakdown": {}}
-    }
-}
-CACHE_DURATION = 60  # seconds
-
-# --- PUSHER SETUP ---
-pusher_client = pusher.Pusher(
-  app_id=os.getenv("PUSHER_APP_ID"),
-  key=os.getenv("PUSHER_KEY"),
-  secret=os.getenv("PUSHER_SECRET"),
-  cluster=os.getenv("PUSHER_CLUSTER"),
-  ssl=True
-)
-
 # --- SETUP ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if not os.path.exists(os.path.join(BASE_DIR, "templates")):
-    BASE_DIR = os.getcwd()
-
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
@@ -54,42 +29,28 @@ TZ_KARACHI = pytz.timezone("Asia/Karachi")
 
 # --- SHEETS SETUP ---
 gc = None
-
-def get_gc():
-    """Helper to get/refresh gspread client"""
-    global gc
-    try:
-        service_file = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE")
-        service_json = os.getenv("GCP_SERVICE_ACCOUNT") 
-        
-        if service_file and os.path.exists(service_file):
-            gc = gspread.service_account(filename=service_file)
-        elif service_json:
-            gc = gspread.service_account_from_dict(json.loads(service_json))
-        else:
-            print("WARNING: No Credentials found.")
-    except Exception as e:
-        print(f"Error loading credentials: {e}")
-    return gc
-
-# Initialize once
-get_gc()
+try:
+    service_file = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE")
+    service_json = os.getenv("GCP_SERVICE_ACCOUNT") 
+    if service_file and os.path.exists(service_file):
+        gc = gspread.service_account(filename=service_file)
+    elif service_json:
+        gc = gspread.service_account_from_dict(json.loads(service_json))
+    else:
+        print("WARNING: No Credentials found.")
+except Exception as e:
+    print(f"Error loading credentials: {e}")
 
 SHEET_NAME = "Company_Transactions"
 
 def get_worksheet(sheet_type):
-    # Always ensure we have a client
-    if not gc: get_gc()
     if not gc: return None
-    
     try:
         sh = gc.open(SHEET_NAME)
         if sheet_type == 'billing' or sheet_type == 'spectrum': return sh.get_worksheet(0)
         if sheet_type == 'insurance': return sh.get_worksheet(1)
         if sheet_type == 'auth': return sh.get_worksheet(2)
-    except Exception as e:
-        print(f"Sheet Error: {e}")
-        return None
+    except: return None
     return None
 
 # --- CONSTANTS ---
@@ -228,38 +189,20 @@ async def view_manager(request: Request):
 
 @app.get("/api/public/night-stats")
 async def get_public_stats():
-    # --- CACHING LOGIC ---
-    current_time = time_module.time()
-    if current_time - STATS_CACHE["last_updated"] < CACHE_DURATION:
-        return STATS_CACHE["data"]
-
     try:
         ws_bill = get_worksheet('billing')
         ws_ins = get_worksheet('insurance')
-        
-        if not ws_bill or not ws_ins:
-            # Return cached data if Google fails
-            return STATS_CACHE["data"]
-
-        bill_data = rows_to_dict(ws_bill.get_all_values())
-        ins_data = rows_to_dict(ws_ins.get_all_values())
-        
+        bill_data = rows_to_dict(ws_bill.get_all_values()) if ws_bill else []
+        ins_data = rows_to_dict(ws_ins.get_all_values()) if ws_ins else []
         stats_bill = calculate_stats(pd.DataFrame(bill_data))
         stats_ins = calculate_stats(pd.DataFrame(ins_data))
-        
-        new_data = {
+        return {
             "billing": { "total": stats_bill['night'], "breakdown": stats_bill['breakdown'] },
             "insurance": { "total": stats_ins['night'], "breakdown": stats_ins['breakdown'] }
         }
-        
-        # Update Cache
-        STATS_CACHE["data"] = new_data
-        STATS_CACHE["last_updated"] = current_time
-        
-        return new_data
     except Exception as e:
         print(f"Stats Error: {e}")
-        return STATS_CACHE["data"] # Fail gracefully
+        return {"billing": {"total": 0, "breakdown": {}}, "insurance": {"total": 0, "breakdown": {}}}
 
 @app.post("/api/save-lead")
 async def save_lead(
@@ -305,10 +248,13 @@ async def save_lead(
     if is_edit == 'false':
         final_status = "Pending"
 
+    # CONSOLIDATE PIN AND ACCOUNT NUMBER INTO ONE COLUMN
     final_code = pin_code if pin_code else account_number if account_number else ""
 
     if type == 'billing':
+        # final_code goes into the last column (Column Q usually, Index 16)
         row_data = [primary_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), charge_amt, llc, provider, date_str, final_status, timestamp_str, final_code]
+        # Range ends at Q, not R
         range_end = f"Q{row_index}"
     else:
         row_data = [primary_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), charge_amt, llc, date_str, final_status, timestamp_str]
@@ -318,28 +264,9 @@ async def save_lead(
         if is_edit == 'true' and row_index:
             range_start = f"A{row_index}"
             ws.update(f"{range_start}:{range_end}", [row_data])
-            
-            # --- CLEAR CACHE ON EDIT SO MANAGER SEES IT ---
-            STATS_CACHE["last_updated"] = 0
-            
             return {"status": "success", "message": "Lead Updated Successfully"}
         else:
             ws.append_row(row_data)
-            
-            # --- TRIGGER PUSHER ---
-            try:
-                pusher_client.trigger('techware-channel', 'new-lead', {
-                    'agent': agent,
-                    'amount': charge_amt,
-                    'type': type,
-                    'message': f"New {type} lead from {agent}"
-                })
-            except Exception as e:
-                print(f"Pusher Error: {e}")
-
-            # --- CLEAR CACHE ---
-            STATS_CACHE["last_updated"] = 0
-
             send_pushbullet(f"New {type.title()} Lead", f"{agent} - ${charge_amt}")
             return {"status": "success", "message": "Lead Submitted Successfully"}
     except Exception as e:
@@ -353,8 +280,6 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
         cell = ws.find(id, in_column=1)
         if cell:
             ws.delete_rows(cell.row)
-            # Clear Cache
-            STATS_CACHE["last_updated"] = 0
             return {"status": "success", "message": "Deleted successfully"}
         return {"status": "error", "message": "ID not found"}
     except Exception as e:
@@ -372,11 +297,7 @@ async def get_lead(type: str, id: str, row_index: Optional[int] = None):
             data['row_index'] = row_index
             return {"status": "success", "data": data}
 
-        try:
-            cells = ws.findall(id, in_column=1)
-        except gspread.exceptions.CellNotFound:
-             return JSONResponse({"status": "error", "message": "Not Found"}, 404)
-
+        cells = ws.findall(id, in_column=1)
         if not cells: return JSONResponse({"status": "error", "message": "Not Found"}, 404)
         
         if len(cells) == 1:
@@ -430,44 +351,17 @@ async def get_manager_data(token: str):
 @app.post("/api/manager/update_status")
 async def update_status(type: str = Form(...), id: str = Form(...), status: str = Form(...)):
     ws = get_worksheet(type)
-    if not ws: return JSONResponse({"status": "error", "message": "Database Connection Failed"}, 500)
-    
+    if not ws: return JSONResponse({"status": "error"}, 500)
     try:
-        try:
-            cell = ws.find(id, in_column=1)
-        except gspread.exceptions.CellNotFound:
-            cell = None
-            
-        if not cell:
-            return {"status": "error", "message": f"ID '{id}' not found in Column A."}
-
-        headers = ws.row_values(1)
-        status_col_index = 0
-        
-        for index, header in enumerate(headers):
-            if str(header).strip().lower() == "status":
-                status_col_index = index + 1
-                break
-        
-        if status_col_index == 0:
-            if type == 'billing': status_col_index = 15
-            else: status_col_index = 14
-
-        ws.update_cell(cell.row, status_col_index, status)
-        
-        # --- CLEAR CACHE SO WIDGETS UPDATE ---
-        STATS_CACHE["last_updated"] = 0
-        
-        try:
-            pusher_client.trigger('techware-channel', 'status-update', {
-                'id': id,
-                'status': status,
-                'type': type
-            })
-        except: pass
-
-        return {"status": "success", "message": "Updated"}
-
+        cell = ws.find(id, in_column=1)
+        if cell:
+            headers = ws.row_values(1)
+            try:
+                status_col_index = headers.index("Status") + 1
+                ws.update_cell(cell.row, status_col_index, status)
+                return {"status": "success"}
+            except ValueError:
+                return {"status": "error", "message": "Status column missing"}
+        return {"status": "error", "message": "ID not found"}
     except Exception as e:
-        print(f"Update Error: {e}")
         return {"status": "error", "message": str(e)}
