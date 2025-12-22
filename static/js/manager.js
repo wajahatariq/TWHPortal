@@ -304,15 +304,57 @@ function renderAnalysis() {
 async function setStatus(type, id, status, btnElement) {
     const card = btnElement.closest('.pending-card');
     const btns = card.querySelectorAll('button');
+    
+    // 1. UI: Disable buttons & show loading
     btns.forEach(b => { b.disabled = true; b.classList.add('opacity-50'); });
+    const originalText = btnElement.innerText;
     btnElement.innerText = "...";
-    const formData = new FormData(); formData.append('type', type); formData.append('id', id); formData.append('status', status);
-    const res = await fetch('/api/manager/update_status', { method: 'POST', body: formData });
-    const data = await res.json();
-    if(data.status === 'success') { 
-        card.style.transition = "all 0.5s"; card.style.opacity = "0"; card.style.transform = "scale(0.9)"; setTimeout(() => { fetchData(); }, 500); 
-    } 
-    else { alert(data.message); btns.forEach(b => { b.disabled = false; b.classList.remove('opacity-50'); }); }
+    
+    try {
+        const formData = new FormData(); 
+        formData.append('type', type); 
+        formData.append('id', id); 
+        formData.append('status', status);
+        
+        // 2. Call API
+        const res = await fetch('/api/manager/update_status', { method: 'POST', body: formData });
+        
+        // Handle server errors (500/404)
+        if (!res.ok) throw new Error(`Server Error (${res.status})`);
+
+        const data = await res.json();
+        
+        if(data.status === 'success') { 
+            // ============================================
+            // FIX: Play Sound IMMEDIATELY upon success
+            // ============================================
+            if (status === 'Charged') {
+                soundSuccess.currentTime = 0; // Reset sound to start
+                soundSuccess.play().catch(e => console.error("Audio Play failed:", e));
+            }
+
+            // 3. UI: Animate card removal
+            card.style.transition = "all 0.5s"; 
+            card.style.opacity = "0"; 
+            card.style.transform = "scale(0.9)"; 
+            
+            // Refresh grid after animation
+            setTimeout(() => { fetchData(); }, 500); 
+        } else { 
+            alert("Error: " + data.message); 
+            resetButtons();
+        }
+
+    } catch (error) {
+        console.error("Update Failed:", error);
+        alert("Update Failed! Check Console.");
+        resetButtons();
+    }
+
+    function resetButtons() {
+        btns.forEach(b => { b.disabled = false; b.classList.remove('opacity-50'); }); 
+        btnElement.innerText = originalText;
+    }
 }
 
 async function searchForEdit() {
@@ -391,3 +433,4 @@ setInterval(() => {
     console.log("Auto-refreshing data...");
     fetchData();
 }, 60000);
+
