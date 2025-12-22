@@ -390,19 +390,18 @@ async def get_manager_data(token: str):
 
 @app.post("/api/manager/update_status")
 async def update_status(type: str = Form(...), id: str = Form(...), status: str = Form(...)):
-    ws = get_worksheet(type)
-    if not ws: return JSONResponse({"status": "error"}, 500)
-    try:
-        cell = ws.find(id, in_column=1)
-        if cell:
-            headers = ws.row_values(1)
-            try:
-                status_col_index = headers.index("Status") + 1
-                ws.update_cell(cell.row, status_col_index, status)
-                return {"status": "success"}
-            except ValueError:
-                return {"status": "error", "message": "Status column missing"}
-        return {"status": "error", "message": "ID not found"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
+    ws = get_worksheet(type)
+    if not ws: return JSONResponse({"status": "error"}, 500)
+    try:
+        cell = ws.find(id, in_column=1)
+        if cell:
+            headers = ws.row_values(1)
+            try:
+                status_col_index = headers.index("Status") + 1
+                ws.update_cell(cell.row, status_col_index, status)
+                return {"status": "success"}
+            except ValueError:
+                return {"status": "error", "message": "Status column missing"}
+        return {"status": "error", "message": "ID not found"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
