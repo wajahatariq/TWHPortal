@@ -20,7 +20,6 @@ load_dotenv()
 app = FastAPI()
 
 # --- SECURITY: LOAD SECRETS FROM ENV ---
-# Ensure these are set in your .env file or Vercel Settings
 PUSHER_APP_ID = os.getenv("PUSHER_APP_ID")
 PUSHER_KEY = os.getenv("PUSHER_KEY")
 PUSHER_SECRET = os.getenv("PUSHER_SECRET")
@@ -35,6 +34,7 @@ pusher_client = pusher.Pusher(
 )
 
 # --- CACHE SETUP ---
+# Stores stats for 60 seconds to save Google Quota
 STATS_CACHE = {
     "last_updated": 0,
     "data": {
@@ -210,7 +210,7 @@ async def view_insurance(request: Request):
 
 @app.get("/manager", response_class=HTMLResponse)
 async def view_manager(request: Request):
-    # SECURE: We pass the KEY to the frontend here, but keep the SECRET on the server.
+    # Pass Pusher Public Key to Frontend securely
     return templates.TemplateResponse("manager.html", {
         "request": request, 
         "pusher_key": PUSHER_KEY, 
@@ -219,7 +219,6 @@ async def view_manager(request: Request):
 
 @app.get("/api/public/night-stats")
 async def get_public_stats():
-    # Cache Check
     current_time = time_module.time()
     if current_time - STATS_CACHE["last_updated"] < CACHE_DURATION:
         return STATS_CACHE["data"]
@@ -302,7 +301,6 @@ async def save_lead(
             ws.append_row(row_data)
             STATS_CACHE["last_updated"] = 0
             
-            # --- TRIGGER PUSHER (SECURE) ---
             try:
                 pusher_client.trigger('techware-channel', 'new-lead', {
                     'agent': agent,
@@ -393,26 +391,24 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
     ws = get_worksheet(type)
     if not ws: return JSONResponse({"status": "error"}, 500)
     try:
-        # 1. USE YOUR WORKING LOGIC
         cell = ws.find(id, in_column=1)
         if cell:
             headers = ws.row_values(1)
             try:
                 status_col_index = headers.index("Status") + 1
                 ws.update_cell(cell.row, status_col_index, status)
-
-                # --- ADDED: Clear Cache (So widgets update instantly) ---
+                
+                # --- ADDED: Clear Cache ---
                 STATS_CACHE["last_updated"] = 0
-
-                # --- ADDED: Trigger Pusher (So sound plays) ---
+                
+                # --- ADDED: Trigger Pusher ---
                 try:
                     pusher_client.trigger('techware-channel', 'status-update', {
                         'id': id,
                         'status': status,
                         'type': type
                     })
-                except Exception as p_error:
-                    print(f"Pusher Error: {p_error}")
+                except Exception as e: print(f"Pusher Error: {e}")
 
                 return {"status": "success"}
             except ValueError:
