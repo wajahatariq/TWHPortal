@@ -359,6 +359,20 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
             try:
                 status_col_index = headers.index("Status") + 1
                 ws.update_cell(cell.row, status_col_index, status)
+                
+                # --- ADDED: Clear Cache so the widget updates immediately ---
+                STATS_CACHE["last_updated"] = 0
+                
+                # --- ADDED: Trigger Pusher Notification ---
+                try:
+                    pusher_client.trigger('techware-channel', 'status-update', {
+                        'id': id,
+                        'status': status,
+                        'type': type
+                    })
+                except Exception as p_error:
+                    print(f"Pusher Error: {p_error}")
+
                 return {"status": "success"}
             except ValueError:
                 return {"status": "error", "message": "Status column missing"}
