@@ -5,7 +5,7 @@ import pandas as pd
 import pytz
 import requests
 import hashlib
-import re
+import time as time_module
 from datetime import datetime, timedelta, time
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -13,13 +13,42 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from typing import Optional
 from dotenv import load_dotenv
+import pusher
 
 load_dotenv()
 
 app = FastAPI()
 
+# --- SECURITY: LOAD SECRETS FROM ENV ---
+# Ensure these are set in your .env file or Vercel Settings
+PUSHER_APP_ID = os.getenv("PUSHER_APP_ID")
+PUSHER_KEY = os.getenv("PUSHER_KEY")
+PUSHER_SECRET = os.getenv("PUSHER_SECRET")
+PUSHER_CLUSTER = os.getenv("PUSHER_CLUSTER")
+
+pusher_client = pusher.Pusher(
+  app_id=PUSHER_APP_ID,
+  key=PUSHER_KEY,
+  secret=PUSHER_SECRET,
+  cluster=PUSHER_CLUSTER,
+  ssl=True
+)
+
+# --- CACHE SETUP ---
+STATS_CACHE = {
+    "last_updated": 0,
+    "data": {
+        "billing": {"total": 0, "breakdown": {}}, 
+        "insurance": {"total": 0, "breakdown": {}}
+    }
+}
+CACHE_DURATION = 60 
+
 # --- SETUP ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if not os.path.exists(os.path.join(BASE_DIR, "templates")):
+    BASE_DIR = os.getcwd()
+
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
@@ -29,28 +58,35 @@ TZ_KARACHI = pytz.timezone("Asia/Karachi")
 
 # --- SHEETS SETUP ---
 gc = None
-try:
-    service_file = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE")
-    service_json = os.getenv("GCP_SERVICE_ACCOUNT") 
-    if service_file and os.path.exists(service_file):
-        gc = gspread.service_account(filename=service_file)
-    elif service_json:
-        gc = gspread.service_account_from_dict(json.loads(service_json))
-    else:
-        print("WARNING: No Credentials found.")
-except Exception as e:
-    print(f"Error loading credentials: {e}")
+def get_gc():
+    global gc
+    try:
+        service_file = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE")
+        service_json = os.getenv("GCP_SERVICE_ACCOUNT") 
+        if service_file and os.path.exists(service_file):
+            gc = gspread.service_account(filename=service_file)
+        elif service_json:
+            gc = gspread.service_account_from_dict(json.loads(service_json))
+        else:
+            print("WARNING: No Credentials found.")
+    except Exception as e:
+        print(f"Error loading credentials: {e}")
+    return gc
 
+get_gc() # Init
 SHEET_NAME = "Company_Transactions"
 
 def get_worksheet(sheet_type):
+    if not gc: get_gc()
     if not gc: return None
     try:
         sh = gc.open(SHEET_NAME)
-        if sheet_type == 'billing' or sheet_type == 'spectrum': return sh.get_worksheet(0)
+        if sheet_type == 'billing': return sh.get_worksheet(0)
         if sheet_type == 'insurance': return sh.get_worksheet(1)
         if sheet_type == 'auth': return sh.get_worksheet(2)
-    except: return None
+    except Exception as e:
+        print(f"Sheet Error: {e}")
+        return None
     return None
 
 # --- CONSTANTS ---
@@ -146,16 +182,10 @@ def calculate_stats(df):
     breakdown = {}
 
     if window_start and col_status and col_time:
-        night_mask = (
-            (df['StatusClean'] == "Charged") & 
-            (df['dt'] >= window_start) & 
-            (df['dt'] <= window_end)
-        )
+        night_mask = ((df['StatusClean'] == "Charged") & (df['dt'] >= window_start) & (df['dt'] <= window_end))
         night_df = df.loc[night_mask]
         night_total = night_df['ChargeFloat'].sum()
-        
-        if col_agent:
-            breakdown = night_df.groupby(col_agent)['ChargeFloat'].sum().to_dict()
+        if col_agent: breakdown = night_df.groupby(col_agent)['ChargeFloat'].sum().to_dict()
 
     today_total = 0.0
     if col_status and col_time:
@@ -163,12 +193,7 @@ def calculate_stats(df):
         today_mask = (df['StatusClean'] == "Charged") & (df['dt'] >= today_start)
         today_total = df.loc[today_mask, 'ChargeFloat'].sum()
 
-    return {
-        "today": round(today_total, 2),
-        "night": round(night_total, 2),
-        "pending": pending,
-        "breakdown": breakdown
-    }
+    return { "today": round(today_total, 2), "night": round(night_total, 2), "pending": pending, "breakdown": breakdown }
 
 # --- ROUTES ---
 
@@ -185,24 +210,40 @@ async def view_insurance(request: Request):
 
 @app.get("/manager", response_class=HTMLResponse)
 async def view_manager(request: Request):
-    return templates.TemplateResponse("manager.html", {"request": request})
+    # SECURE: We pass the KEY to the frontend here, but keep the SECRET on the server.
+    return templates.TemplateResponse("manager.html", {
+        "request": request, 
+        "pusher_key": PUSHER_KEY, 
+        "pusher_cluster": PUSHER_CLUSTER
+    })
 
 @app.get("/api/public/night-stats")
 async def get_public_stats():
+    # Cache Check
+    current_time = time_module.time()
+    if current_time - STATS_CACHE["last_updated"] < CACHE_DURATION:
+        return STATS_CACHE["data"]
+
     try:
         ws_bill = get_worksheet('billing')
         ws_ins = get_worksheet('insurance')
-        bill_data = rows_to_dict(ws_bill.get_all_values()) if ws_bill else []
-        ins_data = rows_to_dict(ws_ins.get_all_values()) if ws_ins else []
+        if not ws_bill or not ws_ins: return STATS_CACHE["data"]
+
+        bill_data = rows_to_dict(ws_bill.get_all_values())
+        ins_data = rows_to_dict(ws_ins.get_all_values())
         stats_bill = calculate_stats(pd.DataFrame(bill_data))
         stats_ins = calculate_stats(pd.DataFrame(ins_data))
-        return {
+        
+        new_data = {
             "billing": { "total": stats_bill['night'], "breakdown": stats_bill['breakdown'] },
             "insurance": { "total": stats_ins['night'], "breakdown": stats_ins['breakdown'] }
         }
+        STATS_CACHE["data"] = new_data
+        STATS_CACHE["last_updated"] = current_time
+        return new_data
     except Exception as e:
         print(f"Stats Error: {e}")
-        return {"billing": {"total": 0, "breakdown": {}}, "insurance": {"total": 0, "breakdown": {}}}
+        return STATS_CACHE["data"]
 
 @app.post("/api/save-lead")
 async def save_lead(
@@ -234,27 +275,18 @@ async def save_lead(
     if not ws: return JSONResponse({"status": "error", "message": "DB Connection Failed"}, 500)
 
     if is_edit == 'true' and timestamp_mode == 'keep' and original_timestamp:
+        try: date_str = original_timestamp.split(" ")[0]
+        except: d, t = get_timestamp(); date_str = d
         timestamp_str = original_timestamp
-        try:
-            date_str = timestamp_str.split(" ")[0]
-        except:
-            d, t = get_timestamp()
-            date_str = d
     else:
         date_str, timestamp_str = get_timestamp()
 
     primary_id = order_id if type == 'billing' else record_id
-    final_status = status 
-    if is_edit == 'false':
-        final_status = "Pending"
-
-    # CONSOLIDATE PIN AND ACCOUNT NUMBER INTO ONE COLUMN
+    final_status = status if is_edit == 'true' else "Pending"
     final_code = pin_code if pin_code else account_number if account_number else ""
 
     if type == 'billing':
-        # final_code goes into the last column (Column Q usually, Index 16)
         row_data = [primary_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), charge_amt, llc, provider, date_str, final_status, timestamp_str, final_code]
-        # Range ends at Q, not R
         range_end = f"Q{row_index}"
     else:
         row_data = [primary_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), charge_amt, llc, date_str, final_status, timestamp_str]
@@ -264,9 +296,22 @@ async def save_lead(
         if is_edit == 'true' and row_index:
             range_start = f"A{row_index}"
             ws.update(f"{range_start}:{range_end}", [row_data])
+            STATS_CACHE["last_updated"] = 0
             return {"status": "success", "message": "Lead Updated Successfully"}
         else:
             ws.append_row(row_data)
+            STATS_CACHE["last_updated"] = 0
+            
+            # --- TRIGGER PUSHER (SECURE) ---
+            try:
+                pusher_client.trigger('techware-channel', 'new-lead', {
+                    'agent': agent,
+                    'amount': charge_amt,
+                    'type': type,
+                    'message': f"New {type} lead from {agent}"
+                })
+            except Exception as e: print(f"Pusher Error: {e}")
+
             send_pushbullet(f"New {type.title()} Lead", f"{agent} - ${charge_amt}")
             return {"status": "success", "message": "Lead Submitted Successfully"}
     except Exception as e:
@@ -280,6 +325,7 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
         cell = ws.find(id, in_column=1)
         if cell:
             ws.delete_rows(cell.row)
+            STATS_CACHE["last_updated"] = 0
             return {"status": "success", "message": "Deleted successfully"}
         return {"status": "error", "message": "ID not found"}
     except Exception as e:
@@ -296,10 +342,11 @@ async def get_lead(type: str, id: str, row_index: Optional[int] = None):
             data = dict(zip(headers, row_values))
             data['row_index'] = row_index
             return {"status": "success", "data": data}
-
-        cells = ws.findall(id, in_column=1)
-        if not cells: return JSONResponse({"status": "error", "message": "Not Found"}, 404)
         
+        try: cells = ws.findall(id, in_column=1)
+        except gspread.exceptions.CellNotFound: return JSONResponse({"status": "error", "message": "Not Found"}, 404)
+
+        if not cells: return JSONResponse({"status": "error", "message": "Not Found"}, 404)
         if len(cells) == 1:
             row_values = ws.row_values(cells[0].row)
             headers = ws.row_values(1)
@@ -312,15 +359,9 @@ async def get_lead(type: str, id: str, row_index: Optional[int] = None):
             for cell in cells:
                 r_vals = ws.row_values(cell.row)
                 d = dict(zip(headers, r_vals))
-                candidates.append({
-                    "row_index": cell.row,
-                    "Client Name": d.get('Client Name', d.get('Name', 'Unknown')),
-                    "Timestamp": d.get('Timestamp', 'Unknown')
-                })
+                candidates.append({"row_index": cell.row, "Client Name": d.get('Client Name', d.get('Name', 'Unknown')), "Timestamp": d.get('Timestamp', 'Unknown')})
             return {"status": "multiple", "candidates": candidates}
-
-    except Exception as e:
-        return JSONResponse({"status": "error", "message": str(e)}, 500)
+    except Exception as e: return JSONResponse({"status": "error", "message": str(e)}, 500)
 
 @app.post("/api/manager/login")
 async def manager_login(user_id: str = Form(...), password: str = Form(...)):
@@ -328,7 +369,6 @@ async def manager_login(user_id: str = Form(...), password: str = Form(...)):
     if not ws: return JSONResponse({"status": "error", "message": "Auth DB Error"}, 500)
     records = ws.get_all_records()
     df = pd.DataFrame(records)
-    df.columns = df.columns.str.strip()
     if 'ID' not in df.columns: return JSONResponse({"status": "error", "message": "Config Error"}, 500)
     user = df[df['ID'].astype(str) == user_id]
     if user.empty: return JSONResponse({"status": "error", "message": "User not found"}, 401)
@@ -359,19 +399,16 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
             try:
                 status_col_index = headers.index("Status") + 1
                 ws.update_cell(cell.row, status_col_index, status)
-                
-                # --- ADDED: Clear Cache so the widget updates immediately ---
                 STATS_CACHE["last_updated"] = 0
                 
-                # --- ADDED: Trigger Pusher Notification ---
+                # --- TRIGGER PUSHER (SECURE) ---
                 try:
                     pusher_client.trigger('techware-channel', 'status-update', {
                         'id': id,
                         'status': status,
                         'type': type
                     })
-                except Exception as p_error:
-                    print(f"Pusher Error: {p_error}")
+                except Exception as e: print(f"Pusher Error: {e}")
 
                 return {"status": "success"}
             except ValueError:
