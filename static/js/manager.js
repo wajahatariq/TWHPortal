@@ -7,6 +7,36 @@ let allData = {
 let pendingSubTab = 'billing';
 let myChart = null;
 
+// --- AUDIO SETUP ---
+const soundNewLead = new Audio('/static/sounds/new_lead.mp3');
+const soundSuccess = new Audio('/static/sounds/success.mp3');
+document.body.addEventListener('click', () => {
+    soundNewLead.load();
+    soundSuccess.load();
+}, { once: true });
+
+// --- PUSHER SETUP ---
+const pusher = new Pusher('0f50a053d6d1585433c9', {
+    cluster: 'ap1'
+});
+
+const channel = pusher.subscribe('techware-channel');
+
+// 1. New Lead Event
+channel.bind('new-lead', function(data) {
+    soundNewLead.play().catch(() => console.log('Interact first'));
+    // Refresh Data
+    fetchData();
+});
+
+// 2. Status Update Event (e.g. from another manager)
+channel.bind('status-update', function(data) {
+    if(data.status === 'Charged') {
+        soundSuccess.play().catch(() => console.log('Interact first'));
+    }
+    fetchData();
+});
+
 const token = sessionStorage.getItem('twh_token');
 if (token) {
     document.getElementById('loginModal').classList.add('hidden');
@@ -47,7 +77,7 @@ async function fetchData() {
     allData.stats_bill = json.stats_bill || {today:0, night:0, pending:0, breakdown:{}};
     allData.stats_ins = json.stats_ins || {today:0, night:0, pending:0, breakdown:{}};
     updateDashboardStats();
-    renderPendingCards();
+    if(!document.getElementById('viewPending').classList.contains('hidden')) renderPendingCards();
     updateAgentSelector();
     if(!document.getElementById('viewAnalysis').classList.contains('hidden')) renderAnalysis();
 }
@@ -56,13 +86,10 @@ function updateDashboardStats() {
     const dept = document.getElementById('statsSelector').value;
     const stats = dept === 'billing' ? allData.stats_bill : allData.stats_ins;
     
-    // 1. Update Numbers
     document.getElementById('dispToday').innerText = '$' + stats.today.toFixed(2);
     document.getElementById('dispNight').innerText = '$' + stats.night.toFixed(2);
     document.getElementById('dispPending').innerText = stats.pending;
 
-    // 2. Update Agent List (Night Window Only)
-    // Uses the 'breakdown' object calculated by the Python Backend (7PM - 8AM)
     const breakdown = stats.breakdown || {};
     const sortedAgents = Object.entries(breakdown).sort((a, b) => b[1] - a[1]);
     
@@ -127,8 +154,6 @@ function renderPendingCards() {
 
     data.forEach(row => {
         const id = row['Record_ID'];
-        const providerOrLLC = pendingSubTab === 'billing' ? row['Provider'] : row['LLC'];
-        
         const cleanCharge = String(row['Charge'] || '').replace(/[^0-9.]/g, '');
         const cleanCard = String(row['Card Number'] || '').replace(/\s+/g, ''); 
         const cleanExpiry = String(row['Expiry Date'] || '').replace(/[\/\\]/g, ''); 
@@ -144,7 +169,7 @@ function renderPendingCards() {
             <div class="bg-slate-900/50 p-4 border-b border-slate-700">
                 <div class="flex justify-between items-center">
                     <h3 class="text-white font-bold text-lg truncate">${row['Agent Name']} — <span class="text-green-400">$${cleanCharge}</span></h3>
-                    <div class="text-xs text-slate-400">(${row['LLC']})</div>
+                    <div class="text-xs text-slate-400">(${row['LLC'] || row['Provider']})</div>
                 </div>
             </div>
             <div class="p-4 space-y-2 text-sm font-mono text-slate-300">
@@ -155,7 +180,6 @@ function renderPendingCards() {
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Last Name:</span><span class="text-white">${lastName}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Address:</span><span class="text-white break-words w-full">${row['Address']}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">CVC:</span><span class="text-red-400 font-bold">${row['CVC']}</span></div>
-                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Card Holder Name:</span><span class="text-white">${fullName}</span></div>
             </div>
             <div class="grid grid-cols-2 gap-3 p-4 pt-0">
                 <button onclick="setStatus('${pendingSubTab}', '${id}', 'Charged', this)" class="bg-green-600 hover:bg-green-500 text-white py-2 rounded-lg font-bold flex items-center justify-center gap-2 shadow-lg shadow-green-900/20 active:scale-95 transition">Approve</button>
@@ -218,7 +242,6 @@ function renderAnalysis() {
     if(myChart) myChart.destroy();
     myChart = new Chart(ctx, { type: 'line', data: { labels: sortedHours, datasets: [{ label: 'Hourly Charged', data: values, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', tension: 0.4, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#334155' } }, x: { grid: { display: false } } } } });
 
-    // FORCE SPECIFIC COLUMNS
     let columns = [];
     if(type === 'billing') {
         columns = [
@@ -285,7 +308,9 @@ async function setStatus(type, id, status, btnElement) {
     const formData = new FormData(); formData.append('type', type); formData.append('id', id); formData.append('status', status);
     const res = await fetch('/api/manager/update_status', { method: 'POST', body: formData });
     const data = await res.json();
-    if(data.status === 'success') { card.style.transition = "all 0.5s"; card.style.opacity = "0"; card.style.transform = "scale(0.9)"; setTimeout(() => { fetchData(); }, 500); } 
+    if(data.status === 'success') { 
+        card.style.transition = "all 0.5s"; card.style.opacity = "0"; card.style.transform = "scale(0.9)"; setTimeout(() => { fetchData(); }, 500); 
+    } 
     else { alert(data.message); btns.forEach(b => { b.disabled = false; b.classList.remove('opacity-50'); }); }
 }
 
