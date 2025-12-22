@@ -390,33 +390,20 @@ async def get_manager_data(token: str):
 
 @app.post("/api/manager/update_status")
 async def update_status(type: str = Form(...), id: str = Form(...), status: str = Form(...)):
-    ws = get_worksheet(type)
-    if not ws: return JSONResponse({"status": "error"}, 500)
-    try:
-        # 1. USE YOUR WORKING LOGIC
-        cell = ws.find(id, in_column=1)
-        if cell:
-            headers = ws.row_values(1)
-            try:
-                status_col_index = headers.index("Status") + 1
-                ws.update_cell(cell.row, status_col_index, status)
+    ws = get_worksheet(type)
+    if not ws: return JSONResponse({"status": "error"}, 500)
+    try:
+        cell = ws.find(id, in_column=1)
+        if cell:
+            headers = ws.row_values(1)
+            try:
+                status_col_index = headers.index("Status") + 1
+                ws.update_cell(cell.row, status_col_index, status)
+                return {"status": "success"}
+            except ValueError:
+                return {"status": "error", "message": "Status column missing"}
+        return {"status": "error", "message": "ID not found"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
-                # --- ADDED: Clear Cache (So widgets update instantly) ---
-                STATS_CACHE["last_updated"] = 0
-
-                # --- ADDED: Trigger Pusher (So sound plays) ---
-                try:
-                    pusher_client.trigger('techware-channel', 'status-update', {
-                        'id': id,
-                        'status': status,
-                        'type': type
-                    })
-                except Exception as p_error:
-                    print(f"Pusher Error: {p_error}")
-
-                return {"status": "success"}
-            except ValueError:
-                return {"status": "error", "message": "Status column missing"}
-        return {"status": "error", "message": "ID not found"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+See this it was the last time approve or decline was working
