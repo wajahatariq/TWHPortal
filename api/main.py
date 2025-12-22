@@ -13,17 +13,31 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from typing import Optional
 from dotenv import load_dotenv
+import pusher  # <--- Added Pusher Import
 
 load_dotenv()
 
 app = FastAPI()
 
+# --- PUSHER SETUP (Using your credentials) ---
+pusher_client = pusher.Pusher(
+  app_id='2094209',
+  key='0f50a053d6d1585433c9',
+  secret='0e10167adb64b9ee1a4a',
+  cluster='ap1',
+  ssl=True
+)
+
 # --- SETUP ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if not os.path.exists(os.path.join(BASE_DIR, "templates")):
+    BASE_DIR = os.getcwd() # Robustness for Vercel
+
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
+# Mount static files (ensure Vercel handles this via vercel.json usually, but good for local)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 TZ_KARACHI = pytz.timezone("Asia/Karachi")
 
@@ -248,13 +262,11 @@ async def save_lead(
     if is_edit == 'false':
         final_status = "Pending"
 
-    # CONSOLIDATE PIN AND ACCOUNT NUMBER INTO ONE COLUMN
+    # CONSOLIDATE PIN AND ACCOUNT NUMBER
     final_code = pin_code if pin_code else account_number if account_number else ""
 
     if type == 'billing':
-        # final_code goes into the last column (Column Q usually, Index 16)
         row_data = [primary_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), charge_amt, llc, provider, date_str, final_status, timestamp_str, final_code]
-        # Range ends at Q, not R
         range_end = f"Q{row_index}"
     else:
         row_data = [primary_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), charge_amt, llc, date_str, final_status, timestamp_str]
@@ -267,6 +279,18 @@ async def save_lead(
             return {"status": "success", "message": "Lead Updated Successfully"}
         else:
             ws.append_row(row_data)
+            
+            # --- TRIGGER PUSHER NOTIFICATION (NEW LEAD) ---
+            try:
+                pusher_client.trigger('techware-channel', 'new-lead', {
+                    'agent': agent,
+                    'amount': charge_amt,
+                    'type': type,
+                    'message': f"New {type} lead from {agent}"
+                })
+            except Exception as e:
+                print(f"Pusher Error: {e}")
+
             send_pushbullet(f"New {type.title()} Lead", f"{agent} - ${charge_amt}")
             return {"status": "success", "message": "Lead Submitted Successfully"}
     except Exception as e:
@@ -359,6 +383,16 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
             try:
                 status_col_index = headers.index("Status") + 1
                 ws.update_cell(cell.row, status_col_index, status)
+                
+                # --- TRIGGER PUSHER NOTIFICATION (STATUS UPDATE) ---
+                try:
+                    pusher_client.trigger('techware-channel', 'status-update', {
+                        'id': id,
+                        'status': status,
+                        'type': type
+                    })
+                except: pass
+
                 return {"status": "success"}
             except ValueError:
                 return {"status": "error", "message": "Status column missing"}
