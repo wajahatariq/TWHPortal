@@ -1,6 +1,50 @@
-/* ========================
-   TAB SWITCHING LOGIC
-   ======================== */
+/* =========================================
+   1. NIGHT STATS LOGIC (Auto-Refresh)
+   ========================================= */
+let nightStats = { billing: {total:0, breakdown:{}}, insurance: {total:0, breakdown:{}} };
+
+async function fetchNightStats() {
+    try {
+        const res = await fetch('/api/public/night-stats');
+        nightStats = await res.json();
+        updateNightWidget();
+    } catch(e) { console.error("Stats Error", e); }
+}
+
+function updateNightWidget() {
+    // Check if the widget elements exist (in case you are on a page without them)
+    const selector = document.getElementById('nightWidgetSelect');
+    if (!selector) return;
+
+    const type = selector.value;
+    const data = nightStats[type] || {total:0, breakdown:{}};
+    
+    const amountEl = document.getElementById('nightWidgetAmount');
+    if(amountEl) amountEl.innerText = '$' + data.total.toFixed(2);
+    
+    const listDiv = document.getElementById('nightBreakdown');
+    if(listDiv) {
+        listDiv.innerHTML = '';
+        if (data.breakdown && Object.keys(data.breakdown).length > 0) {
+            listDiv.classList.remove('hidden');
+            for (const [agent, amount] of Object.entries(data.breakdown)) {
+                const row = document.createElement('div');
+                row.className = "flex justify-between border-b border-slate-900/10 pb-1 last:border-0";
+                row.innerHTML = `<span class="truncate pr-2">${agent}</span> <span class="font-bold">$${amount.toFixed(2)}</span>`;
+                listDiv.appendChild(row);
+            }
+        } else { listDiv.classList.add('hidden'); }
+    }
+}
+
+// Init Stats
+fetchNightStats(); 
+setInterval(fetchNightStats, 60000); // Refresh every 60s
+
+
+/* =========================================
+   2. TAB SWITCHING LOGIC
+   ========================================= */
 function switchTab(tabName) {
     const viewNew = document.getElementById('viewNew');
     const viewEdit = document.getElementById('viewEdit');
@@ -11,30 +55,27 @@ function switchTab(tabName) {
         viewNew.classList.remove('hidden');
         viewEdit.classList.add('hidden');
         
-        // Active Styles for 'New'
         btnNew.classList.add('bg-blue-600', 'text-white');
         btnNew.classList.remove('text-slate-400');
         
-        // Inactive Styles for 'Edit'
         btnEdit.classList.remove('bg-blue-600', 'text-white');
         btnEdit.classList.add('text-slate-400');
     } else {
         viewNew.classList.add('hidden');
         viewEdit.classList.remove('hidden');
         
-        // Active Styles for 'Edit'
         btnEdit.classList.add('bg-blue-600', 'text-white');
         btnEdit.classList.remove('text-slate-400');
 
-        // Inactive Styles for 'New'
         btnNew.classList.remove('bg-blue-600', 'text-white');
         btnNew.classList.add('text-slate-400');
     }
 }
 
-/* ========================
-   SUBMIT NEW LEAD (Logic)
-   ======================== */
+
+/* =========================================
+   3. SUBMIT NEW LEAD
+   ========================================= */
 document.getElementById("billingForm").addEventListener("submit", async function(e) {
     e.preventDefault();
     const btn = document.getElementById("submitBtn");
@@ -54,6 +95,7 @@ document.getElementById("billingForm").addEventListener("submit", async function
         if (result.status === "success") {
             showNotification("Lead Submitted Successfully!", "success");
             this.reset();
+            fetchNightStats(); // Update stats immediately
         } else {
             showNotification("Error: " + result.message, "error");
         }
@@ -66,11 +108,12 @@ document.getElementById("billingForm").addEventListener("submit", async function
     btn.disabled = false;
 });
 
-/* ========================
-   EDIT LEAD LOGIC (Updated)
-   ======================== */
 
-// 1. Search for the Lead
+/* =========================================
+   4. EDIT / SEARCH LOGIC (With Duplicates)
+   ========================================= */
+
+// Main Search Function
 async function searchLead() {
     const id = document.getElementById('searchId').value.trim();
     if (!id) return alert("Please enter an Order ID");
@@ -90,37 +133,39 @@ async function searchLead() {
         const json = await res.json();
 
         if (json.status === 'success') {
-            // Found exactly one
+            // Case A: Found 1 Record
             populateEditForm(json.data);
             document.getElementById('editFormContainer').classList.remove('hidden');
         
         } else if (json.status === 'multiple') {
-            // Found duplicates - Ask User
+            // Case B: Found Duplicates -> Show List
             showDuplicateSelection(json.candidates);
             
         } else {
-            alert(json.message || "Lead not found");
+            showNotification(json.message || "Lead not found", "error");
         }
     } catch (e) {
         console.error(e);
-        alert("Error searching for lead");
+        showNotification("Error searching for lead", "error");
     }
 
     btn.innerText = originalText;
     btn.disabled = false;
 }
 
-// Function to display the choice list
+// Helper: Show the list of duplicates
 function showDuplicateSelection(candidates) {
+    // Create the container
     const container = document.createElement('div');
     container.id = 'duplicateList';
     container.className = "bg-slate-700 p-4 rounded-xl mt-4 space-y-2 border border-slate-600 animate-fade-in";
     
-    container.innerHTML = `<h3 class="text-white font-bold mb-2">Multiple Records Found. Select one:</h3>`;
+    container.innerHTML = `<h3 class="text-white font-bold mb-2 text-sm uppercase tracking-wide">Multiple Records Found:</h3>`;
 
     candidates.forEach(c => {
         const btn = document.createElement('button');
         btn.className = "w-full text-left bg-slate-800 hover:bg-slate-600 p-3 rounded-lg border border-slate-600 flex justify-between items-center transition group";
+        // On click, fetch that specific row index
         btn.onclick = () => fetchSpecificRow(c.row_index);
         
         btn.innerHTML = `
@@ -133,29 +178,29 @@ function showDuplicateSelection(candidates) {
         container.appendChild(btn);
     });
 
-    // Insert after the search box
-    document.querySelector('.bg-slate-800.p-6').appendChild(container);
+    // Insert it after the search box container
+    const searchBox = document.querySelector('#viewEdit .shadow-lg');
+    searchBox.parentNode.insertBefore(container, searchBox.nextSibling);
 }
 
-// Function to fetch the specific row user clicked
+// Helper: Fetch a specific row (when duplicate clicked)
 async function fetchSpecificRow(rowIndex) {
     try {
         const res = await fetch(`/api/get-lead?type=billing&id=ignore&row_index=${rowIndex}`);
         const json = await res.json();
         
         if (json.status === 'success') {
-            // Remove the selection list
+            // Remove list and show form
             const list = document.getElementById('duplicateList');
             if(list) list.remove();
             
-            // Show form
             populateEditForm(json.data);
             document.getElementById('editFormContainer').classList.remove('hidden');
         }
-    } catch(e) { alert("Error loading record"); }
+    } catch(e) { showNotification("Error loading record", "error"); }
 }
 
-// 2. Populate the Edit Form
+// Helper: Fill the form fields
 function populateEditForm(data) {
     // Hidden Fields
     document.getElementById('edit_row_index').value = data.row_index;
@@ -174,9 +219,12 @@ function populateEditForm(data) {
     document.getElementById('edit_exp_date').value = data['Expiry Date'];
     document.getElementById('edit_cvc').value = data['CVC'];
     
-    document.getElementById('edit_charge_amt').value = data['Charge'] || data['Charge Amount'];
+    // Clean charge (remove existing $)
+    let charge = data['Charge'] || data['Charge Amount'];
+    if(charge) charge = String(charge).replace(/[^0-9.]/g, '');
+    document.getElementById('edit_charge_amt').value = charge;
     
-    // Selects (Dropdowns)
+    // Selects
     setSelectValue('edit_llc', data['LLC']);
     setSelectValue('edit_provider', data['Provider']);
 }
@@ -184,7 +232,7 @@ function populateEditForm(data) {
 // Helper to set dropdowns
 function setSelectValue(id, value) {
     const select = document.getElementById(id);
-    if (!value) return;
+    if (!value || !select) return;
     for (let i = 0; i < select.options.length; i++) {
         if (select.options[i].value.toLowerCase() === value.toLowerCase()) {
             select.selectedIndex = i;
@@ -193,7 +241,7 @@ function setSelectValue(id, value) {
     }
 }
 
-// 3. Submit Update
+// Edit Form Submit
 document.getElementById("editForm").addEventListener("submit", async function(e) {
     e.preventDefault();
     if(!confirm("Are you sure you want to update this record?")) return;
@@ -205,7 +253,7 @@ document.getElementById("editForm").addEventListener("submit", async function(e)
 
     try {
         const formData = new FormData(this);
-        // 'is_edit' is already in the HTML as hidden input
+        // 'is_edit' is already in the HTML
         
         const response = await fetch("/api/save-lead", {
             method: "POST",
@@ -215,9 +263,9 @@ document.getElementById("editForm").addEventListener("submit", async function(e)
         const result = await response.json();
         if (result.status === "success") {
             showNotification("Lead Updated Successfully!", "success");
-            // Hide form after success
             document.getElementById('editFormContainer').classList.add('hidden');
             document.getElementById('searchId').value = ""; 
+            fetchNightStats();
         } else {
             showNotification("Error: " + result.message, "error");
         }
@@ -229,9 +277,10 @@ document.getElementById("editForm").addEventListener("submit", async function(e)
     btn.disabled = false;
 });
 
-/* ========================
-   UTILITIES
-   ======================== */
+
+/* =========================================
+   5. UTILITIES (Toast Notification)
+   ========================================= */
 function showNotification(msg, type) {
     const notif = document.getElementById("notification");
     notif.innerText = msg;
