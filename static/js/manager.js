@@ -9,7 +9,7 @@ let myChart = null;
 
 // --- AUDIO SETUP ---
 const soundNewLead = new Audio('/static/sounds/new_lead.mp3');
-const soundSuccess = new Audio('/static/sounds/success.mp3');
+const soundSuccess = new Audio('/static/sounds/new_lead.mp3');
 document.body.addEventListener('click', () => {
     soundNewLead.load();
     soundSuccess.load();
@@ -467,4 +467,5 @@ setInterval(() => {
     console.log("Auto-refreshing data...");
     fetchData();
 }, 120000);
+
 
