@@ -124,10 +124,24 @@
 
             <div id="viewAnalysis" class="space-y-6 hidden fade-in">
                 <div class="flex flex-col xl:flex-row justify-between items-end xl:items-center gap-4 bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
-                    <div class="flex gap-4 w-full xl:w-auto">
-                        <div class="flex flex-col gap-1"><label class="text-xs text-slate-400 font-bold uppercase">Start Date</label><input type="date" id="dateStart" onchange="renderAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none"></div>
-                        <div class="flex flex-col gap-1"><label class="text-xs text-slate-400 font-bold uppercase">End Date</label><input type="date" id="dateEnd" onchange="renderAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none"></div>
+                    <div class="flex gap-4 w-full xl:w-auto flex-wrap">
+                        <div class="flex flex-col gap-1">
+                            <label class="text-xs text-slate-400 font-bold uppercase">From (Date & Time)</label>
+                            <div class="flex gap-1">
+                                <input type="date" id="dateStart" onchange="renderAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none text-white">
+                                <input type="time" id="timeStart" onchange="renderAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none text-white">
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col gap-1">
+                            <label class="text-xs text-slate-400 font-bold uppercase">To (Date & Time)</label>
+                            <div class="flex gap-1">
+                                <input type="date" id="dateEnd" onchange="renderAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none text-white">
+                                <input type="time" id="timeEnd" onchange="renderAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none text-white">
+                            </div>
+                        </div>
                     </div>
+
                     <div class="flex gap-2 w-full xl:w-auto flex-wrap">
                         <select id="analysisSheetSelector" onchange="updateAgentSelector(); renderAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm outline-none font-bold"><option value="billing">Billing</option><option value="insurance">Insurance</option></select>
                         <select id="analysisAgentSelector" onchange="renderAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm outline-none"><option value="all">All Agents</option></select>
