@@ -68,10 +68,16 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
 
 function logout() { sessionStorage.removeItem('twh_token'); window.location.reload(); }
 
+// ============================================
+// FIX 1: iPhone Cache Busting (Added &_t=...)
+// ============================================
 async function fetchData() {
     const t = sessionStorage.getItem('twh_token');
     if (!t) return;
-    const res = await fetch(`/api/manager/data?token=${t}`);
+    
+    // We add current time to URL to force iPhone to download fresh data
+    const res = await fetch(`/api/manager/data?token=${t}&_t=${new Date().getTime()}`);
+    
     const json = await res.json();
     allData.billing = json.billing || [];
     allData.insurance = json.insurance || [];
@@ -200,20 +206,48 @@ function updateAgentSelector() {
     agents.forEach(agent => { if(agent) { const opt = document.createElement('option'); opt.value = agent; opt.innerText = agent; selector.appendChild(opt); } });
 }
 
+// ============================================
+// FIX 2: Added Time-Based Filtering Logic
+// ============================================
 function renderAnalysis() {
     const type = document.getElementById('analysisSheetSelector').value;
     const search = document.getElementById('analysisSearch').value.toLowerCase();
     const agentFilter = document.getElementById('analysisAgentSelector').value;
     const statusFilter = document.getElementById('analysisStatusSelector').value;
     
-    const dStart = new Date(document.getElementById('dateStart').value);
-    const dEnd = new Date(document.getElementById('dateEnd').value);
-    dEnd.setHours(23, 59, 59);
+    // --- DATE & TIME INPUTS ---
+    const dateStartVal = document.getElementById('dateStart').value;
+    const timeStartVal = document.getElementById('timeStart').value;
+    const dateEndVal = document.getElementById('dateEnd').value;
+    const timeEndVal = document.getElementById('timeEnd').value;
+
+    // Create Start Date Object
+    let dStart = new Date(dateStartVal);
+    if(timeStartVal) {
+        const [h, m] = timeStartVal.split(':');
+        dStart.setHours(h, m, 0); 
+    } else {
+        dStart.setHours(0, 0, 0); // Default Midnight
+    }
+
+    // Create End Date Object
+    let dEnd = new Date(dateEndVal);
+    if(timeEndVal) {
+        const [h, m] = timeEndVal.split(':');
+        dEnd.setHours(h, m, 59); 
+    } else {
+        dEnd.setHours(23, 59, 59); // Default End of Day
+    }
 
     const data = (type === 'billing' ? allData.billing : allData.insurance).slice().reverse();
+    
     const filtered = data.filter(row => {
         const t = new Date(row['Timestamp']);
+        
+        // Filter by Date AND Time
         if(t < dStart || t > dEnd) return false;
+
+        // Normal Filters
         if(agentFilter !== 'all' && row['Agent Name'] !== agentFilter) return false;
         if(statusFilter !== 'all' && row['Status'] !== statusFilter) return false;
         return JSON.stringify(row).toLowerCase().includes(search);
@@ -433,4 +467,3 @@ setInterval(() => {
     console.log("Auto-refreshing data...");
     fetchData();
 }, 60000);
-
