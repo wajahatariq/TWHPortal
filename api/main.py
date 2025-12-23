@@ -389,30 +389,52 @@ async def get_manager_data(token: str):
 @app.post("/api/manager/update_status")
 async def update_status(type: str = Form(...), id: str = Form(...), status: str = Form(...)):
     ws = get_worksheet(type)
-    if not ws: return JSONResponse({"status": "error"}, 500)
+    if not ws: return JSONResponse({"status": "error", "message": "DB Connection Failed"}, 500)
+    
     try:
-        cell = ws.find(id, in_column=1)
-        if cell:
-            headers = ws.row_values(1)
-            try:
-                status_col_index = headers.index("Status") + 1
-                ws.update_cell(cell.row, status_col_index, status)
-                
-                # --- ADDED: Clear Cache ---
-                STATS_CACHE["last_updated"] = 0
-                
-                # --- ADDED: Trigger Pusher ---
-                try:
-                    pusher_client.trigger('techware-channel', 'status-update', {
-                        'id': id,
-                        'status': status,
-                        'type': type
-                    })
-                except Exception as e: print(f"Pusher Error: {e}")
+        # 1. FIND ALL MATCHING RECORDS (Not just the first one)
+        try:
+            cells = ws.findall(id, in_column=1)
+        except gspread.exceptions.CellNotFound:
+            cells = []
 
-                return {"status": "success"}
-            except ValueError:
-                return {"status": "error", "message": "Status column missing"}
-        return {"status": "error", "message": "ID not found"}
+        if not cells:
+            return {"status": "error", "message": f"ID '{id}' not found."}
+
+        # 2. SELECT THE NEWEST ONE (Highest Row Number)
+        # This fixes the issue where duplicates cause the wrong row to update
+        target_cell = max(cells, key=lambda c: c.row)
+
+        # 3. FIND STATUS COLUMN (Robust Search)
+        headers = ws.row_values(1)
+        status_col_index = 0
+        possible_names = ["status", "state", "approval", "current status"]
+        
+        for index, header in enumerate(headers):
+            if str(header).strip().lower() in possible_names:
+                status_col_index = index + 1
+                break
+        
+        # Fallback if header is missing
+        if status_col_index == 0:
+            status_col_index = 15 if type == 'billing' else 14
+
+        # 4. EXECUTE UPDATE
+        ws.update_cell(target_cell.row, status_col_index, status)
+        
+        # 5. CLEAR CACHE & NOTIFY
+        STATS_CACHE["last_updated"] = 0
+        
+        try:
+            pusher_client.trigger('techware-channel', 'status-update', {
+                'id': id,
+                'status': status,
+                'type': type
+            })
+        except Exception as e:
+            print(f"Pusher Error: {e}")
+
+        return {"status": "success", "message": "Updated"}
+
     except Exception as e:
         return {"status": "error", "message": str(e)}
