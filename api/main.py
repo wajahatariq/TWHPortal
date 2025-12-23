@@ -276,7 +276,7 @@ async def save_lead(
         clean_charge = float(str(charge_amt).replace('$', '').replace(',', '').strip())
         final_charge = f"${clean_charge:.2f}"
     except:
-        final_charge = charge_amt 
+        final_charge = charge_amt # Fallback
 
     if is_edit == 'true' and timestamp_mode == 'keep' and original_timestamp:
         try: date_str = original_timestamp.split(" ")[0]
@@ -325,6 +325,10 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
     ws = get_worksheet(type)
     if not ws: return JSONResponse({"status": "error", "message": "DB Error"}, 500)
     try:
+        # For deletion, we still delete the first occurrence or you might want specific row logic
+        # For safety, let's keep it simple: findall, delete duplicates one by one or just first.
+        # User is editing a specific row, so we should ideally pass row_index to delete.
+        # But to keep it backward compatible:
         cell = ws.find(id, in_column=1)
         if cell:
             ws.delete_rows(cell.row)
@@ -339,76 +343,54 @@ async def get_lead(type: str, id: str, row_index: Optional[int] = None):
     ws = get_worksheet(type)
     if not ws: return JSONResponse({"status": "error"}, 500)
     try:
-        # 1. DIRECT ROW ACCESS (Fastest - used when clicking duplicate)
+        # 1. FETCH BY ROW INDEX (Used when user selects from duplicate list)
         if row_index:
             row_values = ws.row_values(row_index)
             headers = ws.row_values(1)
             data = dict(zip(headers, row_values))
             data['row_index'] = row_index
-            
-            # Normalize ID for frontend
-            if 'Record_ID' not in data:
-                if 'Order ID' in data: data['Record_ID'] = data['Order ID']
-                else: data['Record_ID'] = list(data.values())[0] # Fallback
-                
+            if 'Record_ID' not in data and 'Order ID' in data: data['Record_ID'] = data['Order ID']
             return {"status": "success", "data": data}
         
-        # 2. BULLETPROOF SEARCH (Fixes "Hidden Space" issues)
-        try:
-            all_ids = ws.col_values(1) 
-        except:
-            return JSONResponse({"status": "error", "message": "DB Read Error"}, 500)
-
-        search_clean = str(id).strip().lower()
-        match_rows = []
-
-        for idx, val in enumerate(all_ids):
-            if str(val).strip().lower() == search_clean:
-                match_rows.append(idx + 1) # +1 for 1-based index
-
-        if not match_rows: 
+        # 2. SEARCH BY ID
+        try: 
+            cells = ws.findall(id, in_column=1)
+        except gspread.exceptions.CellNotFound: 
             return JSONResponse({"status": "error", "message": "Not Found"}, 404)
+
+        if not cells: return JSONResponse({"status": "error", "message": "Not Found"}, 404)
         
-        # 3. HANDLE SINGLE MATCH
-        if len(match_rows) == 1:
-            row_num = match_rows[0]
-            row_values = ws.row_values(row_num)
+        # 3. HANDLE DUPLICATES
+        if len(cells) == 1:
+            # Only 1 found? Return it immediately.
+            row_values = ws.row_values(cells[0].row)
             headers = ws.row_values(1)
             data = dict(zip(headers, row_values))
-            data['row_index'] = row_num
-            
-            if 'Record_ID' not in data:
-                if 'Order ID' in data: data['Record_ID'] = data['Order ID']
-                else: data['Record_ID'] = list(data.values())[0]
-
+            data['row_index'] = cells[0].row
+            if 'Record_ID' not in data and 'Order ID' in data: data['Record_ID'] = data['Order ID']
             return {"status": "success", "data": data}
-        
-        # 4. HANDLE DUPLICATES (Return List)
         else:
+            # MULTIPLE FOUND? Return candidates list.
             candidates = []
             headers = ws.row_values(1)
             
-            # Fetch specific rows to ensure accuracy
-            for r_num in match_rows:
-                r_vals = ws.row_values(r_num)
-                if not r_vals: continue
+            for cell in cells:
+                r_vals = ws.row_values(cell.row)
+                d = dict(zip(headers, r_vals))
                 
-                d = {}
-                for i, h in enumerate(headers):
-                    if i < len(r_vals): d[h] = r_vals[i]
-                
+                # Get fields safely
                 name = d.get('Client Name', d.get('Name', 'Unknown'))
                 charge = d.get('Charge', d.get('Charge Amount', '$0'))
                 time_val = d.get('Timestamp', 'No Time')
                 
                 candidates.append({
-                    "row_index": r_num, 
+                    "row_index": cell.row, 
                     "name": name, 
                     "charge": charge,
                     "timestamp": time_val
                 })
             
-            # Sort: Newest (Highest Row Number) at the TOP
+            # Sort by row index (newest last)
             candidates.sort(key=lambda x: x['row_index'], reverse=True)
             
             return {"status": "multiple", "candidates": candidates}
