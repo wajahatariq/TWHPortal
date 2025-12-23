@@ -34,7 +34,6 @@ pusher_client = pusher.Pusher(
 )
 
 # --- CACHE SETUP ---
-# Stores stats for 60 seconds to save Google Quota
 STATS_CACHE = {
     "last_updated": 0,
     "data": {
@@ -210,7 +209,6 @@ async def view_insurance(request: Request):
 
 @app.get("/manager", response_class=HTMLResponse)
 async def view_manager(request: Request):
-    # Pass Pusher Public Key to Frontend securely
     return templates.TemplateResponse("manager.html", {
         "request": request, 
         "pusher_key": PUSHER_KEY, 
@@ -273,6 +271,13 @@ async def save_lead(
     ws = get_worksheet(type)
     if not ws: return JSONResponse({"status": "error", "message": "DB Connection Failed"}, 500)
 
+    # --- FORMAT CHARGE WITH $ ---
+    try:
+        clean_charge = float(str(charge_amt).replace('$', '').replace(',', '').strip())
+        final_charge = f"${clean_charge:.2f}"
+    except:
+        final_charge = charge_amt # Fallback
+
     if is_edit == 'true' and timestamp_mode == 'keep' and original_timestamp:
         try: date_str = original_timestamp.split(" ")[0]
         except: d, t = get_timestamp(); date_str = d
@@ -285,10 +290,10 @@ async def save_lead(
     final_code = pin_code if pin_code else account_number if account_number else ""
 
     if type == 'billing':
-        row_data = [primary_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), charge_amt, llc, provider, date_str, final_status, timestamp_str, final_code]
+        row_data = [primary_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge, llc, provider, date_str, final_status, timestamp_str, final_code]
         range_end = f"Q{row_index}"
     else:
-        row_data = [primary_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), charge_amt, llc, date_str, final_status, timestamp_str]
+        row_data = [primary_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge, llc, date_str, final_status, timestamp_str]
         range_end = f"O{row_index}"
 
     try:
@@ -304,13 +309,13 @@ async def save_lead(
             try:
                 pusher_client.trigger('techware-channel', 'new-lead', {
                     'agent': agent,
-                    'amount': charge_amt,
+                    'amount': final_charge,
                     'type': type,
                     'message': f"New {type} lead from {agent}"
                 })
             except Exception as e: print(f"Pusher Error: {e}")
 
-            send_pushbullet(f"New {type.title()} Lead", f"{agent} - ${charge_amt}")
+            send_pushbullet(f"New {type.title()} Lead", f"{agent} - {final_charge}")
             return {"status": "success", "message": "Lead Submitted Successfully"}
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, 500)
@@ -320,6 +325,10 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
     ws = get_worksheet(type)
     if not ws: return JSONResponse({"status": "error", "message": "DB Error"}, 500)
     try:
+        # For deletion, we still delete the first occurrence or you might want specific row logic
+        # For safety, let's keep it simple: findall, delete duplicates one by one or just first.
+        # User is editing a specific row, so we should ideally pass row_index to delete.
+        # But to keep it backward compatible:
         cell = ws.find(id, in_column=1)
         if cell:
             ws.delete_rows(cell.row)
@@ -334,32 +343,60 @@ async def get_lead(type: str, id: str, row_index: Optional[int] = None):
     ws = get_worksheet(type)
     if not ws: return JSONResponse({"status": "error"}, 500)
     try:
+        # 1. FETCH BY ROW INDEX (Used when user selects from duplicate list)
         if row_index:
             row_values = ws.row_values(row_index)
             headers = ws.row_values(1)
             data = dict(zip(headers, row_values))
             data['row_index'] = row_index
+            if 'Record_ID' not in data and 'Order ID' in data: data['Record_ID'] = data['Order ID']
             return {"status": "success", "data": data}
         
-        try: cells = ws.findall(id, in_column=1)
-        except gspread.exceptions.CellNotFound: return JSONResponse({"status": "error", "message": "Not Found"}, 404)
+        # 2. SEARCH BY ID
+        try: 
+            cells = ws.findall(id, in_column=1)
+        except gspread.exceptions.CellNotFound: 
+            return JSONResponse({"status": "error", "message": "Not Found"}, 404)
 
         if not cells: return JSONResponse({"status": "error", "message": "Not Found"}, 404)
+        
+        # 3. HANDLE DUPLICATES
         if len(cells) == 1:
+            # Only 1 found? Return it immediately.
             row_values = ws.row_values(cells[0].row)
             headers = ws.row_values(1)
             data = dict(zip(headers, row_values))
             data['row_index'] = cells[0].row
+            if 'Record_ID' not in data and 'Order ID' in data: data['Record_ID'] = data['Order ID']
             return {"status": "success", "data": data}
         else:
+            # MULTIPLE FOUND? Return candidates list.
             candidates = []
             headers = ws.row_values(1)
+            
             for cell in cells:
                 r_vals = ws.row_values(cell.row)
                 d = dict(zip(headers, r_vals))
-                candidates.append({"row_index": cell.row, "Client Name": d.get('Client Name', d.get('Name', 'Unknown')), "Timestamp": d.get('Timestamp', 'Unknown')})
+                
+                # Get fields safely
+                name = d.get('Client Name', d.get('Name', 'Unknown'))
+                charge = d.get('Charge', d.get('Charge Amount', '$0'))
+                time_val = d.get('Timestamp', 'No Time')
+                
+                candidates.append({
+                    "row_index": cell.row, 
+                    "name": name, 
+                    "charge": charge,
+                    "timestamp": time_val
+                })
+            
+            # Sort by row index (newest last)
+            candidates.sort(key=lambda x: x['row_index'], reverse=True)
+            
             return {"status": "multiple", "candidates": candidates}
-    except Exception as e: return JSONResponse({"status": "error", "message": str(e)}, 500)
+
+    except Exception as e: 
+        return JSONResponse({"status": "error", "message": str(e)}, 500)
 
 @app.post("/api/manager/login")
 async def manager_login(user_id: str = Form(...), password: str = Form(...)):
@@ -392,7 +429,6 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
     if not ws: return JSONResponse({"status": "error", "message": "DB Connection Failed"}, 500)
     
     try:
-        # 1. FIND ALL MATCHING RECORDS (Not just the first one)
         try:
             cells = ws.findall(id, in_column=1)
         except gspread.exceptions.CellNotFound:
@@ -401,11 +437,9 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         if not cells:
             return {"status": "error", "message": f"ID '{id}' not found."}
 
-        # 2. SELECT THE NEWEST ONE (Highest Row Number)
-        # This fixes the issue where duplicates cause the wrong row to update
+        # Update NEWEST one (highest row number)
         target_cell = max(cells, key=lambda c: c.row)
 
-        # 3. FIND STATUS COLUMN (Robust Search)
         headers = ws.row_values(1)
         status_col_index = 0
         possible_names = ["status", "state", "approval", "current status"]
@@ -415,14 +449,10 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
                 status_col_index = index + 1
                 break
         
-        # Fallback if header is missing
         if status_col_index == 0:
             status_col_index = 15 if type == 'billing' else 14
 
-        # 4. EXECUTE UPDATE
         ws.update_cell(target_cell.row, status_col_index, status)
-        
-        # 5. CLEAR CACHE & NOTIFY
         STATS_CACHE["last_updated"] = 0
         
         try:
