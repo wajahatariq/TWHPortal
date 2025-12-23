@@ -466,4 +466,5 @@ async function manualRefresh() {
 setInterval(() => {
     console.log("Auto-refreshing data...");
     fetchData();
-}, 60000);
+}, 120000);
+
