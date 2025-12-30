@@ -89,7 +89,7 @@ def get_worksheet(sheet_type):
     return None
 
 # --- CONSTANTS ---
-AGENTS_BILLING = ["Arham Kaleem", "Arham Ali", "Haziq", "Anus"]
+AGENTS_BILLING = ["Arham Kaleem", "Arham Ali", "Haziq", "Anus", "Hasnain"]
 AGENTS_INSURANCE = ["Saad"]
 PROVIDERS = ["Spectrum", "Insurance", "Xfinity", "Frontier", "Optimum"]
 LLC_SPEC = ["Visionary Pathways"]
@@ -468,3 +468,4 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
 
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
