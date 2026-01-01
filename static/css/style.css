@@ -3,79 +3,137 @@
 @tailwind utilities;
 
 /* =========================================
-   THEME: SAFE & STABLE (With Neon Accents)
+   THEME: CYBERPUNK BORDER & ALIVE UI
    ========================================= */
 
-/* 1. COOL BACKGROUND (Safe for Text Readability) */
+/* 1. ANIMATED BACKGROUND */
+/* Creates a deep dark bg with slowly moving spotlights */
 body {
-    background-color: #0f172a; /* Slate-900 Base */
-    /* Subtle gradient mesh that stays in the background */
+    background-color: #020617; /* Very Dark Slate */
     background-image: 
-        radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.1) 0px, transparent 50%),
-        radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.1) 0px, transparent 50%);
+        radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.15) 0px, transparent 50%);
+    background-size: 150% 150%;
     background-attachment: fixed;
     color: white; 
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     
-    /* Smooth Fade In on Load */
-    animation: fadeIn 0.5s ease-out forwards;
+    /* The Background Pulse Animation */
+    animation: bgPulse 15s ease infinite alternate;
 }
 
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+@keyframes bgPulse {
+    0% { background-position: 0% 0%; }
+    100% { background-position: 100% 100%; }
 }
 
-/* 2. CUSTOM SCROLLBAR (Sleek & Dark) */
-::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-}
-::-webkit-scrollbar-track {
-    background: #0f172a; 
-}
-::-webkit-scrollbar-thumb {
-    background: #334155; 
-    border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-    background: #3b82f6; 
+/* 2. CUSTOM SCROLLBAR */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #020617; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3b82f6; }
+
+/* 3. THE "MOVING BORDER" CARD EFFECT */
+/* This targets your main form/stats cards (.bg-slate-800) */
+.bg-slate-800 {
+    position: relative !important;
+    background: #1e293b !important; /* Solid Slate-800 surface */
+    border: 1px solid rgba(255,255,255,0.05) !important;
+    z-index: 1;
+    /* Ensure the border effect doesn't get cut off */
+    overflow: visible !important; 
 }
 
-/* 3. INPUT FIELD GLOW (The Fun Part) */
-/* This makes typing feel interactive without breaking layout */
+/* The Glowing Gradient Behind the Card */
+.bg-slate-800::before {
+    content: "";
+    position: absolute;
+    inset: -2px; /* Controls border thickness (2px) */
+    z-index: -1; /* Puts it BEHIND the card */
+    background: linear-gradient(
+      45deg, 
+      #3b82f6, /* Blue */
+      #8b5cf6, /* Violet */
+      #ec4899, /* Pink */
+      #3b82f6  /* Loop back to Blue */
+    );
+    background-size: 300% 300%; /* Zooms in on gradient for smoothness */
+    border-radius: inherit; /* Matches the card's rounded corners */
+    opacity: 0.6; /* Subtle glow, increase to 1 for super bright */
+    
+    /* The Movement Animation */
+    animation: borderRotate 6s ease infinite;
+}
+
+@keyframes borderRotate {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* 4. FLOATING NEON INPUTS */
+input, select, textarea {
+    background-color: #0f172a !important; /* Darker than card */
+    border: 1px solid #334155 !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
 input:focus, select:focus, textarea:focus {
     outline: none;
-    border-color: #3b82f6; /* Tailwind Blue-500 */
-    box-shadow: 0 0 10px rgba(59, 130, 246, 0.5); /* Blue Neon Glow */
-    transition: all 0.3s ease;
+    border-color: #60a5fa !important; /* Bright Blue */
+    transform: translateY(-2px); /* Lifts the input up */
+    box-shadow: 0 4px 20px rgba(59, 130, 246, 0.3) !important; /* Drop shadow glow */
 }
 
-/* 4. BUTTONS */
-button:active {
-    transform: scale(0.98); /* Subtle click effect */
-}
+/* 5. BUTTONS & INTERACTIONS */
 button {
-    transition: transform 0.1s, box-shadow 0.2s;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
 }
 
-/* 5. SEARCH RESULTS (Duplicate List) */
+button:active {
+    transform: scale(0.96);
+}
+
+/* Add a "Sheen" effect on hover for submit buttons */
+button[type="submit"]::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        90deg, 
+        transparent, 
+        rgba(255, 255, 255, 0.2), 
+        transparent
+    );
+    transition: 0.5s;
+}
+
+button[type="submit"]:hover::after {
+    left: 100%; /* Slides the sheen across */
+}
+
+/* 6. SEARCH RESULTS & TOASTS */
 #duplicateList > div {
-    transition: all 0.2s;
+    transition: transform 0.2s, background-color 0.2s;
+    border-left: 2px solid transparent;
 }
 #duplicateList > div:hover {
-    background-color: #1e293b; /* Slate-800 hover */
-    border-left: 4px solid #3b82f6;
-    padding-left: 1rem;
+    background-color: #1e293b;
+    border-left-color: #ec4899; /* Pink accent on hover */
+    transform: translateX(5px);
 }
 
-/* 6. TOAST NOTIFICATIONS */
 .toast-message {
-    background: #1e293b; /* Solid dark background for readability */
-    border: 1px solid #334155;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    background: #1e293b;
+    border-left: 4px solid #3b82f6;
     color: white;
     padding: 12px 24px;
-    border-radius: 8px;
-    z-index: 50;
+    border-radius: 4px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    z-index: 100;
 }
