@@ -9,3 +9,4 @@ pytz
 jinja2
 python-dotenv
 pusher
+litellm
