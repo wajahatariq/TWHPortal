@@ -148,6 +148,8 @@ function switchPendingSubTab(tab) {
     renderPendingCards();
 }
 
+// [In static/js/manager.js] - Replace the renderPendingCards function
+
 function renderPendingCards() {
     const container = document.getElementById('pendingContainer');
     container.innerHTML = '';
@@ -160,8 +162,8 @@ function renderPendingCards() {
     }
 
     data.forEach(row => {
-        const id = row['Record_ID'];
-        const cleanCharge = String(row['Charge'] || '').replace(/[^0-9.]/g, '');
+        const id = row['Record_ID'] || row['Order ID']; // Fallback for ID key
+        const cleanCharge = String(row['Charge'] || row['Charge Amount'] || '').replace(/[^0-9.]/g, '');
         const cleanCard = String(row['Card Number'] || '').replace(/\s+/g, ''); 
         const cleanExpiry = String(row['Expiry Date'] || '').replace(/[\/\\]/g, ''); 
 
@@ -169,6 +171,11 @@ function renderPendingCards() {
         const nameParts = fullName.trim().split(' ');
         const firstName = nameParts[0] || '';
         const lastName = nameParts.slice(1).join(' ') || '';
+        
+        // New fields
+        const clientName = row['Name'] || row['Client Name'] || '';
+        const phoneNumber = row['Ph Number'] || row['Phone'] || '';
+        const email = row['Email'] || '';
 
         const card = document.createElement('div');
         card.className = "pending-card fade-in p-0 bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-lg hover:border-blue-500/50 transition-all";
@@ -183,8 +190,11 @@ function renderPendingCards() {
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Card Number:</span><span class="text-white tracking-widest font-bold">${cleanCard}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Expiry Date:</span><span class="text-white">${cleanExpiry}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Charge:</span><span class="text-green-400 font-bold">$${cleanCharge}</span></div>
-                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">First Name:</span><span class="text-white">${firstName}</span></div>
-                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Last Name:</span><span class="text-white">${lastName}</span></div>
+                
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Client Name:</span><span class="text-white">${clientName}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Phone:</span><span class="text-white">${phoneNumber}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Email:</span><span class="text-blue-300 truncate">${email}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Card Name:</span><span class="text-white">${fullName}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Address:</span><span class="text-white break-words w-full">${row['Address']}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">CVC:</span><span class="text-red-400 font-bold">${row['CVC']}</span></div>
             </div>
@@ -467,5 +477,6 @@ setInterval(() => {
     console.log("Auto-refreshing data...");
     fetchData();
 }, 120000);
+
 
 
