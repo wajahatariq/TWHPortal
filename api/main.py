@@ -43,6 +43,10 @@ STATS_CACHE = {
 }
 CACHE_DURATION = 60 
 
+# --- CHAT SETUP ---
+CHAT_HISTORY = []
+CHAT_RATE_LIMIT = {"start": 0, "count": 0}
+
 # --- SETUP ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if not os.path.exists(os.path.join(BASE_DIR, "templates")):
@@ -201,11 +205,24 @@ async def index(request: Request): return templates.TemplateResponse("index.html
 
 @app.get("/billing", response_class=HTMLResponse)
 async def view_billing(request: Request):
-    return templates.TemplateResponse("billing.html", {"request": request, "agents": AGENTS_BILLING, "providers": PROVIDERS, "llcs": LLC_SPEC})
+    return templates.TemplateResponse("billing.html", {
+        "request": request, 
+        "agents": AGENTS_BILLING, 
+        "providers": PROVIDERS, 
+        "llcs": LLC_SPEC,
+        "pusher_key": PUSHER_KEY,
+        "pusher_cluster": PUSHER_CLUSTER
+    })
 
 @app.get("/insurance", response_class=HTMLResponse)
 async def view_insurance(request: Request):
-    return templates.TemplateResponse("insurance.html", {"request": request, "agents": AGENTS_INSURANCE, "llcs": LLC_INS})
+    return templates.TemplateResponse("insurance.html", {
+        "request": request, 
+        "agents": AGENTS_INSURANCE, 
+        "llcs": LLC_INS,
+        "pusher_key": PUSHER_KEY,
+        "pusher_cluster": PUSHER_CLUSTER
+    })
 
 @app.get("/manager", response_class=HTMLResponse)
 async def view_manager(request: Request):
@@ -241,6 +258,53 @@ async def get_public_stats():
     except Exception as e:
         print(f"Stats Error: {e}")
         return STATS_CACHE["data"]
+
+# --- CHAT ENDPOINTS ---
+
+@app.get("/api/chat/history")
+async def get_chat_history():
+    return CHAT_HISTORY
+
+@app.post("/api/chat/send")
+async def send_chat(
+    sender: str = Form(...),
+    message: str = Form(...),
+    role: str = Form(...) 
+):
+    current_time = time_module.time()
+    
+    # Rate Limit: Reset if hour passed
+    if current_time - CHAT_RATE_LIMIT["start"] > 3600:
+        CHAT_RATE_LIMIT["start"] = current_time
+        CHAT_RATE_LIMIT["count"] = 0
+        
+    # Rate Limit: Check Count
+    if CHAT_RATE_LIMIT["count"] >= 30:
+        return JSONResponse({"status": "error", "message": "Global chat limit reached (30/hr)."}, 429)
+
+    CHAT_RATE_LIMIT["count"] += 1
+    
+    # Prepare Data
+    t_str = datetime.now(TZ_KARACHI).strftime("%I:%M %p")
+    msg_data = {
+        "sender": sender,
+        "message": message,
+        "role": role,
+        "time": t_str
+    }
+    
+    # Save to memory (keep last 50)
+    CHAT_HISTORY.append(msg_data)
+    if len(CHAT_HISTORY) > 50:
+        CHAT_HISTORY.pop(0)
+
+    # Trigger Pusher
+    try:
+        pusher_client.trigger('techware-channel', 'new-chat', msg_data)
+    except Exception as e:
+        print(f"Pusher Chat Error: {e}")
+
+    return {"status": "success"}
 
 @app.post("/api/save-lead")
 async def save_lead(
@@ -331,10 +395,6 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
     ws = get_worksheet(type)
     if not ws: return JSONResponse({"status": "error", "message": "DB Error"}, 500)
     try:
-        # For deletion, we still delete the first occurrence or you might want specific row logic
-        # For safety, let's keep it simple: findall, delete duplicates one by one or just first.
-        # User is editing a specific row, so we should ideally pass row_index to delete.
-        # But to keep it backward compatible:
         cell = ws.find(id, in_column=1)
         if cell:
             ws.delete_rows(cell.row)
@@ -444,7 +504,6 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         if not cells:
             return {"status": "error", "message": f"ID '{id}' not found."}
 
-        # Update NEWEST one (highest row number)
         target_cell = max(cells, key=lambda c: c.row)
 
         headers = ws.row_values(1)
@@ -475,4 +534,3 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
 
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
