@@ -4,6 +4,20 @@
 
 document.addEventListener("DOMContentLoaded", function() {
     
+    // 0. Prepare Agent Selector (If available on page)
+    let identityHTML = '';
+    if (window.PAGE_AGENTS && Array.isArray(window.PAGE_AGENTS)) {
+        const options = window.PAGE_AGENTS.map(a => `<option value="${a}">${a}</option>`).join('');
+        identityHTML = `
+            <div class="px-4 py-2 bg-slate-900 border-b border-slate-700">
+                <select id="chatIdentity" class="w-full bg-slate-700 text-xs text-slate-200 border border-slate-600 rounded px-2 py-1.5 outline-none focus:border-blue-500 transition-colors">
+                    <option value="">-- Select Your Name --</option>
+                    ${options}
+                </select>
+            </div>
+        `;
+    }
+
     // 1. Inject Chat HTML
     if (!document.getElementById('chat-root')) {
         const chatHTML = `
@@ -23,6 +37,8 @@ document.addEventListener("DOMContentLoaded", function() {
                     </div>
                     <button onclick="toggleChat()" class="text-slate-400 hover:text-white transition">✕</button>
                 </div>
+
+                ${identityHTML}
                 
                 <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-3 h-80 bg-slate-800/50">
                     <div class="text-center text-xs text-slate-500 mt-4 mb-4 select-none opacity-50">
@@ -53,6 +69,7 @@ document.addEventListener("DOMContentLoaded", function() {
     const msgsDiv = document.getElementById('chatMessages');
     const badge = document.getElementById('chatUnreadBadge');
     const audio = document.getElementById('chatSoundAudio');
+    const identitySelect = document.getElementById('chatIdentity');
     let isOpen = false;
     let unread = 0;
 
@@ -77,17 +94,32 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     function getSenderName() {
-        // Try Billing/Insurance Inputs
+        // 1. Try Chat Widget Selector (Priority)
+        if (identitySelect && identitySelect.value) return identitySelect.value;
+
+        // 2. Try Main Form Input (Sync Fallback)
         const agent = document.getElementById('agent');
-        if (agent && agent.value && agent.value !== "") return agent.value;
+        if (agent && agent.value && agent.value !== "") {
+            // Auto-update the chat selector if it matches
+            if (identitySelect) identitySelect.value = agent.value;
+            return agent.value;
+        }
         
-        // Try Hidden Manager Input
-        const hAgent = document.getElementById('h_agent'); // (In edit form)
+        // 3. Try Hidden Manager Input
+        const hAgent = document.getElementById('h_agent');
         if (hAgent && hAgent.value) return hAgent.value;
 
-        // Fallback based on URL
+        // 4. Fallback based on URL
         if (window.location.href.includes('manager')) return "Manager";
         return null;
+    }
+
+    // Auto-Sync: If user changes Main Form, update Chat Selector
+    const mainAgentSelect = document.getElementById('agent');
+    if(mainAgentSelect && identitySelect) {
+        mainAgentSelect.addEventListener('change', (e) => {
+            identitySelect.value = e.target.value;
+        });
     }
 
     function appendMessage(data) {
@@ -125,7 +157,9 @@ document.addEventListener("DOMContentLoaded", function() {
         const sender = getSenderName();
 
         if (!sender) {
-            alert("Please select an Agent Name in the form first!");
+            alert("Please select your Name in the chat dropdown first!");
+            if(identitySelect) identitySelect.classList.add('border-red-500', 'animate-pulse');
+            setTimeout(() => identitySelect?.classList.remove('border-red-500', 'animate-pulse'), 1000);
             return;
         }
 
@@ -147,20 +181,18 @@ document.addEventListener("DOMContentLoaded", function() {
 
     // 5. Pusher Listener
     if (window.PUSHER_KEY) {
-        // We reuse existing instance if possible, or create new specific for chat to avoid conflicts
         const pusher = new Pusher(window.PUSHER_KEY, { cluster: window.PUSHER_CLUSTER });
         const channel = pusher.subscribe('techware-channel');
         
         channel.bind('new-chat', function(data) {
             appendMessage(data);
             
-            // If chat is closed, show badge and play sound
+            // If chat is closed, show badge and play sound for EVERYONE (no role check)
             if (!isOpen) {
                 unread++;
                 badge.classList.remove('hidden');
                 badge.innerText = unread > 9 ? '9+' : unread;
                 
-                // Play sound
                 try {
                     audio.currentTime = 0;
                     audio.play();
