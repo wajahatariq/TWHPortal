@@ -102,10 +102,10 @@ async function searchLead(rowIndex = null) {
                 // EDITED: Now showing Name, Date, and Charge
                 item.innerHTML = `
                     <div>
-                        <div class="font-bold text-white">${c.name}</div>
-                        <div class="text-xs text-slate-400">${c.timestamp}</div>
+                        <div class="font-bold text-white">${c.Name}</div>
+                        <div class="text-xs text-slate-400">${c.Timestamp}</div>
                     </div>
-                    <div class="text-green-400 font-mono font-bold">${c.charge}</div>
+                    <div class="text-green-400 font-mono font-bold">${c.Charge}</div>
                 `;
                 
                 item.onclick = () => {
@@ -177,4 +177,5 @@ document.getElementById('billingForm').addEventListener('submit', async (e) => {
     } catch (err) { showToast('Submission Failed', true); } 
     finally { btn.innerText = originalText; btn.disabled = false; }
 });
+
 
