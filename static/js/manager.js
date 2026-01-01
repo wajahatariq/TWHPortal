@@ -190,8 +190,6 @@ function renderPendingCards() {
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Card Number:</span><span class="text-white tracking-widest font-bold">${cleanCard}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Expiry Date:</span><span class="text-white">${cleanExpiry}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Charge:</span><span class="text-green-400 font-bold">$${cleanCharge}</span></div>
-                
-                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Client Name:</span><span class="text-white">${clientName}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Phone:</span><span class="text-white">${phoneNumber}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Email:</span><span class="text-blue-300 truncate">${email}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Card Name:</span><span class="text-white">${fullName}</span></div>
@@ -477,6 +475,7 @@ setInterval(() => {
     console.log("Auto-refreshing data...");
     fetchData();
 }, 120000);
+
 
 
 
