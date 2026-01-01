@@ -103,4 +103,88 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 }
 .detail-row:last-child { border-bottom: none; }
 .detail-label { color: #94a3b8; font-size: 0.9rem; }
+
 .detail-value { color: white; font-weight: 600; font-family: monospace; letter-spacing: 0.05em; text-align: right;}
+
+/* =========================================
+   THEME UPGRADE: Cyberpunk Glass & Animation
+   ========================================= */
+
+/* 1. GLOBAL SCROLLBAR (Sleek & Thin) */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: #0f172a; /* Matches slate-900 */
+}
+::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 4px;
+    border: 1px solid #1e293b;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #3b82f6; /* Blue glow on hover */
+}
+
+/* 2. PAGE LOAD ANIMATION */
+/* This forces the whole page to slide in smoothly */
+body {
+    animation: fadeInUp 0.8s ease-out forwards;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(15px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* 3. GLASSMORPHISM CARDS (Overriding Tailwind's bg-slate-800) */
+/* This targets your existing forms and cards automatically */
+.bg-slate-800 {
+    background-color: rgba(30, 41, 59, 0.65) !important; /* Semi-transparent */
+    backdrop-filter: blur(12px) !important;              /* Frosted Glass */
+    -webkit-backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08);         /* Subtle white border */
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3) !important;
+}
+
+/* 4. NEON INPUT FIELDS */
+/* Adds a glow when you click into an input box */
+input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.4) !important; /* Blue Neon Glow */
+    background-color: rgba(15, 23, 42, 0.8) !important; /* Darker background */
+    transition: all 0.3s ease;
+}
+
+/* 5. JELLY BUTTONS */
+/* Makes buttons feel tactile when clicked */
+button:active {
+    transform: scale(0.96);
+}
+
+/* Add a transition to all buttons for smooth hovering */
+button {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Submit Button Hover Glow */
+button[type="submit"]:hover {
+    box-shadow: 0 0 20px rgba(37, 99, 235, 0.5);
+    filter: brightness(1.1);
+}
+
+/* 6. DUPLICATE LIST ITEM HOVER */
+/* Makes the search results pop out */
+#duplicateList > div:hover {
+    transform: translateX(5px);
+    border-color: #3b82f6;
+    background-color: rgba(59, 130, 246, 0.2);
+}
