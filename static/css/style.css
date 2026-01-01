@@ -104,3 +104,28 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 .detail-row:last-child { border-bottom: none; }
 .detail-label { color: #94a3b8; font-size: 0.9rem; }
 .detail-value { color: white; font-weight: 600; font-family: monospace; letter-spacing: 0.05em; text-align: right;}
+
+/* --- CHAT WIDGET STYLES --- */
+.chat-window-enter {
+    transform: scale(0.95);
+    opacity: 0;
+}
+.chat-window-enter-active {
+    transform: scale(1);
+    opacity: 1;
+    transition: all 0.2s ease-out;
+}
+
+/* Custom Scrollbar for Chat */
+#chatMessages::-webkit-scrollbar { width: 6px; }
+#chatMessages::-webkit-scrollbar-track { background: #1e293b; }
+#chatMessages::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+
+/* Message Animations */
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-up {
+    animation: fadeInUp 0.3s ease-out forwards;
+}
