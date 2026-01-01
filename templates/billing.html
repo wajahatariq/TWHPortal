@@ -1,163 +1,194 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TWH - Billing Portal</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://js.pusher.com/7.0/pusher.min.js"></script>
-    <link rel="stylesheet" href="/static/css/style.css">
-</head>
-<body class="bg-slate-900 text-white min-h-screen p-6">
+let nightStats = { billing: {total:0, breakdown:{}}, insurance: {total:0, breakdown:{}} };
 
-    <div class="max-w-4xl mx-auto">
-        <div class="flex justify-between items-center mb-8">
-            <h1 class="text-3xl font-bold tracking-tight text-blue-500">Billing Portal</h1>
-            <div class="flex gap-4">
-                <input type="text" id="searchId" placeholder="Search Order ID..." class="px-4 py-2 rounded bg-slate-800 border border-slate-700 focus:border-blue-500 outline-none">
-                <button onclick="searchLead()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold transition">Find</button>
-            </div>
-        </div>
+async function fetchNightStats() {
+    try {
+        const res = await fetch('/api/public/night-stats');
+        nightStats = await res.json();
+        updateNightWidget();
+    } catch(e) { console.error("Stats Error", e); }
+}
 
-        <div id="editOptions" class="hidden mb-6 p-4 bg-yellow-900/30 border border-yellow-600 rounded flex justify-between items-center">
-            <span class="text-yellow-500 font-bold">⚠️ Edit Mode Active</span>
-            <button onclick="location.reload()" class="text-sm bg-slate-700 px-3 py-1 rounded hover:bg-slate-600">Cancel Edit</button>
-        </div>
+function updateNightWidget() {
+    const type = document.getElementById('nightWidgetSelect').value;
+    const data = nightStats[type] || {total:0, breakdown:{}};
+    document.getElementById('nightWidgetAmount').innerText = '$' + data.total.toFixed(2);
+    const listDiv = document.getElementById('nightBreakdown');
+    listDiv.innerHTML = '';
+    if (data.breakdown && Object.keys(data.breakdown).length > 0) {
+        listDiv.classList.remove('hidden');
+        for (const [agent, amount] of Object.entries(data.breakdown)) {
+            const row = document.createElement('div');
+            row.className = "flex justify-between border-b border-slate-900/10 pb-1 last:border-0";
+            row.innerHTML = `<span class="truncate pr-2">${agent}</span> <span class="font-bold">$${amount.toFixed(2)}</span>`;
+            listDiv.appendChild(row);
+        }
+    } else { listDiv.classList.add('hidden'); }
+}
+fetchNightStats(); setInterval(fetchNightStats, 120000); 
 
-        <form id="billingForm" class="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700 space-y-6">
-            
-            <input type="hidden" name="is_edit" id="isEdit" value="false">
-            <input type="hidden" name="timestamp_mode" value="keep">
-            <input type="hidden" name="original_timestamp" id="original_timestamp">
-            <input type="hidden" name="row_index" id="row_index">
+// --- CORRECTED TOGGLE FUNCTION ---
+function toggleProviderFields() {
+    const provider = document.getElementById('providerSelect').value;
+    const pinDiv = document.getElementById('pinContainer');
+    const accDiv = document.getElementById('accountContainer');
+    const placeholder = document.getElementById('providerPlaceholder');
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <label class="block text-slate-400 text-sm mb-1">Agent Name</label>
-                    <input type="text" name="agent" id="agent" required class="w-full bg-slate-900 border border-slate-700 rounded p-3 focus:border-blue-500 outline-none">
-                </div>
-                <div>
-                    <label class="block text-slate-400 text-sm mb-1">Client Name</label>
-                    <input type="text" name="client_name" id="client_name" required class="w-full bg-slate-900 border border-slate-700 rounded p-3 focus:border-blue-500 outline-none">
-                </div>
-            </div>
+    // Default: Hide Inputs, Show Placeholder
+    pinDiv.classList.add('hidden');
+    accDiv.classList.add('hidden');
+    if(placeholder) placeholder.classList.remove('hidden');
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <label class="block text-slate-400 text-sm mb-1">Phone Number</label>
-                    <input type="text" name="phone" id="phone" required class="w-full bg-slate-900 border border-slate-700 rounded p-3 focus:border-blue-500 outline-none">
-                </div>
-                <div>
-                    <label class="block text-slate-400 text-sm mb-1">Email</label>
-                    <input type="email" name="email" id="email" required class="w-full bg-slate-900 border border-slate-700 rounded p-3 focus:border-blue-500 outline-none">
-                </div>
-            </div>
+    if (provider === 'Spectrum') {
+        pinDiv.classList.remove('hidden');
+        if(placeholder) placeholder.classList.add('hidden');
+    } else if (provider === 'Optimum') {
+        accDiv.classList.remove('hidden');
+        if(placeholder) placeholder.classList.add('hidden');
+    }
+}
 
-            <div>
-                <label class="block text-slate-400 text-sm mb-1">Billing Address</label>
-                <input type="text" name="address" id="address" required class="w-full bg-slate-900 border border-slate-700 rounded p-3 focus:border-blue-500 outline-none">
-            </div>
+function showToast(msg, isError=false) {
+    let toast = document.getElementById('toast');
+    if(!toast) {
+        toast = document.createElement('div');
+        toast.id = 'toast';
+        toast.className = 'toast';
+        document.body.appendChild(toast);
+    }
+    toast.innerText = msg;
+    toast.classList.toggle('error', isError);
+    toast.classList.add('show');
+    setTimeout(() => { toast.classList.remove('show'); }, 3000);
+}
 
-            <hr class="border-slate-700">
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <label class="block text-slate-400 text-sm mb-1">Card Holder Name</label>
-                    <input type="text" name="card_holder" id="card_holder" required class="w-full bg-slate-900 border border-slate-700 rounded p-3 focus:border-blue-500 outline-none">
-                </div>
-                <div>
-                    <label class="block text-slate-400 text-sm mb-1">Card Number</label>
-                    <input type="text" name="card_number" id="card_number" required class="w-full bg-slate-900 border border-slate-700 rounded p-3 focus:border-blue-500 outline-none">
-                </div>
-                <div>
-                    <label class="block text-slate-400 text-sm mb-1">Expiry Date (MM/YY)</label>
-                    <input type="text" name="exp_date" id="exp_date" required class="w-full bg-slate-900 border border-slate-700 rounded p-3 focus:border-blue-500 outline-none">
-                </div>
-                <div>
-                    <label class="block text-slate-400 text-sm mb-1">CVC</label>
-                    <input type="text" name="cvc" id="cvc" required class="w-full bg-slate-900 border border-slate-700 rounded p-3 focus:border-blue-500 outline-none">
-                </div>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <label class="block text-slate-400 text-sm mb-1">Charge Amount</label>
-                    <input type="text" name="charge_amt" id="charge_amt" placeholder="$0.00" required class="w-full bg-slate-900 border border-slate-700 rounded p-3 focus:border-blue-500 outline-none">
-                </div>
-                <div>
-                    <label class="block text-slate-400 text-sm mb-1">LLC Name</label>
-                    <select name="llc" id="llc" class="w-full bg-slate-900 border border-slate-700 rounded p-3 focus:border-blue-500 outline-none">
-                        <option value="Visionary Pathways">Visionary Pathways</option>
-                        <option value="Techware Hub">Techware Hub</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div>
-                    <label class="block text-slate-400 text-sm mb-1">Order ID</label>
-                    <input type="number" name="order_id" id="order_id" required class="w-full bg-slate-900 border border-slate-700 rounded p-3 focus:border-blue-500 outline-none">
-                </div>
-                <div>
-                    <label class="block text-slate-400 text-sm mb-1">Provider</label>
-                    <select name="provider" id="providerSelect" onchange="toggleProviderFields()" class="w-full bg-slate-900 border border-slate-700 rounded p-3 focus:border-blue-500 outline-none">
-                        <option value="">Select Provider</option>
-                        <option value="Spectrum">Spectrum</option>
-                        <option value="Xfinity">Xfinity</option>
-                        <option value="AT&T">AT&T</option>
-                        <option value="Cox">Cox</option>
-                        <option value="DirectTV">DirectTV</option>
-                        <option value="Optimum">Optimum</option>
-                        <option value="T-Mobile">T-Mobile</option>
-                        <option value="Verizon">Verizon</option>
-                    </select>
-                </div>
-                
-                <div id="pinGroup" class="hidden">
-                    <label class="block text-slate-400 text-sm mb-1">PIN Code</label>
-                    <input type="text" name="pin_code" id="pin_code" class="w-full bg-slate-900 border border-slate-700 rounded p-3 focus:border-blue-500 outline-none">
-                </div>
-                <div id="accountGroup" class="hidden">
-                    <label class="block text-slate-400 text-sm mb-1">Account Number</label>
-                    <input type="text" name="account_number" id="account_number" class="w-full bg-slate-900 border border-slate-700 rounded p-3 focus:border-blue-500 outline-none">
-                </div>
-            </div>
-
-            <button type="submit" id="submitBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-900/20 transition transform active:scale-95">
-                Submit Lead
-            </button>
-        </form>
-    </div>
-
-    <div id="duplicateModal" class="fixed inset-0 bg-black/80 hidden items-center justify-center z-50">
-        <div class="bg-slate-800 p-6 rounded-lg w-full max-w-md border border-slate-600">
-            <h3 class="text-xl font-bold mb-4 text-white">Multiple Records Found</h3>
-            <div id="duplicateList" class="space-y-2 max-h-60 overflow-y-auto pr-2">
-                </div>
-            <button onclick="document.getElementById('duplicateModal').classList.add('hidden')" class="mt-4 w-full bg-slate-700 py-2 rounded text-slate-300 hover:bg-slate-600">Cancel</button>
-        </div>
-    </div>
-
-    <div id="emailModal" class="fixed inset-0 bg-slate-900/90 hidden items-center justify-center z-50 backdrop-blur-sm transition-opacity">
-        <div class="bg-slate-800 border border-slate-600 rounded-xl w-full max-w-2xl p-6 shadow-2xl relative">
-            <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                <span class="text-green-400">✅</span> Payment Approved!
-            </h3>
-            <p id="emailSubtitle" class="text-slate-400 text-sm mb-3">Copy this email and send it to the client.</p>
-            
-            <textarea id="emailContent" class="w-full h-64 bg-slate-900 text-slate-200 border border-slate-700 rounded-lg p-4 font-mono text-sm leading-relaxed focus:ring-2 focus:ring-blue-500 outline-none resize-none" readonly></textarea>
-            
-            <div class="flex justify-end gap-3 mt-6">
-                <button onclick="closeEmailModal()" class="px-4 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 transition">Close</button>
-                <button onclick="copyEmailText()" class="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold shadow-lg shadow-blue-500/30 transition flex items-center gap-2">
-                    Copy to Clipboard
-                </button>
-            </div>
-        </div>
-    </div>
+function clearForm() {
+    const form = document.getElementById('billingForm');
+    const submitBtn = document.getElementById('submitBtn');
+    form.reset();
+    document.getElementById('isEdit').value = 'false';
+    document.getElementById('searchId').value = '';
+    document.getElementById('order_id').readOnly = false;
+    document.getElementById('editOptions').classList.add('hidden');
+    document.getElementById('row_index').value = '';
     
-    <audio id="notifSound" src="/static/sounds/new_lead.mp3" preload="auto"></audio>
+    submitBtn.innerText = "Submit Billing";
+    submitBtn.classList.replace('bg-green-600', 'bg-blue-600');
+    
+    toggleProviderFields();
+    showToast("Form Cleared");
+}
 
-    <script src="/static/js/billing.js"></script>
-</body>
-</html>
+async function searchLead(rowIndex = null) {
+    const id = document.getElementById('searchId').value;
+    if(!id) return showToast("Enter an Order ID", true);
+
+    const btn = document.querySelector('button[onclick="searchLead()"]');
+    if(!rowIndex) btn.innerText = "...";
+    
+    let url = `/api/get-lead?type=billing&id=${id}`;
+    if (rowIndex) url += `&row_index=${rowIndex}`;
+
+    try {
+        const res = await fetch(url);
+        const json = await res.json();
+        
+        console.log("Server Response:", json); // Debugging line to see exact data in Console
+
+        // --- ROBUST FIX FOR DUPLICATES ---
+        if(json.status === 'multiple') {
+            const list = document.getElementById('duplicateList');
+            list.innerHTML = '';
+            
+            json.candidates.forEach(c => {
+                // FALLBACK LOGIC: Check Lowercase first, then Uppercase, then default
+                const name = c.name || c.Name || c['Client Name'] || 'Unknown';
+                const charge = c.charge || c.Charge || c['Charge Amount'] || '$0';
+                const date = c.timestamp || c.Timestamp || c.Date || '';
+                const rIndex = c.row_index || c.Row_Index;
+
+                const item = document.createElement('div');
+                item.className = "p-3 bg-slate-700/50 rounded-lg cursor-pointer hover:bg-blue-600/50 border border-slate-600 transition flex justify-between items-center";
+                
+                item.innerHTML = `
+                    <div>
+                        <div class="font-bold text-white">${name}</div>
+                        <div class="text-xs text-slate-400">${date}</div>
+                    </div>
+                    <div class="text-green-400 font-mono font-bold">${charge}</div>
+                `;
+                
+                item.onclick = () => {
+                    document.getElementById('duplicateModal').classList.add('hidden');
+                    searchLead(rIndex);
+                };
+                list.appendChild(item);
+            });
+            document.getElementById('duplicateModal').classList.remove('hidden');
+            return; 
+        }
+        // ---------------------------------
+
+        if(json.status === 'success') {
+            const d = json.data;
+            document.getElementById('isEdit').value = "true";
+            
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.innerText = "Update Lead";
+            submitBtn.classList.replace('bg-blue-600', 'bg-green-600');
+            
+            document.getElementById('editOptions').classList.remove('hidden');
+            // Handle various date keys
+            document.getElementById('original_timestamp').value = d['Timestamp'] || d['timestamp'];
+            document.getElementById('row_index').value = d['row_index'];
+
+            document.getElementById('agent').value = d['Agent Name'] || d['agent'];
+            document.getElementById('client_name').value = d['Name'] || d['Client Name']; 
+            document.getElementById('order_id').value = d['Record_ID'] || d['Order ID'];
+            document.getElementById('order_id').readOnly = true; 
+            document.getElementById('phone').value = d['Ph Number'] || d['Phone'];
+            document.getElementById('address').value = d['Address'];
+            document.getElementById('email').value = d['Email'];
+            document.getElementById('card_holder').value = d['Card Holder Name'];
+            document.getElementById('card_number').value = d['Card Number'];
+            document.getElementById('exp_date').value = d['Expiry Date'];
+            document.getElementById('cvc').value = d['CVC'];
+            
+            const rawCharge = d['Charge'] || d['Charge Amount'] || '0';
+            const cleanCharge = String(rawCharge).replace(/[^0-9.]/g, '');
+            document.getElementById('charge_amt').value = cleanCharge;
+            
+            document.getElementById('llc').value = d['LLC'];
+            document.getElementById('providerSelect').value = d['Provider'];
+            
+            const savedCode = d['PIN Code'] || d['Account Number'] || '';
+            document.getElementById('pin_code').value = savedCode;
+            document.getElementById('account_number').value = savedCode;
+            
+            toggleProviderFields();
+            showToast("Lead Loaded.");
+        } else {
+            showToast("Order ID not found.", true);
+        }
+    } catch(e) { console.error(e); showToast("Error fetching data", true); }
+    finally { if(!rowIndex) btn.innerText = "Find"; }
+}
+document.getElementById('billingForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    const originalText = btn.innerText;
+    btn.innerText = 'Processing...';
+    btn.disabled = true;
+    const formData = new FormData(e.target);
+    try {
+        const res = await fetch('/api/save-lead', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (data.status === 'success') {
+            showToast(data.message);
+            fetchNightStats(); 
+        } else { showToast(data.message, true); }
+    } catch (err) { showToast('Submission Failed', true); } 
+    finally { btn.innerText = originalText; btn.disabled = false; }
+});
+
+
+
