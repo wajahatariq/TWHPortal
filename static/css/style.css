@@ -1,122 +1,40 @@
-/* =========================================
-   Techware Hub - Professional Dark Theme
-   ========================================= */
-
-body {
-    background-color: #0f172a; /* Slate 900 */
-    color: #e2e8f0;            /* Slate 200 */
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    -webkit-font-smoothing: antialiased;
-}
-
-/* --- Card & Container --- */
-.card-hover { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-.card-hover:hover {
-    transform: translateY(-8px);
-    box-shadow: 0 20px 25px -5px rgba(59, 130, 246, 0.25);
-    border-color: #3b82f6;
-}
-
-/* --- Input Fields --- */
-.input-field {
-    width: 100%;
-    background-color: #1e293b !important;
-    border: 1px solid #334155;
-    border-radius: 0.75rem;
-    padding: 0.75rem 1rem;
-    color: #ffffff !important;
-    font-size: 1rem;
-    outline: none;
-    transition: all 0.2s ease-in-out;
-    appearance: none;
-}
-.input-field:focus {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-    background-color: #1e293b;
-}
-.input-field::placeholder { color: #94a3b8; }
-
-/* Select Arrow Fix */
-select.input-field {
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-    background-position: right 0.75rem center;
-    background-repeat: no-repeat;
-    background-size: 1.5em 1.5em;
-    padding-right: 2.5rem;
-}
-
-/* Autofill Fix */
-input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus, input:-webkit-autofill:active {
-    -webkit-box-shadow: 0 0 0 30px #1e293b inset !important;
-    -webkit-text-fill-color: white !important;
-    caret-color: white;
-    transition: background-color 5000s ease-in-out 0s;
-}
-
-/* --- TOAST NOTIFICATION --- */
-.toast {
-    visibility: hidden;
-    min-width: 250px;
-    background-color: #10b981; /* Green */
-    color: #fff;
-    text-align: center;
-    border-radius: 8px;
-    padding: 16px;
-    position: fixed;
-    z-index: 100;
-    left: 50%;
-    top: 30px;
-    transform: translateX(-50%);
-    font-size: 17px;
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
-    opacity: 0;
-    transition: opacity 0.3s, top 0.3s;
-}
-.toast.show {
-    visibility: visible;
-    opacity: 1;
-    top: 50px;
-}
-.toast.error { background-color: #ef4444; }
-
-/* --- PENDING CARD STYLES --- */
-.pending-card {
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 1rem;
-    padding: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    transition: transform 0.2s;
-}
-.pending-card:hover { transform: scale(1.01); border-color: #475569; }
-
-.detail-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid #334155;
-    font-size: 1.1rem; /* Bigger Text */
-}
-.detail-row:last-child { border-bottom: none; }
-.detail-label { color: #94a3b8; font-size: 0.9rem; }
-
-.detail-value { color: white; font-weight: 600; font-family: monospace; letter-spacing: 0.05em; text-align: right;}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 /* =========================================
    THEME UPGRADE: Cyberpunk Glass & Animation
    ========================================= */
 
-/* 1. GLOBAL SCROLLBAR (Sleek & Thin) */
+/* 1. BODY BACKGROUND (CRITICAL FOR GLASS EFFECT) */
+/* We add colored spotlights so the glass has something to blur */
+body {
+    background-color: #0f172a; /* Base Slate-900 */
+    background-image: 
+        radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
+        radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.15) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.1) 0px, transparent 50%);
+    background-attachment: fixed; /* Keeps bg steady while scrolling */
+    background-size: cover;
+    color: white; /* Default text color */
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    
+    /* Page Load Animation */
+    animation: fadeInUp 0.8s ease-out forwards;
+}
+
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(15px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* 2. GLOBAL SCROLLBAR (Sleek & Thin) */
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
 }
 ::-webkit-scrollbar-track {
-    background: #0f172a; /* Matches slate-900 */
+    background: #0f172a; 
 }
 ::-webkit-scrollbar-thumb {
     background: #334155;
@@ -127,44 +45,37 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
     background: #3b82f6; /* Blue glow on hover */
 }
 
-/* 2. PAGE LOAD ANIMATION */
-/* This forces the whole page to slide in smoothly */
-body {
-    animation: fadeInUp 0.8s ease-out forwards;
-}
-
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(15px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-/* 3. GLASSMORPHISM CARDS (Overriding Tailwind's bg-slate-800) */
-/* This targets your existing forms and cards automatically */
+/* 3. GLASS CARDS (The "Glassmorphism" Effect) */
+/* This overrides the standard Tailwind bg-slate-800 to be transparent */
 .bg-slate-800 {
-    background-color: rgba(30, 41, 59, 0.65) !important; /* Semi-transparent */
-    backdrop-filter: blur(12px) !important;              /* Frosted Glass */
-    -webkit-backdrop-filter: blur(12px) !important;
-    border: 1px solid rgba(255, 255, 255, 0.08);         /* Subtle white border */
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3) !important;
+    background-color: rgba(30, 41, 59, 0.4) !important; /* See-through */
+    backdrop-filter: blur(16px) !important;             /* Frosted Blur */
+    -webkit-backdrop-filter: blur(16px) !important;     /* Safari support */
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Specific fix for lighter containers if used */
+.bg-slate-700 {
+    background-color: rgba(51, 65, 85, 0.5) !important;
+    backdrop-filter: blur(10px);
 }
 
 /* 4. NEON INPUT FIELDS */
 /* Adds a glow when you click into an input box */
+input, select, textarea {
+    transition: all 0.3s ease;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 input:focus, select:focus, textarea:focus {
     outline: none;
     border-color: #3b82f6 !important;
     box-shadow: 0 0 15px rgba(59, 130, 246, 0.4) !important; /* Blue Neon Glow */
     background-color: rgba(15, 23, 42, 0.8) !important; /* Darker background */
-    transition: all 0.3s ease;
 }
 
-/* 5. JELLY BUTTONS */
+/* 5. JELLY BUTTONS & INTERACTION */
 /* Makes buttons feel tactile when clicked */
 button:active {
     transform: scale(0.96);
@@ -185,6 +96,18 @@ button[type="submit"]:hover {
 /* Makes the search results pop out */
 #duplicateList > div:hover {
     transform: translateX(5px);
-    border-color: #3b82f6;
-    background-color: rgba(59, 130, 246, 0.2);
+    border-color: #3b82f6 !important;
+    background-color: rgba(59, 130, 246, 0.2) !important;
+}
+
+/* 7. TOAST NOTIFICATION STYLE */
+.toast-message {
+    background: rgba(15, 23, 42, 0.9);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-weight: 500;
 }
