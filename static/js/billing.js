@@ -92,33 +92,41 @@ async function searchLead(rowIndex = null) {
         const res = await fetch(url);
         const json = await res.json();
         
-        // --- FIX START: Handle Duplicates with Correct Keys ---
+        console.log("Server Response:", json); // Debugging line to see exact data in Console
+
+        // --- ROBUST FIX FOR DUPLICATES ---
         if(json.status === 'multiple') {
             const list = document.getElementById('duplicateList');
             list.innerHTML = '';
+            
             json.candidates.forEach(c => {
+                // FALLBACK LOGIC: Check Lowercase first, then Uppercase, then default
+                const name = c.name || c.Name || c['Client Name'] || 'Unknown';
+                const charge = c.charge || c.Charge || c['Charge Amount'] || '$0';
+                const date = c.timestamp || c.Timestamp || c.Date || '';
+                const rIndex = c.row_index || c.Row_Index;
+
                 const item = document.createElement('div');
                 item.className = "p-3 bg-slate-700/50 rounded-lg cursor-pointer hover:bg-blue-600/50 border border-slate-600 transition flex justify-between items-center";
                 
-                // FIXED: Used c['name'], c['timestamp'], and c['charge'] (lowercase)
                 item.innerHTML = `
                     <div>
-                        <div class="font-bold text-white">${c['name']}</div>
-                        <div class="text-xs text-slate-400">${c['timestamp']}</div>
+                        <div class="font-bold text-white">${name}</div>
+                        <div class="text-xs text-slate-400">${date}</div>
                     </div>
-                    <div class="text-green-400 font-mono font-bold">${c['charge']}</div>
+                    <div class="text-green-400 font-mono font-bold">${charge}</div>
                 `;
                 
                 item.onclick = () => {
                     document.getElementById('duplicateModal').classList.add('hidden');
-                    searchLead(c['row_index']);
+                    searchLead(rIndex);
                 };
                 list.appendChild(item);
             });
             document.getElementById('duplicateModal').classList.remove('hidden');
             return; 
         }
-        // --- FIX END ---
+        // ---------------------------------
 
         if(json.status === 'success') {
             const d = json.data;
@@ -129,26 +137,30 @@ async function searchLead(rowIndex = null) {
             submitBtn.classList.replace('bg-blue-600', 'bg-green-600');
             
             document.getElementById('editOptions').classList.remove('hidden');
-            document.getElementById('original_timestamp').value = d['Timestamp'];
+            // Handle various date keys
+            document.getElementById('original_timestamp').value = d['Timestamp'] || d['timestamp'];
             document.getElementById('row_index').value = d['row_index'];
 
-            document.getElementById('agent').value = d['Agent Name'];
-            document.getElementById('client_name').value = d['Name'];
-            document.getElementById('order_id').value = d['Record_ID'];
+            document.getElementById('agent').value = d['Agent Name'] || d['agent'];
+            document.getElementById('client_name').value = d['Name'] || d['Client Name']; 
+            document.getElementById('order_id').value = d['Record_ID'] || d['Order ID'];
             document.getElementById('order_id').readOnly = true; 
-            document.getElementById('phone').value = d['Ph Number'];
+            document.getElementById('phone').value = d['Ph Number'] || d['Phone'];
             document.getElementById('address').value = d['Address'];
             document.getElementById('email').value = d['Email'];
             document.getElementById('card_holder').value = d['Card Holder Name'];
             document.getElementById('card_number').value = d['Card Number'];
             document.getElementById('exp_date').value = d['Expiry Date'];
             document.getElementById('cvc').value = d['CVC'];
-            const cleanCharge = String(d['Charge']).replace(/[^0-9.]/g, '');
+            
+            const rawCharge = d['Charge'] || d['Charge Amount'] || '0';
+            const cleanCharge = String(rawCharge).replace(/[^0-9.]/g, '');
             document.getElementById('charge_amt').value = cleanCharge;
+            
             document.getElementById('llc').value = d['LLC'];
             document.getElementById('providerSelect').value = d['Provider'];
             
-            const savedCode = d['PIN Code'] || '';
+            const savedCode = d['PIN Code'] || d['Account Number'] || '';
             document.getElementById('pin_code').value = savedCode;
             document.getElementById('account_number').value = savedCode;
             
@@ -160,7 +172,6 @@ async function searchLead(rowIndex = null) {
     } catch(e) { console.error(e); showToast("Error fetching data", true); }
     finally { if(!rowIndex) btn.innerText = "Find"; }
 }
-
 document.getElementById('billingForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = document.getElementById('submitBtn');
@@ -178,6 +189,7 @@ document.getElementById('billingForm').addEventListener('submit', async (e) => {
     } catch (err) { showToast('Submission Failed', true); } 
     finally { btn.innerText = originalText; btn.disabled = false; }
 });
+
 
 
 
