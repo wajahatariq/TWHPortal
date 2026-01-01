@@ -3,129 +3,101 @@
 @tailwind utilities;
 
 /* =========================================
-   THEME: CYBERPUNK BORDER & ALIVE UI
+   THEME: STABLE CYBERPUNK (Fixed Layout)
    ========================================= */
 
-/* 1. ANIMATED BACKGROUND */
-/* Creates a deep dark bg with slowly moving spotlights */
+/* 1. DEEP SPACE BACKGROUND */
 body {
-    background-color: #020617; /* Very Dark Slate */
+    background-color: #020617; /* Deepest Slate */
     background-image: 
-        radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
-        radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.15) 0px, transparent 50%);
-    background-size: 150% 150%;
+        radial-gradient(circle at 15% 50%, rgba(37, 99, 235, 0.12), transparent 40%), 
+        radial-gradient(circle at 85% 30%, rgba(124, 58, 237, 0.12), transparent 40%);
     background-attachment: fixed;
-    color: white; 
+    background-size: cover;
+    color: #f1f5f9; /* Slate-100 text */
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    
-    /* The Background Pulse Animation */
-    animation: bgPulse 15s ease infinite alternate;
+    min-height: 100vh;
 }
 
-@keyframes bgPulse {
-    0% { background-position: 0% 0%; }
-    100% { background-position: 100% 100%; }
+/* 2. CUSTOM SCROLLBAR (Sleek Blue) */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: #020617; 
+}
+::-webkit-scrollbar-thumb {
+    background: #334155; 
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #3b82f6; 
 }
 
-/* 2. CUSTOM SCROLLBAR */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #020617; }
-::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #3b82f6; }
-
-/* 3. THE "MOVING BORDER" CARD EFFECT */
-/* This targets your main form/stats cards (.bg-slate-800) */
+/* 3. CARD STYLING (Safe & Solid) */
+/* We replaced the broken 'moving border' with a safe 'breathing shadow' */
 .bg-slate-800 {
-    position: relative !important;
-    background: #1e293b !important; /* Solid Slate-800 surface */
-    border: 1px solid rgba(255,255,255,0.05) !important;
-    z-index: 1;
-    /* Ensure the border effect doesn't get cut off */
-    overflow: visible !important; 
-}
-
-/* The Glowing Gradient Behind the Card */
-.bg-slate-800::before {
-    content: "";
-    position: absolute;
-    inset: -2px; /* Controls border thickness (2px) */
-    z-index: -1; /* Puts it BEHIND the card */
-    background: linear-gradient(
-      45deg, 
-      #3b82f6, /* Blue */
-      #8b5cf6, /* Violet */
-      #ec4899, /* Pink */
-      #3b82f6  /* Loop back to Blue */
-    );
-    background-size: 300% 300%; /* Zooms in on gradient for smoothness */
-    border-radius: inherit; /* Matches the card's rounded corners */
-    opacity: 0.6; /* Subtle glow, increase to 1 for super bright */
+    background-color: #1e293b !important; /* Solid Slate-800 */
+    border: 1px solid rgba(148, 163, 184, 0.1);
+    border-top: 1px solid rgba(59, 130, 246, 0.5); /* Subtle Blue Top Highlight */
     
-    /* The Movement Animation */
-    animation: borderRotate 6s ease infinite;
+    /* The Breathing Glow Animation */
+    animation: breatheShadow 4s ease-in-out infinite;
 }
 
-@keyframes borderRotate {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
+@keyframes breatheShadow {
+    0% { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3); }
+    50% { box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.2); } /* Blue Glow */
+    100% { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3); }
 }
 
-/* 4. FLOATING NEON INPUTS */
+/* 4. HIGH-CONTRAST INPUTS */
+/* Dark inputs with bright text and neon focus */
 input, select, textarea {
-    background-color: #0f172a !important; /* Darker than card */
+    background-color: #020617 !important; /* Very Dark */
     border: 1px solid #334155 !important;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    color: white !important;
+    transition: all 0.2s ease;
 }
 
 input:focus, select:focus, textarea:focus {
     outline: none;
-    border-color: #60a5fa !important; /* Bright Blue */
-    transform: translateY(-2px); /* Lifts the input up */
-    box-shadow: 0 4px 20px rgba(59, 130, 246, 0.3) !important; /* Drop shadow glow */
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25) !important; /* Neon Ring */
+    background-color: #0f172a !important;
 }
 
-/* 5. BUTTONS & INTERACTIONS */
+input::placeholder {
+    color: #64748b;
+}
+
+/* 5. INTERACTIVE BUTTONS */
 button {
-    transition: all 0.2s;
+    transition: transform 0.1s, filter 0.2s;
+}
+button:active {
+    transform: scale(0.97); /* Satisfying click press */
+}
+button:hover {
+    filter: brightness(1.1);
+}
+
+/* Submit Button Specific Polish */
+button[type="submit"] {
     position: relative;
     overflow: hidden;
 }
 
-button:active {
-    transform: scale(0.96);
-}
-
-/* Add a "Sheen" effect on hover for submit buttons */
-button[type="submit"]::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(
-        90deg, 
-        transparent, 
-        rgba(255, 255, 255, 0.2), 
-        transparent
-    );
-    transition: 0.5s;
-}
-
-button[type="submit"]:hover::after {
-    left: 100%; /* Slides the sheen across */
-}
-
-/* 6. SEARCH RESULTS & TOASTS */
+/* 6. DUPLICATE LIST & TOASTS */
 #duplicateList > div {
-    transition: transform 0.2s, background-color 0.2s;
-    border-left: 2px solid transparent;
+    border: 1px solid transparent;
+    transition: all 0.2s;
 }
 #duplicateList > div:hover {
-    background-color: #1e293b;
-    border-left-color: #ec4899; /* Pink accent on hover */
-    transform: translateX(5px);
+    background-color: #334155 !important;
+    border-color: #3b82f6;
+    transform: translateX(4px);
 }
 
 .toast-message {
@@ -133,7 +105,8 @@ button[type="submit"]:hover::after {
     border-left: 4px solid #3b82f6;
     color: white;
     padding: 12px 24px;
-    border-radius: 4px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-    z-index: 100;
+    border-radius: 6px;
+    font-weight: 500;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+    z-index: 9999;
 }
