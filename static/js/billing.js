@@ -1,83 +1,107 @@
-let nightStats = { billing: {total:0, breakdown:{}}, insurance: {total:0, breakdown:{}} };
+// --- PUSHER CONFIGURATION ---
+// IMPORTANT: Replace with your actual PUSHER KEY and CLUSTER if different
+const pusher = new Pusher('YOUR_PUSHER_KEY', {
+    cluster: 'mt1'
+});
 
-async function fetchNightStats() {
-    try {
-        const res = await fetch('/api/public/night-stats');
-        nightStats = await res.json();
-        updateNightWidget();
-    } catch(e) { console.error("Stats Error", e); }
-}
+const channel = pusher.subscribe('techware-channel');
 
-function updateNightWidget() {
-    const type = document.getElementById('nightWidgetSelect').value;
-    const data = nightStats[type] || {total:0, breakdown:{}};
-    document.getElementById('nightWidgetAmount').innerText = '$' + data.total.toFixed(2);
-    const listDiv = document.getElementById('nightBreakdown');
-    listDiv.innerHTML = '';
-    if (data.breakdown && Object.keys(data.breakdown).length > 0) {
-        listDiv.classList.remove('hidden');
-        for (const [agent, amount] of Object.entries(data.breakdown)) {
-            const row = document.createElement('div');
-            row.className = "flex justify-between border-b border-slate-900/10 pb-1 last:border-0";
-            row.innerHTML = `<span class="truncate pr-2">${agent}</span> <span class="font-bold">$${amount.toFixed(2)}</span>`;
-            listDiv.appendChild(row);
+// Listen for Payment Confirmation from Manager
+channel.bind('payment-confirmed', function(data) {
+    const currentAgent = localStorage.getItem('agentName') || document.getElementById('agent').value;
+    
+    // Check if this approval is for THIS agent
+    // (Normalize strings to avoid case mismatch issues)
+    if (data.agent && currentAgent && data.agent.toLowerCase().trim() === currentAgent.toLowerCase().trim()) {
+        
+        // 1. Play Sound
+        const audio = document.getElementById('notifSound');
+        if(audio) audio.play().catch(e => console.log("Audio play blocked", e));
+        
+        // 2. Populate Modal
+        document.getElementById('emailContent').value = data.email_body;
+        document.getElementById('emailSubtitle').innerText = `Great job, ${data.agent}! Here is the confirmation email for ${data.client_name}.`;
+        
+        // 3. Show Modal
+        const modal = document.getElementById('emailModal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+});
+// ----------------------------
+
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Set Agent Name from LocalStorage
+    const savedAgent = localStorage.getItem('agentName');
+    if(savedAgent) document.getElementById('agent').value = savedAgent;
+
+    // Form Submission
+    const form = document.getElementById('billingForm');
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const btn = document.getElementById('submitBtn');
+        const originalText = btn.innerText;
+        btn.innerText = "Submitting...";
+        btn.disabled = true;
+
+        // Save Agent Name
+        localStorage.setItem('agentName', document.getElementById('agent').value);
+
+        const formData = new FormData(form);
+        formData.append('type', 'billing');
+
+        try {
+            const res = await fetch('/api/save-lead', {
+                method: 'POST',
+                body: formData
+            });
+            const json = await res.json();
+
+            if(json.status === 'success') {
+                showToast(json.message);
+                
+                if(document.getElementById('isEdit').value !== 'true') {
+                    form.reset();
+                    document.getElementById('agent').value = localStorage.getItem('agentName');
+                    document.getElementById('isEdit').value = "false";
+                }
+            } else {
+                showToast(json.message, true);
+            }
+        } catch(err) {
+            console.error(err);
+            showToast("Error submitting lead", true);
+        } finally {
+            btn.innerText = originalText;
+            btn.disabled = false;
         }
-    } else { listDiv.classList.add('hidden'); }
-}
-fetchNightStats(); setInterval(fetchNightStats, 120000); 
+    });
+});
 
-// --- CORRECTED TOGGLE FUNCTION ---
+// Toggle Provider Fields
 function toggleProviderFields() {
     const provider = document.getElementById('providerSelect').value;
-    const pinDiv = document.getElementById('pinContainer');
-    const accDiv = document.getElementById('accountContainer');
-    const placeholder = document.getElementById('providerPlaceholder');
+    const pinGroup = document.getElementById('pinGroup');
+    const accountGroup = document.getElementById('accountGroup');
 
-    // Default: Hide Inputs, Show Placeholder
-    pinDiv.classList.add('hidden');
-    accDiv.classList.add('hidden');
-    if(placeholder) placeholder.classList.remove('hidden');
-
-    if (provider === 'Spectrum') {
-        pinDiv.classList.remove('hidden');
-        if(placeholder) placeholder.classList.add('hidden');
-    } else if (provider === 'Optimum') {
-        accDiv.classList.remove('hidden');
-        if(placeholder) placeholder.classList.add('hidden');
+    if(provider === 'Spectrum' || provider === 'T-Mobile' || provider === 'Verizon') {
+        pinGroup.classList.remove('hidden');
+        accountGroup.classList.add('hidden');
+    } else if(provider === 'AT&T' || provider === 'DirectTV') {
+        pinGroup.classList.remove('hidden');
+        accountGroup.classList.add('hidden');
+    } else if(provider === 'Xfinity' || provider === 'Cox' || provider === 'Optimum') {
+        pinGroup.classList.add('hidden');
+        accountGroup.classList.add('hidden');
+    } else {
+        pinGroup.classList.add('hidden');
+        accountGroup.classList.add('hidden');
     }
 }
 
-function showToast(msg, isError=false) {
-    let toast = document.getElementById('toast');
-    if(!toast) {
-        toast = document.createElement('div');
-        toast.id = 'toast';
-        toast.className = 'toast';
-        document.body.appendChild(toast);
-    }
-    toast.innerText = msg;
-    toast.classList.toggle('error', isError);
-    toast.classList.add('show');
-    setTimeout(() => { toast.classList.remove('show'); }, 3000);
-}
-
-function clearForm() {
-    const form = document.getElementById('billingForm');
-    const submitBtn = document.getElementById('submitBtn');
-    form.reset();
-    document.getElementById('isEdit').value = 'false';
-    document.getElementById('searchId').value = '';
-    document.getElementById('order_id').readOnly = false;
-    document.getElementById('editOptions').classList.add('hidden');
-    document.getElementById('row_index').value = '';
-    
-    submitBtn.innerText = "Submit Billing";
-    submitBtn.classList.replace('bg-green-600', 'bg-blue-600');
-    
-    toggleProviderFields();
-    showToast("Form Cleared");
-}
-
+// Search Function
 async function searchLead(rowIndex = null) {
     const id = document.getElementById('searchId').value;
     if(!id) return showToast("Enter an Order ID", true);
@@ -92,23 +116,18 @@ async function searchLead(rowIndex = null) {
         const res = await fetch(url);
         const json = await res.json();
         
-        console.log("Server Response:", json); // Debugging line to see exact data in Console
-
-        // --- ROBUST FIX FOR DUPLICATES ---
         if(json.status === 'multiple') {
             const list = document.getElementById('duplicateList');
             list.innerHTML = '';
             
             json.candidates.forEach(c => {
-                // FALLBACK LOGIC: Check Lowercase first, then Uppercase, then default
-                const name = c.name || c.Name || c['Client Name'] || 'Unknown';
-                const charge = c.charge || c.Charge || c['Charge Amount'] || '$0';
-                const date = c.timestamp || c.Timestamp || c.Date || '';
-                const rIndex = c.row_index || c.Row_Index;
+                const name = c.name || c.Name || 'Unknown';
+                const charge = c.charge || c.Charge || '$0';
+                const date = c.timestamp || c.Timestamp || '';
+                const rIndex = c.row_index;
 
                 const item = document.createElement('div');
                 item.className = "p-3 bg-slate-700/50 rounded-lg cursor-pointer hover:bg-blue-600/50 border border-slate-600 transition flex justify-between items-center";
-                
                 item.innerHTML = `
                     <div>
                         <div class="font-bold text-white">${name}</div>
@@ -116,7 +135,6 @@ async function searchLead(rowIndex = null) {
                     </div>
                     <div class="text-green-400 font-mono font-bold">${charge}</div>
                 `;
-                
                 item.onclick = () => {
                     document.getElementById('duplicateModal').classList.add('hidden');
                     searchLead(rIndex);
@@ -126,26 +144,22 @@ async function searchLead(rowIndex = null) {
             document.getElementById('duplicateModal').classList.remove('hidden');
             return; 
         }
-        // ---------------------------------
 
         if(json.status === 'success') {
             const d = json.data;
             document.getElementById('isEdit').value = "true";
-            
-            const submitBtn = document.getElementById('submitBtn');
-            submitBtn.innerText = "Update Lead";
-            submitBtn.classList.replace('bg-blue-600', 'bg-green-600');
+            document.getElementById('submitBtn').innerText = "Update Lead";
+            document.getElementById('submitBtn').classList.replace('bg-blue-600', 'bg-green-600');
             
             document.getElementById('editOptions').classList.remove('hidden');
-            // Handle various date keys
             document.getElementById('original_timestamp').value = d['Timestamp'] || d['timestamp'];
             document.getElementById('row_index').value = d['row_index'];
 
-            document.getElementById('agent').value = d['Agent Name'] || d['agent'];
+            document.getElementById('agent').value = d['Agent Name'];
             document.getElementById('client_name').value = d['Name'] || d['Client Name']; 
             document.getElementById('order_id').value = d['Record_ID'] || d['Order ID'];
             document.getElementById('order_id').readOnly = true; 
-            document.getElementById('phone').value = d['Ph Number'] || d['Phone'];
+            document.getElementById('phone').value = d['Ph Number'];
             document.getElementById('address').value = d['Address'];
             document.getElementById('email').value = d['Email'];
             document.getElementById('card_holder').value = d['Card Holder Name'];
@@ -172,24 +186,33 @@ async function searchLead(rowIndex = null) {
     } catch(e) { console.error(e); showToast("Error fetching data", true); }
     finally { if(!rowIndex) btn.innerText = "Find"; }
 }
-document.getElementById('billingForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const btn = document.getElementById('submitBtn');
-    const originalText = btn.innerText;
-    btn.innerText = 'Processing...';
-    btn.disabled = true;
-    const formData = new FormData(e.target);
-    try {
-        const res = await fetch('/api/save-lead', { method: 'POST', body: formData });
-        const data = await res.json();
-        if (data.status === 'success') {
-            showToast(data.message);
-            fetchNightStats(); 
-        } else { showToast(data.message, true); }
-    } catch (err) { showToast('Submission Failed', true); } 
-    finally { btn.innerText = originalText; btn.disabled = false; }
-});
 
+// Toast Notification
+function showToast(msg, isError = false) {
+    const toast = document.createElement('div');
+    toast.className = `toast-message fixed bottom-5 right-5 px-6 py-3 rounded shadow-xl text-white font-bold transform transition-all translate-y-10 opacity-0 ${isError ? 'bg-red-600' : 'bg-green-600'}`;
+    toast.innerText = msg;
+    document.body.appendChild(toast);
+    
+    requestAnimationFrame(() => {
+        toast.classList.remove('translate-y-10', 'opacity-0');
+    });
 
+    setTimeout(() => {
+        toast.classList.add('translate-y-10', 'opacity-0');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
 
+function closeEmailModal() {
+    document.getElementById('emailModal').classList.add('hidden');
+    document.getElementById('emailModal').classList.remove('flex');
+}
 
+function copyEmailText() {
+    const txt = document.getElementById('emailContent');
+    txt.select();
+    navigator.clipboard.writeText(txt.value).then(() => {
+        showToast("Email copied to clipboard!");
+    });
+}
