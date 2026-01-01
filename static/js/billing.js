@@ -92,6 +92,7 @@ async function searchLead(rowIndex = null) {
         const res = await fetch(url);
         const json = await res.json();
         
+        // --- FIX START: Handle Duplicates with Correct Keys ---
         if(json.status === 'multiple') {
             const list = document.getElementById('duplicateList');
             list.innerHTML = '';
@@ -99,24 +100,25 @@ async function searchLead(rowIndex = null) {
                 const item = document.createElement('div');
                 item.className = "p-3 bg-slate-700/50 rounded-lg cursor-pointer hover:bg-blue-600/50 border border-slate-600 transition flex justify-between items-center";
                 
-                // EDITED: Now showing Name, Date, and Charge
+                // FIXED: Used c['name'], c['timestamp'], and c['charge'] (lowercase)
                 item.innerHTML = `
                     <div>
-                        <div class="font-bold text-white">${c.Name}</div>
-                        <div class="text-xs text-slate-400">${c.Timestamp}</div>
+                        <div class="font-bold text-white">${c['name']}</div>
+                        <div class="text-xs text-slate-400">${c['timestamp']}</div>
                     </div>
-                    <div class="text-green-400 font-mono font-bold">${c.Charge}</div>
+                    <div class="text-green-400 font-mono font-bold">${c['charge']}</div>
                 `;
                 
                 item.onclick = () => {
                     document.getElementById('duplicateModal').classList.add('hidden');
-                    searchLead(c.row_index);
+                    searchLead(c['row_index']);
                 };
                 list.appendChild(item);
             });
             document.getElementById('duplicateModal').classList.remove('hidden');
             return; 
         }
+        // --- FIX END ---
 
         if(json.status === 'success') {
             const d = json.data;
@@ -131,8 +133,8 @@ async function searchLead(rowIndex = null) {
             document.getElementById('row_index').value = d['row_index'];
 
             document.getElementById('agent').value = d['Agent Name'];
-            document.getElementById('client_name').value = d['Name'] || d['Client Name']; // Handle both keys just in case
-            document.getElementById('order_id').value = d['Record_ID'] || d['Order ID'];
+            document.getElementById('client_name').value = d['Name'];
+            document.getElementById('order_id').value = d['Record_ID'];
             document.getElementById('order_id').readOnly = true; 
             document.getElementById('phone').value = d['Ph Number'];
             document.getElementById('address').value = d['Address'];
@@ -141,12 +143,11 @@ async function searchLead(rowIndex = null) {
             document.getElementById('card_number').value = d['Card Number'];
             document.getElementById('exp_date').value = d['Expiry Date'];
             document.getElementById('cvc').value = d['CVC'];
-            const cleanCharge = String(d['Charge'] || d['Charge Amount']).replace(/[^0-9.]/g, '');
+            const cleanCharge = String(d['Charge']).replace(/[^0-9.]/g, '');
             document.getElementById('charge_amt').value = cleanCharge;
             document.getElementById('llc').value = d['LLC'];
             document.getElementById('providerSelect').value = d['Provider'];
             
-            // Populate BOTH with the single value
             const savedCode = d['PIN Code'] || '';
             document.getElementById('pin_code').value = savedCode;
             document.getElementById('account_number').value = savedCode;
@@ -177,5 +178,6 @@ document.getElementById('billingForm').addEventListener('submit', async (e) => {
     } catch (err) { showToast('Submission Failed', true); } 
     finally { btn.innerText = originalText; btn.disabled = false; }
 });
+
 
 
