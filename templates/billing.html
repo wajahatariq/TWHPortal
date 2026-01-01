@@ -115,6 +115,13 @@
     <script>
         window.PUSHER_KEY = "{{ pusher_key }}";
         window.PUSHER_CLUSTER = "{{ pusher_cluster }}";
+        
+        // Pass Agent List to Chat Widget
+        window.PAGE_AGENTS = [
+            {% for agent in agents %}
+                "{{ agent }}",
+            {% endfor %}
+        ];
     </script>
     <script src="/static/js/main.js"></script>
 </body>
