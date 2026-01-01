@@ -276,7 +276,7 @@ async def save_lead(
         clean_charge = float(str(charge_amt).replace('$', '').replace(',', '').strip())
         final_charge = f"${clean_charge:.2f}"
     except:
-        final_charge = charge_amt # Fallback
+        final_charge = charge_amt 
 
     if is_edit == 'true' and timestamp_mode == 'keep' and original_timestamp:
         try: date_str = original_timestamp.split(" ")[0]
@@ -285,7 +285,13 @@ async def save_lead(
     else:
         date_str, timestamp_str = get_timestamp()
 
-    primary_id = order_id if type == 'billing' else record_id
+    # --- FIX: STORE ID AS INT IF POSSIBLE ---
+    raw_id = order_id if type == 'billing' else record_id
+    if raw_id and str(raw_id).isdigit():
+        primary_id = int(raw_id)
+    else:
+        primary_id = raw_id
+
     final_status = status if is_edit == 'true' else "Pending"
     final_code = pin_code if pin_code else account_number if account_number else ""
 
@@ -343,7 +349,7 @@ async def get_lead(type: str, id: str, row_index: Optional[int] = None):
     ws = get_worksheet(type)
     if not ws: return JSONResponse({"status": "error"}, 500)
     try:
-        # 1. FETCH BY ROW INDEX (Used when user selects from duplicate list)
+        # 1. FETCH BY ROW INDEX
         if row_index:
             row_values = ws.row_values(row_index)
             headers = ws.row_values(1)
@@ -352,17 +358,22 @@ async def get_lead(type: str, id: str, row_index: Optional[int] = None):
             if 'Record_ID' not in data and 'Order ID' in data: data['Record_ID'] = data['Order ID']
             return {"status": "success", "data": data}
         
-        # 2. SEARCH BY ID
-        try: 
-            cells = ws.findall(id, in_column=1)
-        except gspread.exceptions.CellNotFound: 
-            return JSONResponse({"status": "error", "message": "Not Found"}, 404)
+        # 2. SEARCH BY ID (ROBUST: Try String AND Int)
+        cells = []
+        
+        # Attempt 1: Search exactly as provided
+        try: cells = ws.findall(id, in_column=1)
+        except: pass
+
+        # Attempt 2: If not found and input is numeric, search as Integer
+        if not cells and str(id).strip().isdigit():
+            try: cells = ws.findall(int(id), in_column=1)
+            except: pass
 
         if not cells: return JSONResponse({"status": "error", "message": "Not Found"}, 404)
         
         # 3. HANDLE DUPLICATES
         if len(cells) == 1:
-            # Only 1 found? Return it immediately.
             row_values = ws.row_values(cells[0].row)
             headers = ws.row_values(1)
             data = dict(zip(headers, row_values))
@@ -370,7 +381,6 @@ async def get_lead(type: str, id: str, row_index: Optional[int] = None):
             if 'Record_ID' not in data and 'Order ID' in data: data['Record_ID'] = data['Order ID']
             return {"status": "success", "data": data}
         else:
-            # MULTIPLE FOUND? Return candidates list.
             candidates = []
             headers = ws.row_values(1)
             
@@ -378,7 +388,6 @@ async def get_lead(type: str, id: str, row_index: Optional[int] = None):
                 r_vals = ws.row_values(cell.row)
                 d = dict(zip(headers, r_vals))
                 
-                # Get fields safely
                 name = d.get('Client Name', d.get('Name', 'Unknown'))
                 charge = d.get('Charge', d.get('Charge Amount', '$0'))
                 time_val = d.get('Timestamp', 'No Time')
@@ -390,9 +399,7 @@ async def get_lead(type: str, id: str, row_index: Optional[int] = None):
                     "timestamp": time_val
                 })
             
-            # Sort by row index (newest last)
             candidates.sort(key=lambda x: x['row_index'], reverse=True)
-            
             return {"status": "multiple", "candidates": candidates}
 
     except Exception as e: 
@@ -468,4 +475,5 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
 
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
