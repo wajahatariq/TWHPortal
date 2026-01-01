@@ -1,143 +1,246 @@
 import os
 import json
-from typing import Optional
-from fastapi import FastAPI, Request, Form, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
+import pytz
+import requests
+import hashlib
+import time as time_module
+from datetime import datetime, timedelta, time
+from fastapi import FastAPI, Request, Form
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from typing import Optional
+from dotenv import load_dotenv
 import pusher
-from pushbullet import Pushbullet
-from litellm import completion
 
-# ==========================================
-# CONFIGURATION & SETUP
-# ==========================================
+load_dotenv()
 
 app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# --- SECURITY: LOAD SECRETS FROM ENV ---
+PUSHER_APP_ID = os.getenv("PUSHER_APP_ID")
+PUSHER_KEY = os.getenv("PUSHER_KEY")
+PUSHER_SECRET = os.getenv("PUSHER_SECRET")
+PUSHER_CLUSTER = os.getenv("PUSHER_CLUSTER")
 
-# --- 1. GOOGLE SHEETS SETUP ---
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-try:
-    creds = ServiceAccountCredentials.from_json_keyfile_name("api/credentials.json", scope)
-    client = gspread.authorize(creds)
-except:
-    print("Warning: Google Sheets Credentials not found locally.")
-
-SHEET_ID = "YOUR_GOOGLE_SHEET_ID_HERE" # <--- ENSURE THIS IS CORRECT
-
-# --- 2. PUSHER SETUP ---
 pusher_client = pusher.Pusher(
-    app_id=os.getenv("PUSHER_APP_ID", "YOUR_APP_ID"),
-    key=os.getenv("PUSHER_KEY", "YOUR_KEY"),
-    secret=os.getenv("PUSHER_SECRET", "YOUR_SECRET"),
-    cluster=os.getenv("PUSHER_CLUSTER", "mt1"),
-    ssl=True
+  app_id=PUSHER_APP_ID,
+  key=PUSHER_KEY,
+  secret=PUSHER_SECRET,
+  cluster=PUSHER_CLUSTER,
+  ssl=True
 )
 
-# --- 3. PUSHBULLET SETUP ---
-pb = None
-PB_KEY = os.getenv("PUSHBULLET_KEY")
-if PB_KEY:
-    pb = Pushbullet(PB_KEY)
+# --- CACHE SETUP ---
+STATS_CACHE = {
+    "last_updated": 0,
+    "data": {
+        "billing": {"total": 0, "breakdown": {}}, 
+        "insurance": {"total": 0, "breakdown": {}}
+    }
+}
+CACHE_DURATION = 60 
 
-# ==========================================
-# HELPER FUNCTIONS
-# ==========================================
+# --- SETUP ---
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if not os.path.exists(os.path.join(BASE_DIR, "templates")):
+    BASE_DIR = os.getcwd()
 
-def get_worksheet(type_name):
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+
+templates = Jinja2Templates(directory=TEMPLATES_DIR)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+TZ_KARACHI = pytz.timezone("Asia/Karachi")
+
+# --- SHEETS SETUP ---
+gc = None
+def get_gc():
+    global gc
     try:
-        sh = client.open_by_key(SHEET_ID)
-        if type_name == 'billing': return sh.worksheet("Billing")
-        if type_name == 'insurance': return sh.worksheet("Insurance")
-        return None
+        service_file = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE")
+        service_json = os.getenv("GCP_SERVICE_ACCOUNT") 
+        if service_file and os.path.exists(service_file):
+            gc = gspread.service_account(filename=service_file)
+        elif service_json:
+            gc = gspread.service_account_from_dict(json.loads(service_json))
+        else:
+            print("WARNING: No Credentials found.")
     except Exception as e:
-        print(f"DB Error: {e}")
+        print(f"Error loading credentials: {e}")
+    return gc
+
+get_gc() # Init
+SHEET_NAME = "Company_Transactions"
+
+def get_worksheet(sheet_type):
+    if not gc: get_gc()
+    if not gc: return None
+    try:
+        sh = gc.open(SHEET_NAME)
+        if sheet_type == 'billing': return sh.get_worksheet(0)
+        if sheet_type == 'insurance': return sh.get_worksheet(1)
+        if sheet_type == 'auth': return sh.get_worksheet(2)
+    except Exception as e:
+        print(f"Sheet Error: {e}")
         return None
+    return None
+
+# --- CONSTANTS ---
+AGENTS_BILLING = ["Arham Kaleem", "Arham Ali", "Haziq", "Anus", "Hasnain"]
+AGENTS_INSURANCE = ["Saad"]
+PROVIDERS = ["Spectrum", "Insurance", "Xfinity", "Frontier", "Optimum"]
+LLC_SPEC = ["Visionary Pathways"]
+LLC_INS = ["LMI"]
+
+# --- UTILS ---
+def send_pushbullet(title, body):
+    token = os.getenv("PUSHBULLET_TOKEN")
+    if not token: return
+    try:
+        requests.post("https://api.pushbullet.com/v2/pushes", 
+                      json={"type": "note", "title": title, "body": body}, 
+                      headers={"Access-Token": token, "Content-Type": "application/json"})
+    except: pass
 
 def get_timestamp():
-    from datetime import datetime
-    import pytz
-    tz = pytz.timezone('Asia/Karachi')
-    now = datetime.now(tz)
+    now = datetime.now(TZ_KARACHI)
     return now.strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d %H:%M:%S")
 
-def send_pushbullet(title, body):
-    if pb:
-        try: pb.push_note(title, body)
-        except: pass
+def rows_to_dict(rows):
+    if not rows or len(rows) < 2: return []
+    headers = [str(h).strip() for h in rows[0]]
+    data = []
+    for row in rows[1:]:
+        if len(row) < len(headers):
+            row += [''] * (len(headers) - len(row))
+        data.append(dict(zip(headers, row)))
+    return data
 
-# --- AI EMAIL GENERATOR ---
-def generate_email_with_groq(lead_data):
-    """
-    Uses Groq (via LiteLLM) to generate a payment confirmation email.
-    """
-    name = lead_data.get('Client Name', lead_data.get('Name', 'Valued Customer'))
-    provider = lead_data.get('Provider', 'Service Provider')
+def find_column(df, candidates):
+    cols = {c.lower().strip(): c for c in df.columns}
+    for cand in candidates:
+        key = cand.lower().strip()
+        if key in cols: return cols[key]
+    return None
+
+def calculate_stats(df):
+    if df.empty: return {"today": 0, "night": 0, "pending": 0, "breakdown": {}}
     
-    # Handle charge formatting
-    raw_charge = lead_data.get('Charge', lead_data.get('Charge Amount', '$0.00'))
-    amount = raw_charge if '$' in str(raw_charge) else f"${raw_charge}"
+    col_charge = find_column(df, ['Charge', 'Charge Amount', 'Amount'])
+    col_status = find_column(df, ['Status', 'State'])
+    col_time = find_column(df, ['Timestamp', 'Date', 'Time'])
+    col_agent = find_column(df, ['Agent Name', 'Agent'])
+
+    if col_charge:
+        df['ChargeFloat'] = df[col_charge].astype(str).replace(r'[^0-9.]', '', regex=True)
+        df['ChargeFloat'] = pd.to_numeric(df['ChargeFloat'], errors='coerce').fillna(0.0)
+    else:
+        df['ChargeFloat'] = 0.0
+
+    if col_time:
+        df['dt'] = pd.to_datetime(df[col_time], format='mixed', errors='coerce')
+    else:
+        df['dt'] = pd.NaT
+
+    pending = 0
+    if col_status:
+        df['StatusClean'] = df[col_status].astype(str).str.strip().str.title()
+        pending = len(df[df['StatusClean'] == 'Pending'])
+    else:
+        df['StatusClean'] = "Unknown"
+
+    now = datetime.now(TZ_KARACHI)
+    today = now.date()
+    yesterday = today - timedelta(days=1)
+    tomorrow = today + timedelta(days=1)
     
-    llc_name = lead_data.get('LLC', 'Visionary Pathways')
+    night_start = time(19, 0)
+    night_end = time(6, 0)
+    reset_time = time(9, 0)
     
-    prompt = f"""
-    You are a professional Customer Support AI for {llc_name}.
-    
-    Write a payment confirmation email to a client with the following details:
-    - Client Name: {name}
-    - Service Provider: {provider}
-    - Charged Amount: {amount}
-    - Authorized Retailer: {llc_name}
-    - Monthly Bill Next Month: Calculate approx $15 more than the charge amount.
-    - Discount: $10.00 monthly discount for AutoPay.
-    
-    Strictly follow this structure:
-    "Dear [Client Name],
-    
-    Thank you for choosing [Provider].
-    
-    We’re writing to confirm that a payment of [Amount] has been successfully charged to your account.
-    
-    Beginning next month, your monthly bill will be [Calculated Amount], which reflects a $10.00 monthly discount applied for setting up AutoPay through [LLC Name], an authorized [Provider] retailer.
-    
-    If you have any questions regarding your billing, AutoPay setup, or applied discount, our team is always here to assist you.
-    
-    Thank you for choosing [Provider]. We look forward to serving you.
-    
-    Warm regards,
-    Customer Support Team
-    [Provider]"
-    
-    Output ONLY the email body. Do not include subject lines.
-    """
+    window_start = None
+    window_end = None
+
+    if now.time() >= night_start:
+        window_start = datetime.combine(today, night_start)
+        window_end = datetime.combine(tomorrow, night_end)
+    elif now.time() < night_end:
+        window_start = datetime.combine(yesterday, night_start)
+        window_end = datetime.combine(today, night_end)
+    else:
+        if now.time() < reset_time:
+            window_start = datetime.combine(yesterday, night_start)
+            window_end = datetime.combine(today, night_end)
+        else:
+            window_start = None
+
+    night_total = 0.0
+    breakdown = {}
+
+    if window_start and col_status and col_time:
+        night_mask = ((df['StatusClean'] == "Charged") & (df['dt'] >= window_start) & (df['dt'] <= window_end))
+        night_df = df.loc[night_mask]
+        night_total = night_df['ChargeFloat'].sum()
+        if col_agent: breakdown = night_df.groupby(col_agent)['ChargeFloat'].sum().to_dict()
+
+    today_total = 0.0
+    if col_status and col_time:
+        today_start = datetime.combine(today, time(0,0))
+        today_mask = (df['StatusClean'] == "Charged") & (df['dt'] >= today_start)
+        today_total = df.loc[today_mask, 'ChargeFloat'].sum()
+
+    return { "today": round(today_total, 2), "night": round(night_total, 2), "pending": pending, "breakdown": breakdown }
+
+# --- ROUTES ---
+
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request): return templates.TemplateResponse("index.html", {"request": request})
+
+@app.get("/billing", response_class=HTMLResponse)
+async def view_billing(request: Request):
+    return templates.TemplateResponse("billing.html", {"request": request, "agents": AGENTS_BILLING, "providers": PROVIDERS, "llcs": LLC_SPEC})
+
+@app.get("/insurance", response_class=HTMLResponse)
+async def view_insurance(request: Request):
+    return templates.TemplateResponse("insurance.html", {"request": request, "agents": AGENTS_INSURANCE, "llcs": LLC_INS})
+
+@app.get("/manager", response_class=HTMLResponse)
+async def view_manager(request: Request):
+    return templates.TemplateResponse("manager.html", {
+        "request": request, 
+        "pusher_key": PUSHER_KEY, 
+        "pusher_cluster": PUSHER_CLUSTER
+    })
+
+@app.get("/api/public/night-stats")
+async def get_public_stats():
+    current_time = time_module.time()
+    if current_time - STATS_CACHE["last_updated"] < CACHE_DURATION:
+        return STATS_CACHE["data"]
 
     try:
-        response = completion(
-            model="groq/llama3-8b-8192", 
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response['choices'][0]['message']['content']
+        ws_bill = get_worksheet('billing')
+        ws_ins = get_worksheet('insurance')
+        if not ws_bill or not ws_ins: return STATS_CACHE["data"]
+
+        bill_data = rows_to_dict(ws_bill.get_all_values())
+        ins_data = rows_to_dict(ws_ins.get_all_values())
+        stats_bill = calculate_stats(pd.DataFrame(bill_data))
+        stats_ins = calculate_stats(pd.DataFrame(ins_data))
+        
+        new_data = {
+            "billing": { "total": stats_bill['night'], "breakdown": stats_bill['breakdown'] },
+            "insurance": { "total": stats_ins['night'], "breakdown": stats_ins['breakdown'] }
+        }
+        STATS_CACHE["data"] = new_data
+        STATS_CACHE["last_updated"] = current_time
+        return new_data
     except Exception as e:
-        print(f"LLM Error: {e}")
-        return None
-
-# ==========================================
-# ROUTES
-# ==========================================
-
-@app.get("/")
-def home():
-    return {"message": "TWH Portal API is Running"}
+        print(f"Stats Error: {e}")
+        return STATS_CACHE["data"]
 
 @app.post("/api/save-lead")
 async def save_lead(
@@ -168,6 +271,7 @@ async def save_lead(
     ws = get_worksheet(type)
     if not ws: return JSONResponse({"status": "error", "message": "DB Connection Failed"}, 500)
 
+    # --- FORMAT CHARGE WITH $ ---
     try:
         clean_charge = float(str(charge_amt).replace('$', '').replace(',', '').strip())
         final_charge = f"${clean_charge:.2f}"
@@ -175,13 +279,13 @@ async def save_lead(
         final_charge = charge_amt 
 
     if is_edit == 'true' and timestamp_mode == 'keep' and original_timestamp:
-        timestamp_str = original_timestamp
         try: date_str = original_timestamp.split(" ")[0]
         except: d, t = get_timestamp(); date_str = d
+        timestamp_str = original_timestamp
     else:
         date_str, timestamp_str = get_timestamp()
 
-    # --- ID FIX ---
+    # --- FIX: STORE ID AS INT IF POSSIBLE ---
     raw_id = order_id if type == 'billing' else record_id
     if raw_id and str(raw_id).isdigit():
         primary_id = int(raw_id)
@@ -202,11 +306,12 @@ async def save_lead(
         if is_edit == 'true' and row_index:
             range_start = f"A{row_index}"
             ws.update(f"{range_start}:{range_end}", [row_data])
+            STATS_CACHE["last_updated"] = 0
             return {"status": "success", "message": "Lead Updated Successfully"}
         else:
             ws.append_row(row_data)
+            STATS_CACHE["last_updated"] = 0
             
-            # --- MANAGER NOTIFICATION (Standard) ---
             try:
                 pusher_client.trigger('techware-channel', 'new-lead', {
                     'agent': agent,
@@ -221,11 +326,30 @@ async def save_lead(
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, 500)
 
+@app.post("/api/delete-lead")
+async def delete_lead(type: str = Form(...), id: str = Form(...)):
+    ws = get_worksheet(type)
+    if not ws: return JSONResponse({"status": "error", "message": "DB Error"}, 500)
+    try:
+        # For deletion, we still delete the first occurrence or you might want specific row logic
+        # For safety, let's keep it simple: findall, delete duplicates one by one or just first.
+        # User is editing a specific row, so we should ideally pass row_index to delete.
+        # But to keep it backward compatible:
+        cell = ws.find(id, in_column=1)
+        if cell:
+            ws.delete_rows(cell.row)
+            STATS_CACHE["last_updated"] = 0
+            return {"status": "success", "message": "Deleted successfully"}
+        return {"status": "error", "message": "ID not found"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 @app.get("/api/get-lead")
 async def get_lead(type: str, id: str, row_index: Optional[int] = None):
     ws = get_worksheet(type)
     if not ws: return JSONResponse({"status": "error"}, 500)
     try:
+        # 1. FETCH BY ROW INDEX
         if row_index:
             row_values = ws.row_values(row_index)
             headers = ws.row_values(1)
@@ -234,16 +358,21 @@ async def get_lead(type: str, id: str, row_index: Optional[int] = None):
             if 'Record_ID' not in data and 'Order ID' in data: data['Record_ID'] = data['Order ID']
             return {"status": "success", "data": data}
         
+        # 2. SEARCH BY ID (ROBUST: Try String AND Int)
         cells = []
+        
+        # Attempt 1: Search exactly as provided
         try: cells = ws.findall(id, in_column=1)
         except: pass
 
+        # Attempt 2: If not found and input is numeric, search as Integer
         if not cells and str(id).strip().isdigit():
             try: cells = ws.findall(int(id), in_column=1)
             except: pass
 
         if not cells: return JSONResponse({"status": "error", "message": "Not Found"}, 404)
         
+        # 3. HANDLE DUPLICATES
         if len(cells) == 1:
             row_values = ws.row_values(cells[0].row)
             headers = ws.row_values(1)
@@ -254,76 +383,96 @@ async def get_lead(type: str, id: str, row_index: Optional[int] = None):
         else:
             candidates = []
             headers = ws.row_values(1)
+            
             for cell in cells:
                 r_vals = ws.row_values(cell.row)
                 d = dict(zip(headers, r_vals))
+                
+                name = d.get('Client Name', d.get('Name', 'Unknown'))
+                charge = d.get('Charge', d.get('Charge Amount', '$0'))
+                time_val = d.get('Timestamp', 'No Time')
+                
                 candidates.append({
                     "row_index": cell.row, 
-                    "name": d.get('Client Name', d.get('Name', 'Unknown')), 
-                    "charge": d.get('Charge', d.get('Charge Amount', '$0')),
-                    "timestamp": d.get('Timestamp', '')
+                    "name": name, 
+                    "charge": charge,
+                    "timestamp": time_val
                 })
+            
             candidates.sort(key=lambda x: x['row_index'], reverse=True)
             return {"status": "multiple", "candidates": candidates}
 
     except Exception as e: 
         return JSONResponse({"status": "error", "message": str(e)}, 500)
 
-@app.post("/api/update-status")
-async def update_status(
-    type: str = Form(...),
-    id: str = Form(...),
-    status: str = Form(...),
-    row_index: Optional[int] = Form(None)
-):
+@app.post("/api/manager/login")
+async def manager_login(user_id: str = Form(...), password: str = Form(...)):
+    ws = get_worksheet('auth')
+    if not ws: return JSONResponse({"status": "error", "message": "Auth DB Error"}, 500)
+    records = ws.get_all_records()
+    df = pd.DataFrame(records)
+    if 'ID' not in df.columns: return JSONResponse({"status": "error", "message": "Config Error"}, 500)
+    user = df[df['ID'].astype(str) == user_id]
+    if user.empty: return JSONResponse({"status": "error", "message": "User not found"}, 401)
+    stored = str(user.iloc[0]['Password'])
+    hashed = hashlib.sha256(password.encode()).hexdigest()
+    if password == stored or hashed == stored:
+        return {"status": "success", "token": f"auth_{user_id}", "role": "Manager"}
+    return JSONResponse({"status": "error", "message": "Invalid password"}, 401)
+
+@app.get("/api/manager/data")
+async def get_manager_data(token: str):
+    ws_bill = get_worksheet('billing')
+    ws_ins = get_worksheet('insurance')
+    bill_data = rows_to_dict(ws_bill.get_all_values()) if ws_bill else []
+    ins_data = rows_to_dict(ws_ins.get_all_values()) if ws_ins else []
+    stats_bill = calculate_stats(pd.DataFrame(bill_data))
+    stats_ins = calculate_stats(pd.DataFrame(ins_data))
+    return {"billing": bill_data, "insurance": ins_data, "stats_bill": stats_bill, "stats_ins": stats_ins}
+
+@app.post("/api/manager/update_status")
+async def update_status(type: str = Form(...), id: str = Form(...), status: str = Form(...)):
     ws = get_worksheet(type)
-    if not ws: return JSONResponse({"status": "error"}, 500)
+    if not ws: return JSONResponse({"status": "error", "message": "DB Connection Failed"}, 500)
     
     try:
-        # 1. FIND ROW
-        target_row = row_index
-        if not target_row:
-            cell = ws.find(id, in_column=1)
-            if not cell and str(id).isdigit():
-                cell = ws.find(int(id), in_column=1)
-            if cell: target_row = cell.row
-        
-        if not target_row: return JSONResponse({"status": "error", "message": "ID Not Found"}, 404)
+        try:
+            cells = ws.findall(id, in_column=1)
+        except gspread.exceptions.CellNotFound:
+            cells = []
 
-        # 2. UPDATE STATUS
+        if not cells:
+            return {"status": "error", "message": f"ID '{id}' not found."}
+
+        # Update NEWEST one (highest row number)
+        target_cell = max(cells, key=lambda c: c.row)
+
         headers = ws.row_values(1)
-        try: status_col = headers.index('Status') + 1
-        except: status_col = 15 if type == 'billing' else 14
+        status_col_index = 0
+        possible_names = ["status", "state", "approval", "current status"]
         
-        ws.update_cell(target_row, status_col, status)
+        for index, header in enumerate(headers):
+            if str(header).strip().lower() in possible_names:
+                status_col_index = index + 1
+                break
+        
+        if status_col_index == 0:
+            status_col_index = 15 if type == 'billing' else 14
 
-        # 3. IF CHARGED -> GENERATE EMAIL & NOTIFY AGENT
-        generated_email = None
-        if status == "Charged" and type == 'billing':
-            # Get full data to find Agent Name and Generate Email
-            row_values = ws.row_values(target_row)
-            data = dict(zip(headers, row_values))
-            
-            agent_name = data.get('Agent Name', data.get('Agent', ''))
-            generated_email = generate_email_with_groq(data)
-            
-            if generated_email:
-                try:
-                    # TRIGGER PUSHER EVENT FOR THE AGENT
-                    pusher_client.trigger('techware-channel', 'payment-confirmed', {
-                        'agent': agent_name,
-                        'email_body': generated_email,
-                        'client_name': data.get('Client Name', 'Client'),
-                        'message': "Payment Approved! Email Generated."
-                    })
-                except Exception as e:
-                    print(f"Pusher Notification Error: {e}")
+        ws.update_cell(target_cell.row, status_col_index, status)
+        STATS_CACHE["last_updated"] = 0
+        
+        try:
+            pusher_client.trigger('techware-channel', 'status-update', {
+                'id': id,
+                'status': status,
+                'type': type
+            })
+        except Exception as e:
+            print(f"Pusher Error: {e}")
 
-        return {
-            "status": "success", 
-            "message": "Status Updated", 
-            "generated_email": generated_email
-        }
+        return {"status": "success", "message": "Updated"}
 
     except Exception as e:
-        return JSONResponse({"status": "error", "message": str(e)}, 500)
+        return {"status": "error", "message": str(e)}
+
