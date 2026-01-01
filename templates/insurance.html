@@ -147,7 +147,12 @@
         // Set today's date
         document.getElementById('displayDate').value = new Date().toISOString().split('T')[0].replace(/-/g, '/');
     </script>
+    
+    <script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
+    <script>
+        window.PUSHER_KEY = "{{ pusher_key }}";
+        window.PUSHER_CLUSTER = "{{ pusher_cluster }}";
+    </script>
+    <script src="/static/js/main.js"></script>
 </body>
 </html>
-
-
