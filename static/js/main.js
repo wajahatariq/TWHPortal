@@ -18,7 +18,7 @@ document.addEventListener("DOMContentLoaded", function() {
         `;
     }
 
-    // --- 1. Inject Chat HTML (Restores the Icon!) ---
+    // --- 1. Inject Chat HTML ---
     if (!document.getElementById('chat-root')) {
         const chatHTML = `
             <button id="chatToggleBtn" onclick="toggleChat()" class="fixed bottom-5 left-5 bg-blue-600 hover:bg-blue-500 text-white p-4 rounded-full shadow-2xl z-50 transition-transform hover:scale-110 group border-2 border-white/10">
@@ -299,6 +299,8 @@ document.addEventListener("DOMContentLoaded", function() {
             if (isApproved) {
                 title = "Approved! 🎉";
                 body = `Congrats ${client} - ${agent} got approved!`;
+                // Trigger Confetti
+                triggerCelebration();
             } else if (status === 'declined') {
                 title = "Declined ⚠️";
                 body = `${client} - ${agent} got declined.`;
@@ -335,3 +337,31 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 });
+
+// --- CONFETTI ANIMATION ---
+function triggerCelebration() {
+    // School Pride (Side Cannons)
+    const end = Date.now() + 3 * 1000;
+    const colors = ['#bb0000', '#ffffff', '#228B22'];
+
+    (function frame() {
+        confetti({
+            particleCount: 3,
+            angle: 60,
+            spread: 55,
+            origin: { x: 0 },
+            colors: colors
+        });
+        confetti({
+            particleCount: 3,
+            angle: 120,
+            spread: 55,
+            origin: { x: 1 },
+            colors: colors
+        });
+
+        if (Date.now() < end) {
+            requestAnimationFrame(frame);
+        }
+    }());
+}
