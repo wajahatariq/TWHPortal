@@ -517,6 +517,17 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
 
         target_cell = max(cells, key=lambda c: c.row)
 
+        # --- NEW: Get Client and Agent Name for Notification ---
+        # We fetch the whole row so we can grab the names
+        row_values = ws.row_values(target_cell.row)
+        headers = ws.row_values(1)
+        row_data = dict(zip(headers, row_values))
+        
+        agent_name = row_data.get('Agent Name', 'Unknown Agent')
+        # Handle variations of Client Name header
+        client_name = row_data.get('Client Name', row_data.get('Name', 'Unknown Client'))
+
+        # --- Update the Status Cell ---
         headers = ws.row_values(1)
         status_col_index = 0
         possible_names = ["status", "state", "approval", "current status"]
@@ -533,10 +544,13 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         STATS_CACHE["last_updated"] = 0
         
         try:
+            # --- NEW: Include names in the payload ---
             pusher_client.trigger('techware-channel', 'status-update', {
                 'id': id,
                 'status': status,
-                'type': type
+                'type': type,
+                'agent': agent_name,    # <--- Added
+                'client': client_name   # <--- Added
             })
         except Exception as e:
             print(f"Pusher Error: {e}")
