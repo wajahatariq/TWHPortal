@@ -42,7 +42,6 @@ STATS_CACHE = {
     }
 }
 
-# Fix for 429 Error: Cache Manager Data for 60 seconds
 MANAGER_CACHE = {
     "last_updated": 0,
     "data": None
@@ -65,8 +64,10 @@ templates = Jinja2Templates(directory=TEMPLATES_DIR)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 TZ_KARACHI = pytz.timezone("Asia/Karachi")
 
-# --- SHEETS SETUP ---
+# --- SHEETS SETUP (ROBUST) ---
 gc = None
+SHEET_NAME = "Company_Transactions"
+
 def get_gc():
     global gc
     try:
@@ -80,21 +81,22 @@ def get_gc():
             print("WARNING: No Credentials found.")
     except Exception as e:
         print(f"Error loading credentials: {e}")
+        gc = None
     return gc
 
-get_gc() # Init
-SHEET_NAME = "Company_Transactions"
-
 def get_worksheet(sheet_type):
+    global gc
     if not gc: get_gc()
     if not gc: return None
+    
     try:
         sh = gc.open(SHEET_NAME)
         if sheet_type == 'billing': return sh.get_worksheet(0)
         if sheet_type == 'insurance': return sh.get_worksheet(1)
         if sheet_type == 'auth': return sh.get_worksheet(2)
     except Exception as e:
-        print(f"Sheet Error: {e}")
+        print(f"Sheet Access Error (forcing reconnect): {e}")
+        gc = None # Force reset
         return None
     return None
 
@@ -204,6 +206,25 @@ def calculate_stats(df):
 
     return { "today": round(today_total, 2), "night": round(night_total, 2), "pending": pending, "breakdown": breakdown }
 
+# --- HELPER: RETRY LOGIC ---
+def safe_db_op(operation_func, retries=3):
+    global gc
+    last_error = None
+    for i in range(retries):
+        try:
+            return operation_func()
+        except Exception as e:
+            last_error = e
+            # Check for network/connection errors
+            err_str = str(e).lower()
+            if "connection aborted" in err_str or "remote end closed" in err_str or "429" in err_str:
+                print(f"DB Connection dropped. Retrying ({i+1}/{retries})...")
+                gc = None # Force Reconnect
+                time_module.sleep(1) # Wait a bit
+            else:
+                raise e # Real error (like missing column), don't retry
+    raise last_error
+
 # --- ROUTES ---
 
 @app.get("/", response_class=HTMLResponse)
@@ -244,7 +265,7 @@ async def get_public_stats():
     if current_time - STATS_CACHE["last_updated"] < CACHE_DURATION:
         return STATS_CACHE["data"]
 
-    try:
+    def fetch_op():
         ws_bill = get_worksheet('billing')
         ws_ins = get_worksheet('insurance')
         if not ws_bill or not ws_ins: return STATS_CACHE["data"]
@@ -254,10 +275,13 @@ async def get_public_stats():
         stats_bill = calculate_stats(pd.DataFrame(bill_data))
         stats_ins = calculate_stats(pd.DataFrame(ins_data))
         
-        new_data = {
+        return {
             "billing": { "total": stats_bill['night'], "breakdown": stats_bill['breakdown'] },
             "insurance": { "total": stats_ins['night'], "breakdown": stats_ins['breakdown'] }
         }
+
+    try:
+        new_data = safe_db_op(fetch_op)
         STATS_CACHE["data"] = new_data
         STATS_CACHE["last_updated"] = current_time
         return new_data
@@ -278,37 +302,21 @@ async def send_chat(
     role: str = Form(...) 
 ):
     current_time = time_module.time()
-    
-    # Rate Limit: Reset if hour passed
     if current_time - CHAT_RATE_LIMIT["start"] > 3600:
         CHAT_RATE_LIMIT["start"] = current_time
         CHAT_RATE_LIMIT["count"] = 0
-        
-    # Rate Limit: Check Count
     if CHAT_RATE_LIMIT["count"] >= 30:
         return JSONResponse({"status": "error", "message": "Global chat limit reached (30/hr)."}, 429)
 
     CHAT_RATE_LIMIT["count"] += 1
-    
-    # Prepare Data
     t_str = datetime.now(TZ_KARACHI).strftime("%I:%M %p")
-    msg_data = {
-        "sender": sender,
-        "message": message,
-        "role": role,
-        "time": t_str
-    }
+    msg_data = {"sender": sender, "message": message, "role": role, "time": t_str}
     
-    # Save to memory (keep last 50)
     CHAT_HISTORY.append(msg_data)
-    if len(CHAT_HISTORY) > 50:
-        CHAT_HISTORY.pop(0)
+    if len(CHAT_HISTORY) > 50: CHAT_HISTORY.pop(0)
 
-    # Trigger Pusher
-    try:
-        pusher_client.trigger('techware-channel', 'new-chat', msg_data)
-    except Exception as e:
-        print(f"Pusher Chat Error: {e}")
+    try: pusher_client.trigger('techware-channel', 'new-chat', msg_data)
+    except Exception as e: print(f"Pusher Chat Error: {e}")
 
     return {"status": "success"}
 
@@ -338,15 +346,11 @@ async def save_lead(
     original_timestamp: Optional[str] = Form(None),
     row_index: Optional[int] = Form(None)
 ):
-    ws = get_worksheet(type)
-    if not ws: return JSONResponse({"status": "error", "message": "DB Connection Failed"}, 500)
-
-    # --- FORMAT CHARGE WITH $ ---
+    # --- DATA PREP ---
     try:
         clean_charge = float(str(charge_amt).replace('$', '').replace(',', '').strip())
         final_charge = f"${clean_charge:.2f}"
-    except:
-        final_charge = charge_amt 
+    except: final_charge = charge_amt 
 
     if is_edit == 'true' and timestamp_mode == 'keep' and original_timestamp:
         try: date_str = original_timestamp.split(" ")[0]
@@ -355,13 +359,8 @@ async def save_lead(
     else:
         date_str, timestamp_str = get_timestamp()
 
-    # --- FIX: STORE ID AS INT IF POSSIBLE ---
     raw_id = order_id if type == 'billing' else record_id
-    if raw_id and str(raw_id).isdigit():
-        primary_id = int(raw_id)
-    else:
-        primary_id = raw_id
-
+    primary_id = int(raw_id) if raw_id and str(raw_id).isdigit() else raw_id
     final_status = status if is_edit == 'true' else "Pending"
     final_code = pin_code if pin_code else account_number if account_number else ""
 
@@ -372,30 +371,36 @@ async def save_lead(
         row_data = [primary_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge, llc, date_str, final_status, timestamp_str]
         range_end = f"O{row_index}"
 
-    try:
+    # --- DB OPERATION (WITH RETRY) ---
+    def db_save_op():
+        ws = get_worksheet(type)
+        if not ws: raise Exception("DB Connection Failed")
+        
         if is_edit == 'true' and row_index:
             range_start = f"A{row_index}"
             ws.update(f"{range_start}:{range_end}", [row_data])
-            STATS_CACHE["last_updated"] = 0
-            MANAGER_CACHE["last_updated"] = 0  # Invalidating Cache
-            
-            # --- TRIGGER EDIT NOTIFICATION ---
+        else:
+            ws.append_row(row_data)
+
+    try:
+        safe_db_op(db_save_op)
+        
+        # Post-Save Actions
+        STATS_CACHE["last_updated"] = 0
+        MANAGER_CACHE["last_updated"] = 0 
+        
+        if is_edit == 'true':
             try:
                 pusher_client.trigger('techware-channel', 'lead-edited', {
                     'agent': agent,
                     'id': primary_id,
                     'type': type,
-                    'client': client_name, # Includes client name for notification
+                    'client': client_name, 
                     'message': f"{type.title()} Lead #{primary_id} was edited by {agent}"
                 })
             except Exception as e: print(f"Pusher Edit Error: {e}")
-            
             return {"status": "success", "message": "Lead Updated Successfully"}
         else:
-            ws.append_row(row_data)
-            STATS_CACHE["last_updated"] = 0
-            MANAGER_CACHE["last_updated"] = 0  # Invalidating Cache
-            
             try:
                 pusher_client.trigger('techware-channel', 'new-lead', {
                     'agent': agent,
@@ -404,22 +409,28 @@ async def save_lead(
                     'message': f"New {type} lead from {agent}"
                 })
             except Exception as e: print(f"Pusher Error: {e}")
-
             send_pushbullet(f"New {type.title()} Lead", f"{agent} - {final_charge}")
             return {"status": "success", "message": "Lead Submitted Successfully"}
+
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, 500)
 
 @app.post("/api/delete-lead")
 async def delete_lead(type: str = Form(...), id: str = Form(...)):
-    ws = get_worksheet(type)
-    if not ws: return JSONResponse({"status": "error", "message": "DB Error"}, 500)
-    try:
+    def delete_op():
+        ws = get_worksheet(type)
+        if not ws: raise Exception("DB Error")
         cell = ws.find(id, in_column=1)
         if cell:
             ws.delete_rows(cell.row)
+            return True
+        return False
+
+    try:
+        found = safe_db_op(delete_op)
+        if found:
             STATS_CACHE["last_updated"] = 0
-            MANAGER_CACHE["last_updated"] = 0  # Invalidating Cache
+            MANAGER_CACHE["last_updated"] = 0
             return {"status": "success", "message": "Deleted successfully"}
         return {"status": "error", "message": "ID not found"}
     except Exception as e:
@@ -427,9 +438,11 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
 
 @app.get("/api/get-lead")
 async def get_lead(type: str, id: str, row_index: Optional[int] = None):
-    ws = get_worksheet(type)
-    if not ws: return JSONResponse({"status": "error"}, 500)
-    try:
+    # This is a read op, we can wrap it too
+    def fetch_lead_op():
+        ws = get_worksheet(type)
+        if not ws: raise Exception("DB Error")
+        
         # 1. FETCH BY ROW INDEX
         if row_index:
             row_values = ws.row_values(row_index)
@@ -439,19 +452,15 @@ async def get_lead(type: str, id: str, row_index: Optional[int] = None):
             if 'Record_ID' not in data and 'Order ID' in data: data['Record_ID'] = data['Order ID']
             return {"status": "success", "data": data}
         
-        # 2. SEARCH BY ID (ROBUST: Try String AND Int)
+        # 2. SEARCH BY ID
         cells = []
-        
-        # Attempt 1: Search exactly as provided
         try: cells = ws.findall(id, in_column=1)
         except: pass
-
-        # Attempt 2: If not found and input is numeric, search as Integer
         if not cells and str(id).strip().isdigit():
             try: cells = ws.findall(int(id), in_column=1)
             except: pass
 
-        if not cells: return JSONResponse({"status": "error", "message": "Not Found"}, 404)
+        if not cells: return None # Signal Not Found
         
         # 3. HANDLE DUPLICATES
         if len(cells) == 1:
@@ -464,131 +473,156 @@ async def get_lead(type: str, id: str, row_index: Optional[int] = None):
         else:
             candidates = []
             headers = ws.row_values(1)
-            
             for cell in cells:
                 r_vals = ws.row_values(cell.row)
                 d = dict(zip(headers, r_vals))
-                
                 name = d.get('Client Name', d.get('Name', 'Unknown'))
                 charge = d.get('Charge', d.get('Charge Amount', '$0'))
                 time_val = d.get('Timestamp', 'No Time')
-                
-                candidates.append({
-                    "row_index": cell.row, 
-                    "name": name, 
-                    "charge": charge,
-                    "timestamp": time_val
-                })
-            
+                candidates.append({"row_index": cell.row, "name": name, "charge": charge, "timestamp": time_val})
             candidates.sort(key=lambda x: x['row_index'], reverse=True)
             return {"status": "multiple", "candidates": candidates}
 
+    try:
+        result = safe_db_op(fetch_lead_op)
+        if result is None: return JSONResponse({"status": "error", "message": "Not Found"}, 404)
+        return result
     except Exception as e: 
         return JSONResponse({"status": "error", "message": str(e)}, 500)
 
 @app.post("/api/manager/login")
 async def manager_login(user_id: str = Form(...), password: str = Form(...)):
-    ws = get_worksheet('auth')
-    if not ws: return JSONResponse({"status": "error", "message": "Auth DB Error"}, 500)
-    records = ws.get_all_records()
-    df = pd.DataFrame(records)
-    if 'ID' not in df.columns: return JSONResponse({"status": "error", "message": "Config Error"}, 500)
-    user = df[df['ID'].astype(str) == user_id]
-    if user.empty: return JSONResponse({"status": "error", "message": "User not found"}, 401)
-    stored = str(user.iloc[0]['Password'])
-    hashed = hashlib.sha256(password.encode()).hexdigest()
-    if password == stored or hashed == stored:
-        return {"status": "success", "token": f"auth_{user_id}", "role": "Manager"}
-    return JSONResponse({"status": "error", "message": "Invalid password"}, 401)
+    def login_op():
+        ws = get_worksheet('auth')
+        if not ws: raise Exception("Auth DB Error")
+        records = ws.get_all_records()
+        df = pd.DataFrame(records)
+        return df
+    
+    try:
+        df = safe_db_op(login_op)
+        if 'ID' not in df.columns: return JSONResponse({"status": "error", "message": "Config Error"}, 500)
+        user = df[df['ID'].astype(str) == user_id]
+        if user.empty: return JSONResponse({"status": "error", "message": "User not found"}, 401)
+        stored = str(user.iloc[0]['Password'])
+        hashed = hashlib.sha256(password.encode()).hexdigest()
+        if password == stored or hashed == stored:
+            return {"status": "success", "token": f"auth_{user_id}", "role": "Manager"}
+        return JSONResponse({"status": "error", "message": "Invalid password"}, 401)
+    except Exception as e:
+        return JSONResponse({"status": "error", "message": str(e)}, 500)
 
-# --- REPLACED: NEW FUNCTION WITH CACHING ---
 @app.get("/api/manager/data")
 async def get_manager_data(token: str):
-    # 1. Check Cache
     current_time = time_module.time()
     if current_time - MANAGER_CACHE["last_updated"] < CACHE_DURATION and MANAGER_CACHE["data"]:
         return MANAGER_CACHE["data"]
 
-    # 2. Fetch Fresh Data (if cache expired)
-    ws_bill = get_worksheet('billing')
-    # Sleep 1 second to prevent hitting rate limit
-    time_module.sleep(1) 
-    ws_ins = get_worksheet('insurance')
+    def fetch_manager_data():
+        ws_bill = get_worksheet('billing')
+        time_module.sleep(1) 
+        ws_ins = get_worksheet('insurance')
 
-    bill_data = rows_to_dict(ws_bill.get_all_values()) if ws_bill else []
-    ins_data = rows_to_dict(ws_ins.get_all_values()) if ws_ins else []
-    
-    stats_bill = calculate_stats(pd.DataFrame(bill_data))
-    stats_ins = calculate_stats(pd.DataFrame(ins_data))
-    
-    response_data = {
-        "billing": bill_data, 
-        "insurance": ins_data, 
-        "stats_bill": stats_bill, 
-        "stats_ins": stats_ins
-    }
+        bill_data = rows_to_dict(ws_bill.get_all_values()) if ws_bill else []
+        ins_data = rows_to_dict(ws_ins.get_all_values()) if ws_ins else []
+        
+        stats_bill = calculate_stats(pd.DataFrame(bill_data))
+        stats_ins = calculate_stats(pd.DataFrame(ins_data))
+        
+        return {
+            "billing": bill_data, 
+            "insurance": ins_data, 
+            "stats_bill": stats_bill, 
+            "stats_ins": stats_ins
+        }
 
-    # 3. Save to Cache
-    MANAGER_CACHE["data"] = response_data
-    MANAGER_CACHE["last_updated"] = current_time
-    
-    return response_data
+    try:
+        response_data = safe_db_op(fetch_manager_data)
+        MANAGER_CACHE["data"] = response_data
+        MANAGER_CACHE["last_updated"] = current_time
+        return response_data
+    except Exception as e:
+        print(f"Manager Data Error: {e}")
+        return JSONResponse({"status": "error", "message": "Data sync failed, please refresh"}, 500)
 
-# --- UPDATED: FETCH NAMES FOR NOTIFICATION ---
+# --- SMART UPDATE STATUS (Fixed for Duplicates) ---
 @app.post("/api/manager/update_status")
 async def update_status(type: str = Form(...), id: str = Form(...), status: str = Form(...)):
-    ws = get_worksheet(type)
-    if not ws: return JSONResponse({"status": "error", "message": "DB Connection Failed"}, 500)
-    
-    try:
-        try:
-            cells = ws.findall(id, in_column=1)
-        except gspread.exceptions.CellNotFound:
-            cells = []
-
-        if not cells:
-            return {"status": "error", "message": f"ID '{id}' not found."}
-
-        target_cell = max(cells, key=lambda c: c.row)
-
-        # --- NEW: Get Client and Agent Name for Notification ---
-        row_values = ws.row_values(target_cell.row)
-        headers = ws.row_values(1)
-        row_data = dict(zip(headers, row_values))
+    def update_op():
+        ws = get_worksheet(type)
+        if not ws: raise Exception("DB Connection Failed")
         
-        agent_name = row_data.get('Agent Name', 'Unknown Agent')
-        client_name = row_data.get('Client Name', row_data.get('Name', 'Unknown Client'))
-
-        # --- Update the Status Cell ---
-        headers = ws.row_values(1)
-        status_col_index = 0
-        possible_names = ["status", "state", "approval", "current status"]
+        # 1. Fetch ALL data to perform efficient search
+        all_values = ws.get_all_values()
+        if not all_values: raise Exception("Empty Sheet")
         
-        for index, header in enumerate(headers):
-            if str(header).strip().lower() in possible_names:
-                status_col_index = index + 1
+        # 2. Find Status Column
+        headers = [str(h).strip().lower() for h in all_values[0]]
+        status_col_idx = -1
+        possible_status = ["status", "state", "approval", "current status"]
+        for i, h in enumerate(headers):
+            if h in possible_status:
+                status_col_idx = i
                 break
-        
-        if status_col_index == 0:
-            status_col_index = 15 if type == 'billing' else 14
+        if status_col_idx == -1:
+            status_col_idx = 14 if type == 'billing' else 13
 
-        ws.update_cell(target_cell.row, status_col_index, status)
+        # 3. Find Matches & Check Status
+        target_id = str(id).strip()
+        candidates = []
+        
+        for row_num, row in enumerate(all_values):
+            # Skip header (row_num 0)
+            if row_num == 0: continue
+            
+            # Check ID (Column 1 -> index 0)
+            if len(row) > 0 and str(row[0]).strip() == target_id:
+                curr_status = str(row[status_col_idx]).strip().title() if len(row) > status_col_idx else ""
+                candidates.append({
+                    "row_index": row_num + 1, # 1-based index for GSheets
+                    "status": curr_status,
+                    "data": row
+                })
+
+        if not candidates:
+            raise Exception(f"ID '{id}' not found.")
+
+        # 4. SELECT THE RIGHT ROW
+        # PRIORITY: Last "Pending" Row > Last Row
+        pending_matches = [c for c in candidates if c['status'] == 'Pending']
+        
+        if pending_matches:
+            target_match = max(pending_matches, key=lambda x: x['row_index'])
+        else:
+            target_match = max(candidates, key=lambda x: x['row_index'])
+
+        target_row = target_match['row_index']
+        target_data = target_match['data']
+        
+        # Get Names for Notification
+        headers_map = dict(zip(all_values[0], target_data))
+        agent_name = headers_map.get('Agent Name', 'Unknown Agent')
+        client_name = headers_map.get('Client Name', headers_map.get('Name', 'Unknown Client'))
+
+        # 5. Update
+        ws.update_cell(target_row, status_col_idx + 1, status) # +1 for 1-based column
+        return agent_name, client_name
+
+    try:
+        agent_name, client_name = safe_db_op(update_op)
         STATS_CACHE["last_updated"] = 0
-        MANAGER_CACHE["last_updated"] = 0  # Invalidating Cache
+        MANAGER_CACHE["last_updated"] = 0 
         
         try:
-            # --- NEW: Include names in the payload ---
             pusher_client.trigger('techware-channel', 'status-update', {
                 'id': id,
                 'status': status,
                 'type': type,
-                'agent': agent_name,    # <--- Added
-                'client': client_name   # <--- Added
+                'agent': agent_name,
+                'client': client_name
             })
-        except Exception as e:
-            print(f"Pusher Error: {e}")
+        except Exception as e: print(f"Pusher Error: {e}")
 
         return {"status": "success", "message": "Updated"}
-
     except Exception as e:
         return {"status": "error", "message": str(e)}
