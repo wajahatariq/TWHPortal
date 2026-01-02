@@ -378,6 +378,7 @@ async def save_lead(
                     'agent': agent,
                     'id': primary_id,
                     'type': type,
+                    'client': client_name, # <--- Added this line
                     'message': f"{type.title()} Lead #{primary_id} was edited by {agent}"
                 })
             except Exception as e: print(f"Pusher Edit Error: {e}")
@@ -559,3 +560,4 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
 
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
