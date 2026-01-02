@@ -23,7 +23,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const chatHTML = `
             <button id="chatToggleBtn" onclick="toggleChat()" class="fixed bottom-5 left-5 bg-blue-600 hover:bg-blue-500 text-white p-4 rounded-full shadow-2xl z-50 transition-transform hover:scale-110 group border-2 border-white/10">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                 </svg>
                 <span class="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full hidden border border-slate-900" id="chatUnreadBadge">0</span>
             </button>
@@ -33,7 +33,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 <div class="bg-slate-900/90 backdrop-blur p-4 border-b border-slate-700 flex justify-between items-center">
                     <div class="flex items-center gap-2">
                         <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                        <h3 class="font-bold text-white text-sm">Team Cloud</h3>
+                        <h3 class="font-bold text-white text-sm">Notifications & Chat</h3>
                     </div>
                     <div class="flex items-center gap-2">
                         <button onclick="requestNotifyPermission()" title="Enable Desktop Notifications" class="text-slate-400 hover:text-yellow-400 transition relative group">
@@ -50,7 +50,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 
                 <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-3 h-80 bg-slate-800/50">
                     <div class="text-center text-xs text-slate-500 mt-4 mb-4 select-none opacity-50">
-                        -- Chat History (Max 50) --<br>
+                        -- History (Max 50) --<br>
                         Rate Limit: 30 msgs/hour
                     </div>
                 </div>
@@ -129,7 +129,7 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         } catch(e) { console.log("Audio autoplay restricted"); }
 
-        // 2. Browser Notification (Only if not focused or chat closed)
+        // 2. Browser Notification (PC Banner)
         if (Notification.permission === "granted") {
             // Check if page is hidden
             if (document.visibilityState === 'hidden' || (type === 'message' && !isOpen) || type !== 'message') {
@@ -185,17 +185,28 @@ document.addEventListener("DOMContentLoaded", function() {
     function appendMessage(data) {
         const myName = getSenderName();
         const isSelf = (data.sender === myName);
-        const roleColor = data.role === 'manager' ? 'text-red-400' : 'text-cyan-400';
         
+        // Dynamic styling for different roles (Chat vs System Alerts)
+        let roleColor = 'text-cyan-400';
+        let bgClass = isSelf ? 'bg-blue-600' : 'bg-slate-700';
+        
+        if (data.role === 'manager') roleColor = 'text-red-400';
+        if (data.sender === 'System') {
+            roleColor = 'text-yellow-400';
+            bgClass = 'bg-slate-800 border-yellow-500/30';
+            if (data.role === 'success') { roleColor = 'text-green-400'; bgClass = 'bg-green-900/20 border-green-500/30'; }
+            if (data.role === 'error') { roleColor = 'text-red-400'; bgClass = 'bg-red-900/20 border-red-500/30'; }
+        }
+
         const div = document.createElement('div');
         div.className = `flex flex-col ${isSelf ? 'items-end' : 'items-start'} animate-fade-in-up`;
         
         div.innerHTML = `
-            <div class="max-w-[85%] ${isSelf ? 'bg-blue-600' : 'bg-slate-700'} rounded-xl px-3 py-2 text-sm text-white shadow-md border border-white/5">
-                ${!isSelf ? `<div class="text-[10px] ${roleColor} font-bold mb-0.5 uppercase tracking-wide">${data.sender}</div>` : ''}
-                <div class="leading-relaxed">${data.message}</div>
+            <div class="max-w-[90%] ${bgClass} rounded-xl px-3 py-2 text-sm text-white shadow-md border border-white/5">
+                ${!isSelf ? `<div class="text-[10px] ${roleColor} font-bold mb-0.5 uppercase tracking-wide flex items-center gap-1">${data.sender === 'System' ? '🔔 ' : ''}${data.sender}</div>` : ''}
+                <div class="leading-relaxed whitespace-pre-wrap">${data.message}</div>
             </div>
-            <div class="text-[9px] text-slate-500 mt-1 px-1 font-mono">${data.time}</div>
+            <div class="text-[9px] text-slate-500 mt-1 px-1 font-mono">${data.time || new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
         `;
         msgsDiv.appendChild(div);
         scrollToBottom();
@@ -261,14 +272,28 @@ document.addEventListener("DOMContentLoaded", function() {
 
         // B. NEW LEAD (SUBMISSION)
         channel.bind('new-lead', function(data) {
-            // High Priority Alert -> Uses 'money' sound (new_lead.mp3)
+            // 1. Alert (PC Banner + Sound)
             triggerAlert(
                 `New ${data.type} Lead!`, 
                 `Agent: ${data.agent}\nAmount: ${data.amount}`, 
                 'money'
             );
             
-            // Refresh dashboard if on Manager Page
+            // 2. Add to History List
+            appendMessage({
+                sender: 'System',
+                message: `New ${data.type} Lead:\n${data.agent} — ${data.amount}`,
+                role: 'success'
+            });
+            
+            // 3. Increment Badge
+            if (!isOpen) {
+                unread++;
+                badge.classList.remove('hidden');
+                badge.innerText = unread > 9 ? '9+' : unread;
+            }
+
+            // 4. Refresh Dashboard (if manager)
             if (window.location.href.includes('manager') && window.updateDashboardStats) {
                 window.updateDashboardStats();
             }
@@ -278,14 +303,30 @@ document.addEventListener("DOMContentLoaded", function() {
         channel.bind('status-update', function(data) {
             const status = data.status.toLowerCase();
             const isApproved = status === 'charged' || status === 'approved';
+            const statusUpper = data.status.toUpperCase();
             
+            // 1. Alert (PC Banner + Sound)
             triggerAlert(
                 `Lead #${data.id} Updated`, 
-                `Status changed to: ${data.status.toUpperCase()}`, 
+                `Status changed to: ${statusUpper}`, 
                 isApproved ? 'money' : 'message' // Use Money sound for approval
             );
+
+            // 2. Add to History List
+            appendMessage({
+                sender: 'System',
+                message: `Lead #${data.id} was ${statusUpper}`,
+                role: isApproved ? 'success' : 'error'
+            });
+
+            // 3. Increment Badge
+            if (!isOpen) {
+                unread++;
+                badge.classList.remove('hidden');
+                badge.innerText = unread > 9 ? '9+' : unread;
+            }
             
-            // Refresh stats if manager
+            // 4. Refresh stats (if manager)
             if (window.location.href.includes('manager') && window.updateDashboardStats) {
                 window.updateDashboardStats();
             }
@@ -296,8 +337,16 @@ document.addEventListener("DOMContentLoaded", function() {
             triggerAlert(
                 `Lead #${data.id} Edited`, 
                 `Edited by: ${data.agent}`, 
-                'edit' // Uses edited.mp3
+                'edit'
             );
+             // Add to History
+            appendMessage({
+                sender: 'System',
+                message: `Lead #${data.id} was edited by ${data.agent}`,
+                role: 'warning'
+            });
+            
+            if (!isOpen) { unread++; badge.classList.remove('hidden'); badge.innerText = unread; }
         });
     }
 });
