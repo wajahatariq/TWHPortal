@@ -371,6 +371,17 @@ async def save_lead(
             range_start = f"A{row_index}"
             ws.update(f"{range_start}:{range_end}", [row_data])
             STATS_CACHE["last_updated"] = 0
+            
+            # --- TRIGGER EDIT NOTIFICATION ---
+            try:
+                pusher_client.trigger('techware-channel', 'lead-edited', {
+                    'agent': agent,
+                    'id': primary_id,
+                    'type': type,
+                    'message': f"{type.title()} Lead #{primary_id} was edited by {agent}"
+                })
+            except Exception as e: print(f"Pusher Edit Error: {e}")
+            
             return {"status": "success", "message": "Lead Updated Successfully"}
         else:
             ws.append_row(row_data)
