@@ -1,10 +1,10 @@
 /* =========================================
-   GLOBAL TEAM CHAT WIDGET
+   GLOBAL TEAM CHAT & NOTIFICATION WIDGET
    ========================================= */
 
 document.addEventListener("DOMContentLoaded", function() {
     
-    // 0. Prepare Agent Selector (If available on page)
+    // --- 0. Prepare Agent Selector (If available on page) ---
     let identityHTML = '';
     if (window.PAGE_AGENTS && Array.isArray(window.PAGE_AGENTS)) {
         const options = window.PAGE_AGENTS.map(a => `<option value="${a}">${a}</option>`).join('');
@@ -18,7 +18,7 @@ document.addEventListener("DOMContentLoaded", function() {
         `;
     }
 
-    // 1. Inject Chat HTML
+    // --- 1. Inject Chat HTML ---
     if (!document.getElementById('chat-root')) {
         const chatHTML = `
             <button id="chatToggleBtn" onclick="toggleChat()" class="fixed bottom-5 left-5 bg-blue-600 hover:bg-blue-500 text-white p-4 rounded-full shadow-2xl z-50 transition-transform hover:scale-110 group border-2 border-white/10">
@@ -35,7 +35,15 @@ document.addEventListener("DOMContentLoaded", function() {
                         <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
                         <h3 class="font-bold text-white text-sm">Team Cloud</h3>
                     </div>
-                    <button onclick="toggleChat()" class="text-slate-400 hover:text-white transition">✕</button>
+                    <div class="flex items-center gap-2">
+                        <button onclick="requestNotifyPermission()" title="Enable Desktop Notifications" class="text-slate-400 hover:text-yellow-400 transition relative group">
+                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
+                             </svg>
+                             <span id="notifyStatusDot" class="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border border-slate-900 hidden"></span>
+                        </button>
+                        <button onclick="toggleChat()" class="text-slate-400 hover:text-white transition">✕</button>
+                    </div>
                 </div>
 
                 ${identityHTML}
@@ -55,7 +63,9 @@ document.addEventListener("DOMContentLoaded", function() {
                 </form>
             </div>
             
-            <audio id="chatSoundAudio" src="/static/sounds/messages.mp3"></audio>
+            <audio id="soundMessage" src="/static/sounds/messages.mp3"></audio>
+            <audio id="soundLead" src="/static/sounds/new_lead.mp3"></audio>
+            <audio id="soundEdit" src="/static/sounds/edited.mp3"></audio>
         `;
 
         const div = document.createElement('div');
@@ -64,16 +74,76 @@ document.addEventListener("DOMContentLoaded", function() {
         document.body.appendChild(div);
     }
 
-    // 2. Variables & Logic
+    // --- 2. Variables ---
     const chatWindow = document.getElementById('chatWindow');
     const msgsDiv = document.getElementById('chatMessages');
     const badge = document.getElementById('chatUnreadBadge');
-    const audio = document.getElementById('chatSoundAudio');
+    const soundMsg = document.getElementById('soundMessage');
+    const soundLead = document.getElementById('soundLead');
+    const soundEdit = document.getElementById('soundEdit');
     const identitySelect = document.getElementById('chatIdentity');
     let isOpen = false;
     let unread = 0;
 
-    // Toggle Chat
+    // --- 3. Notification Logic ---
+    window.requestNotifyPermission = function() {
+        if (!("Notification" in window)) {
+            alert("This browser does not support system notifications");
+            return;
+        }
+        if (Notification.permission === "granted") {
+            new Notification("Notifications Enabled", { body: "You are all set!", icon: "/static/img/Logo Black.png" });
+        } else if (Notification.permission !== "denied") {
+            Notification.requestPermission().then(permission => {
+                if (permission === "granted") {
+                    new Notification("Notifications Enabled", { body: "You will now see popups for new leads.", icon: "/static/img/Logo Black.png" });
+                    updateNotifyDot();
+                }
+            });
+        }
+    };
+
+    function updateNotifyDot() {
+        const dot = document.getElementById('notifyStatusDot');
+        if (Notification.permission === 'granted') {
+             dot.classList.remove('hidden');
+             dot.classList.replace('bg-red-500', 'bg-green-500');
+        } else {
+             dot.classList.add('hidden');
+        }
+    }
+    if(Notification.permission === 'granted') updateNotifyDot();
+
+    function triggerAlert(title, body, type = 'message') {
+        // 1. Play Sound
+        try {
+            if (type === 'money') {
+                soundLead.currentTime = 0;
+                soundLead.play();
+            } else if (type === 'edit') {
+                soundEdit.currentTime = 0;
+                soundEdit.play();
+            } else {
+                soundMsg.currentTime = 0;
+                soundMsg.play();
+            }
+        } catch(e) { console.log("Audio autoplay restricted"); }
+
+        // 2. Browser Notification (Only if not focused or chat closed)
+        if (Notification.permission === "granted") {
+            // Check if page is hidden
+            if (document.visibilityState === 'hidden' || (type === 'message' && !isOpen) || type !== 'message') {
+                const n = new Notification(title, {
+                    body: body,
+                    icon: '/static/img/Logo Black.png',
+                    silent: true // We play sound manually
+                });
+                n.onclick = function() { window.focus(); };
+            }
+        }
+    }
+
+    // --- 4. Chat UI Logic ---
     window.toggleChat = function() {
         isOpen = !isOpen;
         if (isOpen) {
@@ -94,34 +164,24 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     function getSenderName() {
-        // 1. Try Chat Widget Selector (Priority)
         if (identitySelect && identitySelect.value) return identitySelect.value;
-
-        // 2. Try Main Form Input (Sync Fallback)
         const agent = document.getElementById('agent');
         if (agent && agent.value && agent.value !== "") {
-            // Auto-update the chat selector if it matches
             if (identitySelect) identitySelect.value = agent.value;
             return agent.value;
         }
-        
-        // 3. Try Hidden Manager Input
         const hAgent = document.getElementById('h_agent');
         if (hAgent && hAgent.value) return hAgent.value;
-
-        // 4. Fallback based on URL
         if (window.location.href.includes('manager')) return "Manager";
         return null;
     }
 
-    // Auto-Sync: If user changes Main Form, update Chat Selector
     const mainAgentSelect = document.getElementById('agent');
     if(mainAgentSelect && identitySelect) {
-        mainAgentSelect.addEventListener('change', (e) => {
-            identitySelect.value = e.target.value;
-        });
+        mainAgentSelect.addEventListener('change', (e) => { identitySelect.value = e.target.value; });
     }
 
+    // --- 5. Message Rendering ---
     function appendMessage(data) {
         const myName = getSenderName();
         const isSelf = (data.sender === myName);
@@ -141,7 +201,7 @@ document.addEventListener("DOMContentLoaded", function() {
         scrollToBottom();
     }
 
-    // 3. Load History
+    // --- 6. Load History & Send ---
     fetch('/api/chat/history').then(r=>r.json()).then(data => {
         if(Array.isArray(data)) {
             msgsDiv.innerHTML = '<div class="text-center text-xs text-slate-500 mt-4 mb-4 select-none opacity-50">-- Chat History --<br>Limit: 30 msgs/hr</div>';
@@ -149,7 +209,6 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     });
 
-    // 4. Send Message
     document.getElementById('chatForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const input = document.getElementById('chatInput');
@@ -163,7 +222,7 @@ document.addEventListener("DOMContentLoaded", function() {
             return;
         }
 
-        input.value = ''; // Clear input immediately
+        input.value = ''; 
         
         const formData = new FormData();
         formData.append('sender', sender);
@@ -171,43 +230,74 @@ document.addEventListener("DOMContentLoaded", function() {
         formData.append('role', window.location.href.includes('manager') ? 'manager' : 'agent');
 
         try {
-            const res = await fetch('/api/chat/send', { method: 'POST', body: formData });
-            if (!res.ok) {
-                const err = await res.json();
-                alert(err.message || "Error sending message");
-            }
+            await fetch('/api/chat/send', { method: 'POST', body: formData });
         } catch (e) { console.error(e); }
     });
 
-    // 5. Pusher Listener
+    // --- 7. PUSHER LISTENER (THE CORE LOGIC) ---
     if (window.PUSHER_KEY) {
         const pusher = new Pusher(window.PUSHER_KEY, { cluster: window.PUSHER_CLUSTER });
         const channel = pusher.subscribe('techware-channel');
         
+        // A. CHAT MESSAGES
         channel.bind('new-chat', function(data) {
             appendMessage(data);
-
-            // Determine if I sent this message
+            
             const myName = getSenderName();
             const isSelf = (data.sender === myName);
             
-            // --- SOUND LOGIC ---
-            // Play sound for ALL incoming messages (Agent or Manager), 
-            // regardless of whether the chat window is Open or Closed.
+            // Only alert if it's NOT my own message
             if (!isSelf) {
-                try {
-                    audio.currentTime = 0;
-                    audio.play();
-                } catch(e) { console.log("Audio autoplay restricted"); }
+                // If window closed, show badge
+                if (!isOpen) {
+                    unread++;
+                    badge.classList.remove('hidden');
+                    badge.innerText = unread > 9 ? '9+' : unread;
+                }
+                // Trigger Alert (Sound + Popup)
+                triggerAlert(`New Message from ${data.sender}`, data.message, 'message');
             }
+        });
 
-            // --- BADGE LOGIC ---
-            // Only increment badge if window is closed
-            if (!isOpen) {
-                unread++;
-                badge.classList.remove('hidden');
-                badge.innerText = unread > 9 ? '9+' : unread;
+        // B. NEW LEAD (SUBMISSION)
+        channel.bind('new-lead', function(data) {
+            // High Priority Alert -> Uses 'money' sound (new_lead.mp3)
+            triggerAlert(
+                `New ${data.type} Lead!`, 
+                `Agent: ${data.agent}\nAmount: ${data.amount}`, 
+                'money'
+            );
+            
+            // Refresh dashboard if on Manager Page
+            if (window.location.href.includes('manager') && window.updateDashboardStats) {
+                window.updateDashboardStats();
             }
+        });
+
+        // C. STATUS UPDATE (APPROVED/DECLINED)
+        channel.bind('status-update', function(data) {
+            const status = data.status.toLowerCase();
+            const isApproved = status === 'charged' || status === 'approved';
+            
+            triggerAlert(
+                `Lead #${data.id} Updated`, 
+                `Status changed to: ${data.status.toUpperCase()}`, 
+                isApproved ? 'money' : 'message' // Use Money sound for approval
+            );
+            
+            // Refresh stats if manager
+            if (window.location.href.includes('manager') && window.updateDashboardStats) {
+                window.updateDashboardStats();
+            }
+        });
+
+        // D. EDITED LEAD
+        channel.bind('lead-edited', function(data) {
+            triggerAlert(
+                `Lead #${data.id} Edited`, 
+                `Edited by: ${data.agent}`, 
+                'edit' // Uses edited.mp3
+            );
         });
     }
 });
