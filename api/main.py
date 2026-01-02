@@ -41,6 +41,12 @@ STATS_CACHE = {
         "insurance": {"total": 0, "breakdown": {}}
     }
 }
+
+# Fix for 429 Error: Cache Manager Data for 60 seconds
+MANAGER_CACHE = {
+    "last_updated": 0,
+    "data": None
+}
 CACHE_DURATION = 60 
 
 # --- CHAT SETUP ---
@@ -371,6 +377,7 @@ async def save_lead(
             range_start = f"A{row_index}"
             ws.update(f"{range_start}:{range_end}", [row_data])
             STATS_CACHE["last_updated"] = 0
+            MANAGER_CACHE["last_updated"] = 0  # Invalidating Cache
             
             # --- TRIGGER EDIT NOTIFICATION ---
             try:
@@ -378,7 +385,7 @@ async def save_lead(
                     'agent': agent,
                     'id': primary_id,
                     'type': type,
-                    'client': client_name, # <--- Added this line
+                    'client': client_name, # Includes client name for notification
                     'message': f"{type.title()} Lead #{primary_id} was edited by {agent}"
                 })
             except Exception as e: print(f"Pusher Edit Error: {e}")
@@ -387,6 +394,7 @@ async def save_lead(
         else:
             ws.append_row(row_data)
             STATS_CACHE["last_updated"] = 0
+            MANAGER_CACHE["last_updated"] = 0  # Invalidating Cache
             
             try:
                 pusher_client.trigger('techware-channel', 'new-lead', {
@@ -411,6 +419,7 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
         if cell:
             ws.delete_rows(cell.row)
             STATS_CACHE["last_updated"] = 0
+            MANAGER_CACHE["last_updated"] = 0  # Invalidating Cache
             return {"status": "success", "message": "Deleted successfully"}
         return {"status": "error", "message": "ID not found"}
     except Exception as e:
@@ -492,16 +501,40 @@ async def manager_login(user_id: str = Form(...), password: str = Form(...)):
         return {"status": "success", "token": f"auth_{user_id}", "role": "Manager"}
     return JSONResponse({"status": "error", "message": "Invalid password"}, 401)
 
+# --- REPLACED: NEW FUNCTION WITH CACHING ---
 @app.get("/api/manager/data")
 async def get_manager_data(token: str):
+    # 1. Check Cache
+    current_time = time_module.time()
+    if current_time - MANAGER_CACHE["last_updated"] < CACHE_DURATION and MANAGER_CACHE["data"]:
+        return MANAGER_CACHE["data"]
+
+    # 2. Fetch Fresh Data (if cache expired)
     ws_bill = get_worksheet('billing')
+    # Sleep 1 second to prevent hitting rate limit
+    time_module.sleep(1) 
     ws_ins = get_worksheet('insurance')
+
     bill_data = rows_to_dict(ws_bill.get_all_values()) if ws_bill else []
     ins_data = rows_to_dict(ws_ins.get_all_values()) if ws_ins else []
+    
     stats_bill = calculate_stats(pd.DataFrame(bill_data))
     stats_ins = calculate_stats(pd.DataFrame(ins_data))
-    return {"billing": bill_data, "insurance": ins_data, "stats_bill": stats_bill, "stats_ins": stats_ins}
+    
+    response_data = {
+        "billing": bill_data, 
+        "insurance": ins_data, 
+        "stats_bill": stats_bill, 
+        "stats_ins": stats_ins
+    }
 
+    # 3. Save to Cache
+    MANAGER_CACHE["data"] = response_data
+    MANAGER_CACHE["last_updated"] = current_time
+    
+    return response_data
+
+# --- UPDATED: FETCH NAMES FOR NOTIFICATION ---
 @app.post("/api/manager/update_status")
 async def update_status(type: str = Form(...), id: str = Form(...), status: str = Form(...)):
     ws = get_worksheet(type)
@@ -519,13 +552,11 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         target_cell = max(cells, key=lambda c: c.row)
 
         # --- NEW: Get Client and Agent Name for Notification ---
-        # We fetch the whole row so we can grab the names
         row_values = ws.row_values(target_cell.row)
         headers = ws.row_values(1)
         row_data = dict(zip(headers, row_values))
         
         agent_name = row_data.get('Agent Name', 'Unknown Agent')
-        # Handle variations of Client Name header
         client_name = row_data.get('Client Name', row_data.get('Name', 'Unknown Client'))
 
         # --- Update the Status Cell ---
@@ -543,6 +574,7 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
 
         ws.update_cell(target_cell.row, status_col_index, status)
         STATS_CACHE["last_updated"] = 0
+        MANAGER_CACHE["last_updated"] = 0  # Invalidating Cache
         
         try:
             # --- NEW: Include names in the payload ---
@@ -560,4 +592,3 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
 
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
