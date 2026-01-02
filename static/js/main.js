@@ -245,7 +245,7 @@ document.addEventListener("DOMContentLoaded", function() {
         } catch (e) { console.error(e); }
     });
 
-    // --- 7. PUSHER LISTENER (THE CORE LOGIC) ---
+// --- 7. PUSHER LISTENER (THE CORE LOGIC) ---
     if (window.PUSHER_KEY) {
         const pusher = new Pusher(window.PUSHER_KEY, { cluster: window.PUSHER_CLUSTER });
         const channel = pusher.subscribe('techware-channel');
@@ -253,100 +253,84 @@ document.addEventListener("DOMContentLoaded", function() {
         // A. CHAT MESSAGES
         channel.bind('new-chat', function(data) {
             appendMessage(data);
-            
             const myName = getSenderName();
             const isSelf = (data.sender === myName);
             
-            // Only alert if it's NOT my own message
             if (!isSelf) {
-                // If window closed, show badge
                 if (!isOpen) {
                     unread++;
                     badge.classList.remove('hidden');
                     badge.innerText = unread > 9 ? '9+' : unread;
                 }
-                // Trigger Alert (Sound + Popup)
                 triggerAlert(`New Message from ${data.sender}`, data.message, 'message');
             }
         });
 
         // B. NEW LEAD (SUBMISSION)
         channel.bind('new-lead', function(data) {
-            // 1. Alert (PC Banner + Sound)
             triggerAlert(
                 `New ${data.type} Lead!`, 
                 `Agent: ${data.agent}\nAmount: ${data.amount}`, 
                 'money'
             );
             
-            // 2. Add to History List
             appendMessage({
                 sender: 'System',
                 message: `New ${data.type} Lead:\n${data.agent} — ${data.amount}`,
                 role: 'success'
             });
             
-            // 3. Increment Badge
-            if (!isOpen) {
-                unread++;
-                badge.classList.remove('hidden');
-                badge.innerText = unread > 9 ? '9+' : unread;
-            }
-
-            // 4. Refresh Dashboard (if manager)
-            if (window.location.href.includes('manager') && window.updateDashboardStats) {
-                window.updateDashboardStats();
-            }
+            if (!isOpen) { unread++; badge.classList.remove('hidden'); badge.innerText = unread > 9 ? '9+' : unread; }
+            if (window.location.href.includes('manager') && window.updateDashboardStats) { window.updateDashboardStats(); }
         });
 
         // C. STATUS UPDATE (APPROVED/DECLINED)
         channel.bind('status-update', function(data) {
             const status = data.status.toLowerCase();
             const isApproved = status === 'charged' || status === 'approved';
-            const statusUpper = data.status.toUpperCase();
             
-            // 1. Alert (PC Banner + Sound)
-            triggerAlert(
-                `Lead #${data.id} Updated`, 
-                `Status changed to: ${statusUpper}`, 
-                isApproved ? 'money' : 'message' // Use Money sound for approval
-            );
+            // --- CUSTOM MESSAGE LOGIC ---
+            const client = data.client || 'Client';
+            const agent = data.agent || 'Agent';
+            let title = `Lead #${data.id} Updated`;
+            let body = `Status: ${data.status.toUpperCase()}`;
 
-            // 2. Add to History List
+            // Specific text formatting
+            if (isApproved) {
+                title = "Approved! 🎉";
+                body = `Congrats ${client} - ${agent} got approved!`;
+            } else if (status === 'declined') {
+                title = "Declined ⚠️";
+                body = `${client} - ${agent} got declined.`;
+            }
+
+            // 1. Alert
+            triggerAlert(title, body, isApproved ? 'money' : 'message');
+
+            // 2. Chat History
             appendMessage({
                 sender: 'System',
-                message: `Lead #${data.id} was ${statusUpper}`,
+                message: body,
                 role: isApproved ? 'success' : 'error'
             });
 
-            // 3. Increment Badge
-            if (!isOpen) {
-                unread++;
-                badge.classList.remove('hidden');
-                badge.innerText = unread > 9 ? '9+' : unread;
-            }
-            
-            // 4. Refresh stats (if manager)
-            if (window.location.href.includes('manager') && window.updateDashboardStats) {
-                window.updateDashboardStats();
-            }
+            if (!isOpen) { unread++; badge.classList.remove('hidden'); badge.innerText = unread > 9 ? '9+' : unread; }
+            if (window.location.href.includes('manager') && window.updateDashboardStats) { window.updateDashboardStats(); }
         });
 
         // D. EDITED LEAD
         channel.bind('lead-edited', function(data) {
-            triggerAlert(
-                `Lead #${data.id} Edited`, 
-                `Edited by: ${data.agent}`, 
-                'edit'
-            );
-             // Add to History
+            const client = data.client || 'Client';
+            const msg = `${client} got edited by ${data.agent}`;
+
+            triggerAlert(`Lead #${data.id} Edited`, msg, 'edit');
+             
             appendMessage({
                 sender: 'System',
-                message: `Lead #${data.id} was edited by ${data.agent}`,
+                message: msg,
                 role: 'warning'
             });
             
             if (!isOpen) { unread++; badge.classList.remove('hidden'); badge.innerText = unread; }
         });
     }
-});
