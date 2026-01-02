@@ -18,7 +18,7 @@ document.addEventListener("DOMContentLoaded", function() {
         `;
     }
 
-    // --- 1. Inject Chat HTML ---
+    // --- 1. Inject Chat HTML (Restores the Icon!) ---
     if (!document.getElementById('chat-root')) {
         const chatHTML = `
             <button id="chatToggleBtn" onclick="toggleChat()" class="fixed bottom-5 left-5 bg-blue-600 hover:bg-blue-500 text-white p-4 rounded-full shadow-2xl z-50 transition-transform hover:scale-110 group border-2 border-white/10">
@@ -245,7 +245,7 @@ document.addEventListener("DOMContentLoaded", function() {
         } catch (e) { console.error(e); }
     });
 
-// --- 7. PUSHER LISTENER (THE CORE LOGIC) ---
+    // --- 7. PUSHER LISTENER (THE CORE LOGIC) ---
     if (window.PUSHER_KEY) {
         const pusher = new Pusher(window.PUSHER_KEY, { cluster: window.PUSHER_CLUSTER });
         const channel = pusher.subscribe('techware-channel');
@@ -334,3 +334,4 @@ document.addEventListener("DOMContentLoaded", function() {
             if (!isOpen) { unread++; badge.classList.remove('hidden'); badge.innerText = unread; }
         });
     }
+});
