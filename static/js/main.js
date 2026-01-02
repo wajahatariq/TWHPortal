@@ -186,17 +186,27 @@ document.addEventListener("DOMContentLoaded", function() {
         
         channel.bind('new-chat', function(data) {
             appendMessage(data);
+
+            // Determine if I sent this message
+            const myName = getSenderName();
+            const isSelf = (data.sender === myName);
             
-            // If chat is closed, show badge and play sound for EVERYONE (no role check)
-            if (!isOpen) {
-                unread++;
-                badge.classList.remove('hidden');
-                badge.innerText = unread > 9 ? '9+' : unread;
-                
+            // --- SOUND LOGIC ---
+            // Play sound for ALL incoming messages (Agent or Manager), 
+            // regardless of whether the chat window is Open or Closed.
+            if (!isSelf) {
                 try {
                     audio.currentTime = 0;
                     audio.play();
                 } catch(e) { console.log("Audio autoplay restricted"); }
+            }
+
+            // --- BADGE LOGIC ---
+            // Only increment badge if window is closed
+            if (!isOpen) {
+                unread++;
+                badge.classList.remove('hidden');
+                badge.innerText = unread > 9 ? '9+' : unread;
             }
         });
     }
