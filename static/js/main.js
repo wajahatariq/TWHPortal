@@ -298,12 +298,12 @@ document.addEventListener("DOMContentLoaded", function() {
             // Specific text formatting
             if (isApproved) {
                 title = "Approved! 🎉";
-                body = `Congrats ${client} - ${agent} got approved!`;
+                body = `Congrats ${agent} - ${client} got approved!`;
                 // Trigger Confetti
                 triggerCelebration();
             } else if (status === 'declined') {
                 title = "Declined ⚠️";
-                body = `${client} - ${agent} got declined.`;
+                body = `Sorry! ${agent} - ${client} got declined.`;
             }
 
             // 1. Alert
@@ -365,3 +365,4 @@ function triggerCelebration() {
         }
     }());
 }
+
