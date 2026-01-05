@@ -1,3 +1,4 @@
+
 import os
 import json
 import gspread
@@ -19,7 +20,7 @@ load_dotenv()
 
 app = FastAPI()
 
-# --- CONFIG ---
+# --- SECURITY: LOAD SECRETS FROM ENV ---
 PUSHER_APP_ID = os.getenv("PUSHER_APP_ID")
 PUSHER_KEY = os.getenv("PUSHER_KEY")
 PUSHER_SECRET = os.getenv("PUSHER_SECRET")
@@ -33,17 +34,38 @@ pusher_client = pusher.Pusher(
   ssl=True
 )
 
+# --- CACHE SETUP ---
+STATS_CACHE = {
+    "last_updated": 0,
+    "data": {
+        "billing": {"total": 0, "breakdown": {}}, 
+        "insurance": {"total": 0, "breakdown": {}}
+    }
+}
+
+MANAGER_CACHE = {
+    "last_updated": 0,
+    "data": None
+}
+CACHE_DURATION = 60 
+
+# --- CHAT SETUP ---
 CHAT_HISTORY = []
 CHAT_RATE_LIMIT = {"start": 0, "count": 0}
 
+# --- SETUP ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if not os.path.exists(os.path.join(BASE_DIR, "templates")): BASE_DIR = os.getcwd()
+if not os.path.exists(os.path.join(BASE_DIR, "templates")):
+    BASE_DIR = os.getcwd()
 
-templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
-app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+
+templates = Jinja2Templates(directory=TEMPLATES_DIR)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 TZ_KARACHI = pytz.timezone("Asia/Karachi")
 
-# --- DATABASE ---
+# --- SHEETS SETUP (ROBUST) ---
 gc = None
 SHEET_NAME = "Company_Transactions"
 
@@ -56,7 +78,8 @@ def get_gc():
             gc = gspread.service_account(filename=service_file)
         elif service_json:
             gc = gspread.service_account_from_dict(json.loads(service_json))
-        else: print("WARNING: No Credentials found.")
+        else:
+            print("WARNING: No Credentials found.")
     except Exception as e:
         print(f"Error loading credentials: {e}")
         gc = None
@@ -66,16 +89,15 @@ def get_worksheet(sheet_type):
     global gc
     if not gc: get_gc()
     if not gc: return None
+    
     try:
         sh = gc.open(SHEET_NAME)
         if sheet_type == 'billing': return sh.get_worksheet(0)
         if sheet_type == 'insurance': return sh.get_worksheet(1)
         if sheet_type == 'auth': return sh.get_worksheet(2)
-        if sheet_type == 'telecom_cb': return sh.worksheet("TELECOM CB")
-        if sheet_type == 'insurance_cb': return sh.worksheet("INSURANCE CB")
     except Exception as e:
         print(f"Sheet Access Error (forcing reconnect): {e}")
-        gc = None 
+        gc = None # Force reset
         return None
     return None
 
@@ -86,11 +108,14 @@ PROVIDERS = ["Spectrum", "Insurance", "Xfinity", "Frontier", "Optimum"]
 LLC_SPEC = ["Visionary Pathways"]
 LLC_INS = ["LMI"]
 
-# --- HELPER FUNCTIONS ---
+# --- UTILS ---
 def send_pushbullet(title, body):
     token = os.getenv("PUSHBULLET_TOKEN")
     if not token: return
-    try: requests.post("https://api.pushbullet.com/v2/pushes", json={"type": "note", "title": title, "body": body}, headers={"Access-Token": token, "Content-Type": "application/json"})
+    try:
+        requests.post("https://api.pushbullet.com/v2/pushes", 
+                      json={"type": "note", "title": title, "body": body}, 
+                      headers={"Access-Token": token, "Content-Type": "application/json"})
     except: pass
 
 def get_timestamp():
@@ -102,7 +127,8 @@ def rows_to_dict(rows):
     headers = [str(h).strip() for h in rows[0]]
     data = []
     for row in rows[1:]:
-        if len(row) < len(headers): row += [''] * (len(headers) - len(row))
+        if len(row) < len(headers):
+            row += [''] * (len(headers) - len(row))
         data.append(dict(zip(headers, row)))
     return data
 
@@ -113,51 +139,43 @@ def find_column(df, candidates):
         if key in cols: return cols[key]
     return None
 
-def calculate_stats(df, cb_df=None):
-    if df.empty: df = pd.DataFrame() 
-
+def calculate_stats(df):
+    if df.empty: return {"today": 0, "night": 0, "pending": 0, "breakdown": {}}
+    
     col_charge = find_column(df, ['Charge', 'Charge Amount', 'Amount'])
     col_status = find_column(df, ['Status', 'State'])
     col_time = find_column(df, ['Timestamp', 'Date', 'Time'])
     col_agent = find_column(df, ['Agent Name', 'Agent'])
 
-    def clean_charge_col(dataframe, col_name):
-        if col_name and not dataframe.empty:
-            return pd.to_numeric(dataframe[col_name].astype(str).replace(r'[^0-9.]', '', regex=True), errors='coerce').fillna(0.0)
-        return pd.Series([0.0] * len(dataframe))
+    if col_charge:
+        df['ChargeFloat'] = df[col_charge].astype(str).replace(r'[^0-9.]', '', regex=True)
+        df['ChargeFloat'] = pd.to_numeric(df['ChargeFloat'], errors='coerce').fillna(0.0)
+    else:
+        df['ChargeFloat'] = 0.0
 
-    df['ChargeFloat'] = clean_charge_col(df, col_charge)
-
-    if col_time and not df.empty:
+    if col_time:
         df['dt'] = pd.to_datetime(df[col_time], format='mixed', errors='coerce')
-    else: df['dt'] = pd.NaT
+    else:
+        df['dt'] = pd.NaT
 
-    pending_count = 0
-    pending_amt = 0.0
-    declined_amt = 0.0
-    
-    if col_status and not df.empty:
+    pending = 0
+    if col_status:
         df['StatusClean'] = df[col_status].astype(str).str.strip().str.title()
-        pending_mask = df['StatusClean'] == 'Pending'
-        declined_mask = df['StatusClean'] == 'Declined'
-        pending_count = len(df[pending_mask])
-        pending_amt = df.loc[pending_mask, 'ChargeFloat'].sum()
-        declined_amt = df.loc[declined_mask, 'ChargeFloat'].sum()
-    else: df['StatusClean'] = "Unknown"
-
-    cb_amt = 0.0
-    if cb_df is not None and not cb_df.empty:
-        cb_col_charge = find_column(cb_df, ['Charge', 'Charge Amount', 'Amount'])
-        cb_charges = clean_charge_col(cb_df, cb_col_charge)
-        cb_amt = cb_charges.sum()
+        pending = len(df[df['StatusClean'] == 'Pending'])
+    else:
+        df['StatusClean'] = "Unknown"
 
     now = datetime.now(TZ_KARACHI)
     today = now.date()
     yesterday = today - timedelta(days=1)
     tomorrow = today + timedelta(days=1)
     
-    night_start = time(19, 0); night_end = time(6, 0); reset_time = time(9, 0)
-    window_start = None; window_end = None
+    night_start = time(19, 0)
+    night_end = time(6, 0)
+    reset_time = time(9, 0)
+    
+    window_start = None
+    window_end = None
 
     if now.time() >= night_start:
         window_start = datetime.combine(today, night_start)
@@ -169,136 +187,234 @@ def calculate_stats(df, cb_df=None):
         if now.time() < reset_time:
             window_start = datetime.combine(yesterday, night_start)
             window_end = datetime.combine(today, night_end)
+        else:
+            window_start = None
 
     night_total = 0.0
     breakdown = {}
 
-    if window_start and col_status and col_time and not df.empty:
+    if window_start and col_status and col_time:
         night_mask = ((df['StatusClean'] == "Charged") & (df['dt'] >= window_start) & (df['dt'] <= window_end))
         night_df = df.loc[night_mask]
         night_total = night_df['ChargeFloat'].sum()
         if col_agent: breakdown = night_df.groupby(col_agent)['ChargeFloat'].sum().to_dict()
 
     today_total = 0.0
-    if col_status and col_time and not df.empty:
+    if col_status and col_time:
         today_start = datetime.combine(today, time(0,0))
         today_mask = (df['StatusClean'] == "Charged") & (df['dt'] >= today_start)
         today_total = df.loc[today_mask, 'ChargeFloat'].sum()
 
-    return { 
-        "today": round(today_total, 2), "night": round(night_total, 2), 
-        "pending": pending_count, "pending_amt": round(pending_amt, 2),
-        "declined_amt": round(declined_amt, 2), "cb_amt": round(cb_amt, 2),
-        "breakdown": breakdown 
-    }
+    return { "today": round(today_total, 2), "night": round(night_total, 2), "pending": pending, "breakdown": breakdown }
 
+# --- HELPER: RETRY LOGIC ---
 def safe_db_op(operation_func, retries=3):
     global gc
     last_error = None
     for i in range(retries):
-        try: return operation_func()
+        try:
+            return operation_func()
         except Exception as e:
             last_error = e
+            # Check for network/connection errors
             err_str = str(e).lower()
             if "connection aborted" in err_str or "remote end closed" in err_str or "429" in err_str:
                 print(f"DB Connection dropped. Retrying ({i+1}/{retries})...")
-                gc = None; time_module.sleep(1) 
-            else: raise e 
+                gc = None # Force Reconnect
+                time_module.sleep(1) # Wait a bit
+            else:
+                raise e # Real error (like missing column), don't retry
     raise last_error
 
 # --- ROUTES ---
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request): return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/billing", response_class=HTMLResponse)
 async def view_billing(request: Request):
-    return templates.TemplateResponse("billing.html", {"request": request, "agents": AGENTS_BILLING, "providers": PROVIDERS, "llcs": LLC_SPEC, "pusher_key": PUSHER_KEY, "pusher_cluster": PUSHER_CLUSTER})
+    return templates.TemplateResponse("billing.html", {
+        "request": request, 
+        "agents": AGENTS_BILLING, 
+        "providers": PROVIDERS, 
+        "llcs": LLC_SPEC,
+        "pusher_key": PUSHER_KEY,
+        "pusher_cluster": PUSHER_CLUSTER
+    })
 
 @app.get("/insurance", response_class=HTMLResponse)
 async def view_insurance(request: Request):
-    return templates.TemplateResponse("insurance.html", {"request": request, "agents": AGENTS_INSURANCE, "llcs": LLC_INS, "pusher_key": PUSHER_KEY, "pusher_cluster": PUSHER_CLUSTER})
+    return templates.TemplateResponse("insurance.html", {
+        "request": request, 
+        "agents": AGENTS_INSURANCE, 
+        "llcs": LLC_INS,
+        "pusher_key": PUSHER_KEY,
+        "pusher_cluster": PUSHER_CLUSTER
+    })
 
 @app.get("/manager", response_class=HTMLResponse)
 async def view_manager(request: Request):
-    return templates.TemplateResponse("manager.html", {"request": request, "pusher_key": PUSHER_KEY, "pusher_cluster": PUSHER_CLUSTER})
+    return templates.TemplateResponse("manager.html", {
+        "request": request, 
+        "pusher_key": PUSHER_KEY, 
+        "pusher_cluster": PUSHER_CLUSTER
+    })
 
 @app.get("/api/public/night-stats")
 async def get_public_stats():
+    current_time = time_module.time()
+    if current_time - STATS_CACHE["last_updated"] < CACHE_DURATION:
+        return STATS_CACHE["data"]
+
     def fetch_op():
         ws_bill = get_worksheet('billing')
         ws_ins = get_worksheet('insurance')
-        if not ws_bill or not ws_ins: return {}
+        if not ws_bill or not ws_ins: return STATS_CACHE["data"]
+
         bill_data = rows_to_dict(ws_bill.get_all_values())
         ins_data = rows_to_dict(ws_ins.get_all_values())
         stats_bill = calculate_stats(pd.DataFrame(bill_data))
         stats_ins = calculate_stats(pd.DataFrame(ins_data))
-        return {"billing": { "total": stats_bill['night'], "breakdown": stats_bill['breakdown'] }, "insurance": { "total": stats_ins['night'], "breakdown": stats_ins['breakdown'] }}
-    try: return safe_db_op(fetch_op)
-    except Exception as e: return {}
+        
+        return {
+            "billing": { "total": stats_bill['night'], "breakdown": stats_bill['breakdown'] },
+            "insurance": { "total": stats_ins['night'], "breakdown": stats_ins['breakdown'] }
+        }
 
-# --- CHAT ---
+    try:
+        new_data = safe_db_op(fetch_op)
+        STATS_CACHE["data"] = new_data
+        STATS_CACHE["last_updated"] = current_time
+        return new_data
+    except Exception as e:
+        print(f"Stats Error: {e}")
+        return STATS_CACHE["data"]
+
+# --- CHAT ENDPOINTS ---
+
 @app.get("/api/chat/history")
-async def get_chat_history(): return CHAT_HISTORY
+async def get_chat_history():
+    return CHAT_HISTORY
 
 @app.post("/api/chat/send")
-async def send_chat(sender: str = Form(...), message: str = Form(...), role: str = Form(...)):
+async def send_chat(
+    sender: str = Form(...),
+    message: str = Form(...),
+    role: str = Form(...) 
+):
     current_time = time_module.time()
-    if current_time - CHAT_RATE_LIMIT["start"] > 3600: CHAT_RATE_LIMIT["start"] = current_time; CHAT_RATE_LIMIT["count"] = 0
-    if CHAT_RATE_LIMIT["count"] >= 30: return JSONResponse({"status": "error", "message": "Global chat limit reached."}, 429)
+    if current_time - CHAT_RATE_LIMIT["start"] > 3600:
+        CHAT_RATE_LIMIT["start"] = current_time
+        CHAT_RATE_LIMIT["count"] = 0
+    if CHAT_RATE_LIMIT["count"] >= 30:
+        return JSONResponse({"status": "error", "message": "Global chat limit reached (30/hr)."}, 429)
+
     CHAT_RATE_LIMIT["count"] += 1
     t_str = datetime.now(TZ_KARACHI).strftime("%I:%M %p")
     msg_data = {"sender": sender, "message": message, "role": role, "time": t_str}
+    
     CHAT_HISTORY.append(msg_data)
     if len(CHAT_HISTORY) > 50: CHAT_HISTORY.pop(0)
+
     try: pusher_client.trigger('techware-channel', 'new-chat', msg_data)
-    except: pass
+    except Exception as e: print(f"Pusher Chat Error: {e}")
+
     return {"status": "success"}
 
 @app.post("/api/save-lead")
 async def save_lead(
-    request: Request, type: str = Form(...), is_edit: str = Form("false"), agent: str = Form(...),
-    client_name: str = Form(...), phone: str = Form(...), address: str = Form(...), email: str = Form(...),
-    card_holder: str = Form(...), card_number: str = Form(...), exp_date: str = Form(...), cvc: str = Form(...),
-    charge_amt: str = Form(...), llc: str = Form(...), status: Optional[str] = Form("Pending"),
-    order_id: Optional[str] = Form(None), provider: Optional[str] = Form(None), pin_code: Optional[str] = Form(""),
-    account_number: Optional[str] = Form(""), record_id: Optional[str] = Form(None), timestamp_mode: Optional[str] = Form("keep"),
-    original_timestamp: Optional[str] = Form(None), row_index: Optional[int] = Form(None)
+    request: Request,
+    type: str = Form(...), 
+    is_edit: str = Form("false"),
+    agent: str = Form(...),
+    client_name: str = Form(...),
+    phone: str = Form(...),
+    address: str = Form(...),
+    email: str = Form(...),
+    card_holder: str = Form(...),
+    card_number: str = Form(...),
+    exp_date: str = Form(...),
+    cvc: str = Form(...),
+    charge_amt: str = Form(...),
+    llc: str = Form(...),
+    status: Optional[str] = Form("Pending"),
+    order_id: Optional[str] = Form(None),
+    provider: Optional[str] = Form(None),
+    pin_code: Optional[str] = Form(""),
+    account_number: Optional[str] = Form(""),  
+    record_id: Optional[str] = Form(None),
+    timestamp_mode: Optional[str] = Form("keep"),
+    original_timestamp: Optional[str] = Form(None),
+    row_index: Optional[int] = Form(None)
 ):
-    try: clean_charge = float(str(charge_amt).replace('$', '').replace(',', '').strip()); final_charge = f"${clean_charge:.2f}"
+    # --- DATA PREP ---
+    try:
+        clean_charge = float(str(charge_amt).replace('$', '').replace(',', '').strip())
+        final_charge = f"${clean_charge:.2f}"
     except: final_charge = charge_amt 
+
     if is_edit == 'true' and timestamp_mode == 'keep' and original_timestamp:
         try: date_str = original_timestamp.split(" ")[0]
         except: d, t = get_timestamp(); date_str = d
         timestamp_str = original_timestamp
-    else: date_str, timestamp_str = get_timestamp()
+    else:
+        date_str, timestamp_str = get_timestamp()
+
     raw_id = order_id if type == 'billing' else record_id
     primary_id = int(raw_id) if raw_id and str(raw_id).isdigit() else raw_id
     final_status = status if is_edit == 'true' else "Pending"
     final_code = pin_code if pin_code else account_number if account_number else ""
+
     if type == 'billing':
         row_data = [primary_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge, llc, provider, date_str, final_status, timestamp_str, final_code]
         range_end = f"Q{row_index}"
     else:
         row_data = [primary_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge, llc, date_str, final_status, timestamp_str]
         range_end = f"O{row_index}"
+
+    # --- DB OPERATION (WITH RETRY) ---
     def db_save_op():
         ws = get_worksheet(type)
         if not ws: raise Exception("DB Connection Failed")
+        
         if is_edit == 'true' and row_index:
-            ws.update(f"A{row_index}:{range_end}", [row_data])
-        else: ws.append_row(row_data)
+            range_start = f"A{row_index}"
+            ws.update(f"{range_start}:{range_end}", [row_data])
+        else:
+            ws.append_row(row_data)
+
     try:
         safe_db_op(db_save_op)
+        
+        # Post-Save Actions
+        STATS_CACHE["last_updated"] = 0
+        MANAGER_CACHE["last_updated"] = 0 
+        
         if is_edit == 'true':
-            try: pusher_client.trigger('techware-channel', 'lead-edited', {'agent': agent, 'id': primary_id, 'type': type, 'client': client_name, 'message': f"{type.title()} Lead #{primary_id} edited by {agent}"})
-            except: pass
+            try:
+                pusher_client.trigger('techware-channel', 'lead-edited', {
+                    'agent': agent,
+                    'id': primary_id,
+                    'type': type,
+                    'client': client_name, 
+                    'message': f"{type.title()} Lead #{primary_id} was edited by {agent}"
+                })
+            except Exception as e: print(f"Pusher Edit Error: {e}")
             return {"status": "success", "message": "Lead Updated Successfully"}
         else:
-            try: pusher_client.trigger('techware-channel', 'new-lead', {'agent': agent, 'amount': final_charge, 'type': type, 'message': f"New {type} lead from {agent}"})
-            except: pass
+            try:
+                pusher_client.trigger('techware-channel', 'new-lead', {
+                    'agent': agent,
+                    'amount': final_charge,
+                    'type': type,
+                    'message': f"New {type} lead from {agent}"
+                })
+            except Exception as e: print(f"Pusher Error: {e}")
             send_pushbullet(f"New {type.title()} Lead", f"{agent} - {final_charge}")
             return {"status": "success", "message": "Lead Submitted Successfully"}
-    except Exception as e: return JSONResponse({"status": "error", "message": str(e)}, 500)
+
+    except Exception as e:
+        return JSONResponse({"status": "error", "message": str(e)}, 500)
 
 @app.post("/api/delete-lead")
 async def delete_lead(type: str = Form(...), id: str = Form(...)):
@@ -306,18 +422,29 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
         ws = get_worksheet(type)
         if not ws: raise Exception("DB Error")
         cell = ws.find(id, in_column=1)
-        if cell: ws.delete_rows(cell.row); return True
+        if cell:
+            ws.delete_rows(cell.row)
+            return True
         return False
+
     try:
-        if safe_db_op(delete_op): return {"status": "success", "message": "Deleted successfully"}
+        found = safe_db_op(delete_op)
+        if found:
+            STATS_CACHE["last_updated"] = 0
+            MANAGER_CACHE["last_updated"] = 0
+            return {"status": "success", "message": "Deleted successfully"}
         return {"status": "error", "message": "ID not found"}
-    except Exception as e: return {"status": "error", "message": str(e)}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.get("/api/get-lead")
 async def get_lead(type: str, id: str, row_index: Optional[int] = None):
+    # This is a read op, we can wrap it too
     def fetch_lead_op():
         ws = get_worksheet(type)
         if not ws: raise Exception("DB Error")
+        
+        # 1. FETCH BY ROW INDEX
         if row_index:
             row_values = ws.row_values(row_index)
             headers = ws.row_values(1)
@@ -325,13 +452,18 @@ async def get_lead(type: str, id: str, row_index: Optional[int] = None):
             data['row_index'] = row_index
             if 'Record_ID' not in data and 'Order ID' in data: data['Record_ID'] = data['Order ID']
             return {"status": "success", "data": data}
+        
+        # 2. SEARCH BY ID
         cells = []
         try: cells = ws.findall(id, in_column=1)
         except: pass
         if not cells and str(id).strip().isdigit():
             try: cells = ws.findall(int(id), in_column=1)
             except: pass
-        if not cells: return None
+
+        if not cells: return None # Signal Not Found
+        
+        # 3. HANDLE DUPLICATES
         if len(cells) == 1:
             row_values = ws.row_values(cells[0].row)
             headers = ws.row_values(1)
@@ -345,19 +477,29 @@ async def get_lead(type: str, id: str, row_index: Optional[int] = None):
             for cell in cells:
                 r_vals = ws.row_values(cell.row)
                 d = dict(zip(headers, r_vals))
-                candidates.append({"row_index": cell.row, "name": d.get('Client Name', d.get('Name', 'Unknown')), "charge": d.get('Charge', d.get('Charge Amount', '$0')), "timestamp": d.get('Timestamp', 'No Time')})
+                name = d.get('Client Name', d.get('Name', 'Unknown'))
+                charge = d.get('Charge', d.get('Charge Amount', '$0'))
+                time_val = d.get('Timestamp', 'No Time')
+                candidates.append({"row_index": cell.row, "name": name, "charge": charge, "timestamp": time_val})
             candidates.sort(key=lambda x: x['row_index'], reverse=True)
             return {"status": "multiple", "candidates": candidates}
+
     try:
         result = safe_db_op(fetch_lead_op)
         if result is None: return JSONResponse({"status": "error", "message": "Not Found"}, 404)
         return result
-    except Exception as e: return JSONResponse({"status": "error", "message": str(e)}, 500)
+    except Exception as e: 
+        return JSONResponse({"status": "error", "message": str(e)}, 500)
 
 @app.post("/api/manager/login")
 async def manager_login(user_id: str = Form(...), password: str = Form(...)):
     def login_op():
-        ws = get_worksheet('auth'); records = ws.get_all_records(); return pd.DataFrame(records)
+        ws = get_worksheet('auth')
+        if not ws: raise Exception("Auth DB Error")
+        records = ws.get_all_records()
+        df = pd.DataFrame(records)
+        return df
+    
     try:
         df = safe_db_op(login_op)
         if 'ID' not in df.columns: return JSONResponse({"status": "error", "message": "Config Error"}, 500)
@@ -365,98 +507,123 @@ async def manager_login(user_id: str = Form(...), password: str = Form(...)):
         if user.empty: return JSONResponse({"status": "error", "message": "User not found"}, 401)
         stored = str(user.iloc[0]['Password'])
         hashed = hashlib.sha256(password.encode()).hexdigest()
-        if password == stored or hashed == stored: return {"status": "success", "token": f"auth_{user_id}", "role": "Manager"}
+        if password == stored or hashed == stored:
+            return {"status": "success", "token": f"auth_{user_id}", "role": "Manager"}
         return JSONResponse({"status": "error", "message": "Invalid password"}, 401)
-    except Exception as e: return JSONResponse({"status": "error", "message": str(e)}, 500)
-
-@app.post("/api/manager/change_password")
-async def change_password(user_id: str = Form(...), old_password: str = Form(...), new_password: str = Form(...)):
-    def pw_op():
-        ws = get_worksheet('auth')
-        try: cell = ws.find(user_id, in_column=1)
-        except: cell = None
-        if not cell: return "User Not Found"
-        stored_pw = str(ws.cell(cell.row, 2).value)
-        hashed_old = hashlib.sha256(old_password.encode()).hexdigest()
-        if old_password != stored_pw and hashed_old != stored_pw: return "Incorrect Old Password"
-        ws.update_cell(cell.row, 2, new_password)
-        return "Success"
-    try:
-        res = safe_db_op(pw_op)
-        if res == "Success": return {"status": "success", "message": "Password Changed"}
-        return {"status": "error", "message": res}
-    except Exception as e: return {"status": "error", "message": str(e)}
+    except Exception as e:
+        return JSONResponse({"status": "error", "message": str(e)}, 500)
 
 @app.get("/api/manager/data")
 async def get_manager_data(token: str):
+    current_time = time_module.time()
+    if current_time - MANAGER_CACHE["last_updated"] < CACHE_DURATION and MANAGER_CACHE["data"]:
+        return MANAGER_CACHE["data"]
+
     def fetch_manager_data():
-        ws_bill = get_worksheet('billing'); time_module.sleep(0.5) 
-        ws_ins = get_worksheet('insurance'); time_module.sleep(0.5) 
-        ws_tel_cb = get_worksheet('telecom_cb'); time_module.sleep(0.5) 
-        ws_ins_cb = get_worksheet('insurance_cb')
+        ws_bill = get_worksheet('billing')
+        time_module.sleep(1) 
+        ws_ins = get_worksheet('insurance')
 
         bill_data = rows_to_dict(ws_bill.get_all_values()) if ws_bill else []
         ins_data = rows_to_dict(ws_ins.get_all_values()) if ws_ins else []
-        tel_cb_data = rows_to_dict(ws_tel_cb.get_all_values()) if ws_tel_cb else []
-        ins_cb_data = rows_to_dict(ws_ins_cb.get_all_values()) if ws_ins_cb else []
         
-        stats_bill = calculate_stats(pd.DataFrame(bill_data), pd.DataFrame(tel_cb_data))
-        stats_ins = calculate_stats(pd.DataFrame(ins_data), pd.DataFrame(ins_cb_data))
+        stats_bill = calculate_stats(pd.DataFrame(bill_data))
+        stats_ins = calculate_stats(pd.DataFrame(ins_data))
         
-        return {"billing": bill_data, "insurance": ins_data, "telecom_cb": tel_cb_data, "insurance_cb": ins_cb_data, "stats_bill": stats_bill, "stats_ins": stats_ins}
-    try: return safe_db_op(fetch_manager_data)
-    except Exception as e: return JSONResponse({"status": "error", "message": "Data sync failed"}, 500)
+        return {
+            "billing": bill_data, 
+            "insurance": ins_data, 
+            "stats_bill": stats_bill, 
+            "stats_ins": stats_ins
+        }
 
+    try:
+        response_data = safe_db_op(fetch_manager_data)
+        MANAGER_CACHE["data"] = response_data
+        MANAGER_CACHE["last_updated"] = current_time
+        return response_data
+    except Exception as e:
+        print(f"Manager Data Error: {e}")
+        return JSONResponse({"status": "error", "message": "Data sync failed, please refresh"}, 500)
+
+# --- SMART UPDATE STATUS (Fixed for Duplicates) ---
 @app.post("/api/manager/update_status")
 async def update_status(type: str = Form(...), id: str = Form(...), status: str = Form(...)):
     def update_op():
-        ws = get_worksheet(type); all_values = ws.get_all_values()
+        ws = get_worksheet(type)
+        if not ws: raise Exception("DB Connection Failed")
+        
+        # 1. Fetch ALL data to perform efficient search
+        all_values = ws.get_all_values()
+        if not all_values: raise Exception("Empty Sheet")
+        
+        # 2. Find Status Column
         headers = [str(h).strip().lower() for h in all_values[0]]
         status_col_idx = -1
+        possible_status = ["status", "state", "approval", "current status"]
         for i, h in enumerate(headers):
-            if h in ["status", "state", "approval", "current status"]: status_col_idx = i; break
-        if status_col_idx == -1: status_col_idx = 14 if type == 'billing' else 13
+            if h in possible_status:
+                status_col_idx = i
+                break
+        if status_col_idx == -1:
+            status_col_idx = 14 if type == 'billing' else 13
 
+        # 3. Find Matches & Check Status
         target_id = str(id).strip()
         candidates = []
+        
         for row_num, row in enumerate(all_values):
+            # Skip header (row_num 0)
             if row_num == 0: continue
+            
+            # Check ID (Column 1 -> index 0)
             if len(row) > 0 and str(row[0]).strip() == target_id:
                 curr_status = str(row[status_col_idx]).strip().title() if len(row) > status_col_idx else ""
-                candidates.append({"row_index": row_num + 1, "status": curr_status, "data": row})
+                candidates.append({
+                    "row_index": row_num + 1, # 1-based index for GSheets
+                    "status": curr_status,
+                    "data": row
+                })
 
-        if not candidates: raise Exception(f"ID '{id}' not found.")
+        if not candidates:
+            raise Exception(f"ID '{id}' not found.")
+
+        # 4. SELECT THE RIGHT ROW
+        # PRIORITY: Last "Pending" Row > Last Row
         pending_matches = [c for c in candidates if c['status'] == 'Pending']
-        target_match = max(pending_matches, key=lambda x: x['row_index']) if pending_matches else max(candidates, key=lambda x: x['row_index'])
         
+        if pending_matches:
+            target_match = max(pending_matches, key=lambda x: x['row_index'])
+        else:
+            target_match = max(candidates, key=lambda x: x['row_index'])
+
         target_row = target_match['row_index']
-        headers_map = dict(zip(all_values[0], target_match['data']))
+        target_data = target_match['data']
+        
+        # Get Names for Notification
+        headers_map = dict(zip(all_values[0], target_data))
         agent_name = headers_map.get('Agent Name', 'Unknown Agent')
         client_name = headers_map.get('Client Name', headers_map.get('Name', 'Unknown Client'))
 
-        ws.update_cell(target_row, status_col_idx + 1, status)
+        # 5. Update
+        ws.update_cell(target_row, status_col_idx + 1, status) # +1 for 1-based column
         return agent_name, client_name
+
     try:
         agent_name, client_name = safe_db_op(update_op)
-        try: pusher_client.trigger('techware-channel', 'status-update', {'id': id, 'status': status, 'type': type, 'agent': agent_name, 'client': client_name})
-        except: pass
-        return {"status": "success", "message": "Updated"}
-    except Exception as e: return {"status": "error", "message": str(e)}
+        STATS_CACHE["last_updated"] = 0
+        MANAGER_CACHE["last_updated"] = 0 
+        
+        try:
+            pusher_client.trigger('techware-channel', 'status-update', {
+                'id': id,
+                'status': status,
+                'type': type,
+                'agent': agent_name,
+                'client': client_name
+            })
+        except Exception as e: print(f"Pusher Error: {e}")
 
-@app.post("/api/manager/mark_chargeback")
-async def mark_chargeback(type: str = Form(...), id: str = Form(...)):
-    def move_op():
-        src_ws = get_worksheet(type)
-        if type == 'billing': dest_ws = get_worksheet('telecom_cb')
-        else: dest_ws = get_worksheet('insurance_cb')
-        try: cell = src_ws.find(id, in_column=1)
-        except: cell = None
-        if not cell: raise Exception("ID not found")
-        row_values = src_ws.row_values(cell.row)
-        dest_ws.append_row(row_values)
-        src_ws.delete_rows(cell.row)
-        return "Moved"
-    try:
-        safe_db_op(move_op)
-        return {"status": "success", "message": "Moved to Chargeback Sheet"}
-    except Exception as e: return {"status": "error", "message": str(e)}
+        return {"status": "success", "message": "Updated"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
