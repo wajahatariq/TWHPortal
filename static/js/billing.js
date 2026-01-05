@@ -1,359 +1,273 @@
-let allData = { billing: [], insurance: [], telecom_cb: [], insurance_cb: [], stats_bill: {}, stats_ins: {} };
-let currentTab = 'stats';
-let currentPendingType = 'billing';
-let authUser = null;
-let chartInstance = null; 
+/* =========================================
+   BILLING SUBMISSION LOGIC (Final Version)
+   ========================================= */
 
-document.getElementById('loginForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
+// --- 1. GLOBAL VARIABLES & NIGHT STATS ---
+let nightStats = { billing: {total:0, breakdown:{}}, insurance: {total:0, breakdown:{}} };
+
+async function fetchNightStats() {
     try {
-        const res = await fetch('/api/manager/login', { method: 'POST', body: formData });
-        const data = await res.json();
-        if (data.status === 'success') {
-            authUser = formData.get('user_id');
-            document.getElementById('loginModal').classList.add('hidden');
-            document.getElementById('dashboard').classList.remove('hidden');
-            fetchAllData();
-        } else {
-            document.getElementById('loginError').innerText = data.message;
-            document.getElementById('loginError').classList.remove('hidden');
+        const res = await fetch('/api/public/night-stats');
+        nightStats = await res.json();
+        updateNightWidget();
+    } catch(e) { console.error("Stats Error", e); }
+}
+
+function updateNightWidget() {
+    const selector = document.getElementById('nightWidgetSelect');
+    if(!selector) return;
+    
+    const type = selector.value;
+    const data = nightStats[type] || {total:0, breakdown:{}};
+    
+    document.getElementById('nightWidgetAmount').innerText = '$' + data.total.toFixed(2);
+    const listDiv = document.getElementById('nightBreakdown');
+    
+    listDiv.innerHTML = '';
+    if (data.breakdown && Object.keys(data.breakdown).length > 0) {
+        listDiv.classList.remove('hidden');
+        for (const [agent, amount] of Object.entries(data.breakdown)) {
+            const row = document.createElement('div');
+            row.className = "flex justify-between border-b border-slate-900/10 pb-1 last:border-0";
+            row.innerHTML = `<span class="truncate pr-2">${agent}</span> <span class="font-bold">$${amount.toFixed(2)}</span>`;
+            listDiv.appendChild(row);
         }
-    } catch (e) { console.error(e); }
-});
+    } else { listDiv.classList.add('hidden'); }
+}
 
-function logout() { location.reload(); }
+// Start polling
+fetchNightStats(); 
+setInterval(fetchNightStats, 120000); 
 
-async function fetchAllData() {
+// --- 2. UI HELPERS ---
+function toggleProviderFields() {
+    const provider = document.getElementById('providerSelect').value;
+    const pinDiv = document.getElementById('pinContainer');
+    const accDiv = document.getElementById('accountContainer');
+    const placeholder = document.getElementById('providerPlaceholder');
+    const pinInput = document.getElementById('pin_code');
+    const accInput = document.getElementById('account_number');
+
+    // Default: Hide Inputs
+    pinDiv.classList.add('hidden');
+    accDiv.classList.add('hidden');
+    if(placeholder) placeholder.classList.remove('hidden');
+    
+    // Reset requirements
+    if(pinInput) pinInput.required = false;
+    if(accInput) accInput.required = false;
+
+    if (provider === 'Spectrum') {
+        pinDiv.classList.remove('hidden');
+        if(placeholder) placeholder.classList.add('hidden');
+        if(pinInput) pinInput.required = true;
+    } else if (provider === 'Frontier' || provider === 'Optimum') {
+        pinDiv.classList.remove('hidden');
+        accDiv.classList.remove('hidden');
+        if(placeholder) placeholder.classList.add('hidden');
+        if(pinInput) pinInput.required = true;
+        if(accInput) accInput.required = true;
+    }
+}
+
+function showToast(msg, isError=false) {
+    let toast = document.getElementById('toast');
+    if(!toast) {
+        toast = document.createElement('div');
+        toast.id = 'toast';
+        toast.className = 'toast';
+        document.body.appendChild(toast);
+    }
+    toast.innerText = msg;
+    toast.classList.toggle('error', isError);
+    toast.classList.add('show');
+    setTimeout(() => { toast.classList.remove('show'); }, 3000);
+}
+
+function clearForm() {
+    const form = document.getElementById('billingForm');
+    const submitBtn = document.getElementById('submitBtn');
+    
+    form.reset();
+    document.getElementById('isEdit').value = 'false';
+    document.getElementById('searchId').value = '';
+    const orderInput = document.getElementById('order_id');
+    if(orderInput) orderInput.readOnly = false;
+    
+    document.getElementById('editOptions').classList.add('hidden');
+    document.getElementById('row_index').value = '';
+    
+    submitBtn.innerText = "Submit Billing";
+    submitBtn.classList.replace('bg-green-600', 'bg-blue-600');
+    submitBtn.classList.replace('hover:bg-green-500', 'hover:bg-blue-500');
+    submitBtn.disabled = false;
+    
+    toggleProviderFields();
+    showToast("Form Cleared");
+}
+
+// --- 3. SEARCH & EDIT LOGIC ---
+async function searchLead(rowIndex = null) {
+    const id = document.getElementById('searchId').value.trim();
+    if(!id) return showToast("Enter an Order ID", true);
+
+    const btn = document.querySelector('button[onclick="searchLead()"]');
+    if(!rowIndex && btn) btn.innerText = "...";
+    
+    let url = `/api/get-lead?type=billing&id=${id}`;
+    if (rowIndex) url += `&row_index=${rowIndex}`;
+
     try {
-        const res = await fetch(`/api/manager/data?token=auth_${authUser}`);
-        allData = await res.json();
-        renderCurrentTab();
-    } catch(e) { console.error("Sync Error", e); }
-}
-
-function manualRefresh() {
-    const btn = document.querySelector('button[onclick="manualRefresh()"]');
-    const oldHtml = btn.innerHTML;
-    btn.innerHTML = "Syncing...";
-    fetchAllData().then(() => { btn.innerHTML = oldHtml; showToast("Data Synced"); });
-}
-
-function switchMainTab(tab) {
-    currentTab = tab;
-    document.querySelectorAll('nav button[id^="nav"]').forEach(b => {
-        b.classList.remove('bg-blue-600', 'text-white');
-        b.classList.add('text-slate-400', 'hover:bg-slate-700');
-    });
-    let navId = 'nav' + tab.charAt(0).toUpperCase() + tab.slice(1);
-    if(tab === 'chargebacks') navId = 'navCB';
-    const activeBtn = document.getElementById(navId);
-    if(activeBtn) {
-        activeBtn.classList.remove('text-slate-400', 'hover:bg-slate-700');
-        activeBtn.classList.add('bg-blue-600', 'text-white');
-    }
-    ['viewStats', 'viewPending', 'viewEdit', 'viewChargebacks', 'viewAnalysis'].forEach(id => document.getElementById(id).classList.add('hidden'));
-
-    if (tab === 'stats') { document.getElementById('viewStats').classList.remove('hidden'); updateDashboardStats(); }
-    else if (tab === 'pending') { document.getElementById('viewPending').classList.remove('hidden'); renderPending(); }
-    else if (tab === 'edit') { document.getElementById('viewEdit').classList.remove('hidden'); }
-    else if (tab === 'chargebacks') { document.getElementById('viewChargebacks').classList.remove('hidden'); renderChargebackList(); }
-    else if (tab === 'analysis') { document.getElementById('viewAnalysis').classList.remove('hidden'); updateAgentSelector(); renderAnalysis(); }
-}
-
-function renderCurrentTab() { switchMainTab(currentTab); }
-
-function updateDashboardStats() {
-    const type = document.getElementById('statsSelector').value;
-    const stats = type === 'billing' ? allData.stats_bill : allData.stats_ins;
-    document.getElementById('dispToday').innerText = '$' + (stats.today || 0).toFixed(2);
-    document.getElementById('dispNight').innerText = '$' + (stats.night || 0).toFixed(2);
-    document.getElementById('dispPendingAmt').innerText = '$' + (stats.pending_amt || 0).toFixed(2);
-    document.getElementById('dispDeclined').innerText = '$' + (stats.declined_amt || 0).toFixed(2);
-    document.getElementById('dispCB').innerText = '$' + (stats.cb_amt || 0).toFixed(2);
-    const list = document.getElementById('agentPerformanceList');
-    list.innerHTML = '';
-    if(stats.breakdown) {
-        Object.entries(stats.breakdown).forEach(([agent, amt]) => {
-            list.innerHTML += `<div class="bg-slate-700/50 p-3 rounded-lg flex justify-between"><span class="font-bold">${agent}</span><span class="text-green-400">$${amt.toFixed(2)}</span></div>`;
-        });
-    }
-}
-
-function updateAgentSelector() {
-    const sheet = document.getElementById('analysisSheetSelector').value;
-    const main = allData[sheet] || [];
-    const cb = allData[sheet === 'billing' ? 'telecom_cb' : 'insurance_cb'] || [];
-    const rows = [...main, ...cb];
-    const selector = document.getElementById('analysisAgentSelector');
-    selector.innerHTML = '<option value="all">All Agents</option>';
-    const agents = new Set();
-    rows.forEach(row => { const agent = row['Agent Name'] || row['Agent']; if(agent) agents.add(agent); });
-    agents.forEach(a => { const opt = document.createElement('option'); opt.value = a; opt.innerText = a; selector.appendChild(opt); });
-}
-
-function renderAnalysis() {
-    const sheet = document.getElementById('analysisSheetSelector').value;
-    let dateStart = document.getElementById('dateStart').value;
-    let dateEnd = document.getElementById('dateEnd').value;
-    const selectedAgent = document.getElementById('analysisAgentSelector').value;
-    const statusFilter = document.getElementById('analysisStatusSelector').value;
-    const searchText = document.getElementById('analysisSearch').value.toLowerCase();
-    
-    if(dateStart) dateStart = dateStart.replace('T', ' ');
-    if(dateEnd) dateEnd = dateEnd.replace('T', ' ');
-
-    const main = allData[sheet] || [];
-    const cb = allData[sheet === 'billing' ? 'telecom_cb' : 'insurance_cb'] || [];
-    const cb_tagged = cb.map(r => { const newR = {...r}; const k = Object.keys(newR).find(key => key.toLowerCase().includes('status')); if(k) newR[k] = 'Chargeback'; return newR; });
-    let rows = [...main, ...cb_tagged];
-    
-    if (dateStart) rows = rows.filter(r => (r['Timestamp'] || r['Date'] || '') >= dateStart);
-    if (dateEnd) rows = rows.filter(r => (r['Timestamp'] || r['Date'] || '') <= dateEnd);
-    if (selectedAgent !== 'all') rows = rows.filter(r => (r['Agent Name'] || r['Agent']) === selectedAgent);
-    if (searchText) rows = rows.filter(r => Object.values(r).join(' ').toLowerCase().includes(searchText));
-    
-    const getStatus = (r) => { const k = Object.keys(r).find(key => key.toLowerCase().includes('status')); return k ? r[k] : 'Unknown'; };
-    if (statusFilter !== 'all') rows = rows.filter(r => getStatus(r).toLowerCase().includes(statusFilter.toLowerCase()));
-
-    let tCharged = 0, tDeclined = 0, tCB = 0;
-    let hourlyCounts = Array(24).fill(0);
-    
-    rows.forEach(r => {
-        const s = getStatus(r).toLowerCase();
-        const val = r['Charge'] || r['Charge Amount'] || r['Amount'];
-        const num = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
+        const res = await fetch(url);
+        const json = await res.json();
         
-        if(s.includes('charged') || s.includes('approved')) {
-            tCharged += num;
-            const timeStr = r['Timestamp'] || r['Date'];
-            if(timeStr && timeStr.includes(' ')) {
-                const hour = parseInt(timeStr.split(' ')[1].split(':')[0]);
-                if(!isNaN(hour)) hourlyCounts[hour] += num;
-            }
-        }
-        else if(s.includes('declined')) tDeclined += num;
-        else if(s.includes('chargeback')) tCB += num;
-    });
+        // --- DUPLICATE HANDLING ---
+        if(json.status === 'multiple') {
+            const list = document.getElementById('duplicateList');
+            list.innerHTML = '';
+            
+            json.candidates.forEach(c => {
+                const name = c.name || c.Name || c['Client Name'] || 'Unknown';
+                const charge = c.charge || c.Charge || c['Charge Amount'] || '$0';
+                const date = c.timestamp || c.Timestamp || c.Date || '';
+                const rIndex = c.row_index || c.Row_Index;
 
-    const chargedCount = rows.filter(r => { const s = getStatus(r).toLowerCase(); return s.includes('charged') || s.includes('approved'); }).length;
-    const avg = chargedCount ? (tCharged / chargedCount) : 0;
-    const peakHourIdx = hourlyCounts.indexOf(Math.max(...hourlyCounts));
-    const peakHourAmt = hourlyCounts[peakHourIdx];
-    const peakHourStr = peakHourAmt > 0 ? `${peakHourIdx}:00 - ${peakHourIdx+1}:00` : "-";
-
-    document.getElementById('anaCharged').innerText = '$' + tCharged.toFixed(2);
-    document.getElementById('anaDeclined').innerText = '$' + tDeclined.toFixed(2);
-    document.getElementById('anaCB').innerText = '$' + tCB.toFixed(2);
-    document.getElementById('anaCount').innerText = rows.length;
-    document.getElementById('anaAvg').innerText = '$' + avg.toFixed(2);
-    document.getElementById('anaPeak').innerText = peakHourStr;
-
-    const thead = document.getElementById('analysisHeader');
-    const tbody = document.getElementById('analysisBody');
-    thead.innerHTML = ''; tbody.innerHTML = '';
-
-    if (rows.length > 0) {
-        let headers = Object.keys(rows[0]).filter(k => k !== 'row_index');
-        const tsKey = headers.find(k => k.toLowerCase().includes('timestamp') || k.toLowerCase() === 'date');
-        if (tsKey) { headers = headers.filter(k => k !== tsKey); headers.unshift(tsKey); }
-
-        headers.forEach(h => thead.innerHTML += `<th class="px-4 py-2">${h}</th>`);
-        rows.slice(0, 100).forEach(row => {
-            const tr = document.createElement('tr');
-            headers.forEach(h => {
-                let val = row[h];
-                let colorClass = 'text-slate-300';
-                if(h.toLowerCase().includes('status')) {
-                    const s = String(val).toLowerCase();
-                    if(s.includes('charged')) colorClass = 'text-green-400 font-bold';
-                    else if(s.includes('declined')) colorClass = 'text-red-400 font-bold';
-                    else if(s.includes('pending')) colorClass = 'text-yellow-400 font-bold';
-                    else if(s.includes('chargeback')) colorClass = 'text-purple-400 font-bold';
-                }
-                tr.innerHTML += `<td class="px-4 py-2 border-b border-slate-800 ${colorClass}">${val}</td>`;
+                const item = document.createElement('div');
+                item.className = "p-3 bg-slate-700/50 rounded-lg cursor-pointer hover:bg-blue-600/50 border border-slate-600 transition flex justify-between items-center";
+                
+                item.innerHTML = `
+                    <div>
+                        <div class="font-bold text-white">${name}</div>
+                        <div class="text-xs text-slate-400">${date}</div>
+                    </div>
+                    <div class="text-green-400 font-mono font-bold">${charge}</div>
+                `;
+                
+                item.onclick = () => {
+                    document.getElementById('duplicateModal').classList.add('hidden');
+                    searchLead(rIndex);
+                };
+                list.appendChild(item);
             });
-            tbody.appendChild(tr);
+            document.getElementById('duplicateModal').classList.remove('hidden');
+            return; 
+        }
+
+        // --- SUCCESSFUL LOAD ---
+        if(json.status === 'success') {
+            const d = json.data;
+            document.getElementById('isEdit').value = "true";
+            
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.innerText = "Update Lead";
+            submitBtn.classList.replace('bg-blue-600', 'bg-green-600');
+            submitBtn.classList.replace('hover:bg-blue-500', 'hover:bg-green-500');
+            
+            document.getElementById('editOptions').classList.remove('hidden');
+            
+            // Populate Fields
+            document.getElementById('original_timestamp').value = d['Timestamp'] || d['timestamp'];
+            document.getElementById('row_index').value = d['row_index'];
+
+            if(document.getElementById('agent')) document.getElementById('agent').value = d['Agent Name'] || d['agent'];
+            document.getElementById('client_name').value = d['Name'] || d['Client Name']; 
+            
+            const orderInput = document.getElementById('order_id');
+            orderInput.value = d['Record_ID'] || d['Order ID'];
+            orderInput.readOnly = true; // Lock ID on edit
+
+            document.getElementById('phone').value = d['Ph Number'] || d['Phone'];
+            document.getElementById('address').value = d['Address'];
+            document.getElementById('email').value = d['Email'];
+            document.getElementById('card_holder').value = d['Card Holder Name'];
+            document.getElementById('card_number').value = d['Card Number'];
+            document.getElementById('exp_date').value = d['Expiry Date'];
+            document.getElementById('cvc').value = d['CVC'];
+            
+            const rawCharge = d['Charge'] || d['Charge Amount'] || '0';
+            const cleanCharge = String(rawCharge).replace(/[^0-9.]/g, '');
+            document.getElementById('charge_amt').value = cleanCharge;
+            
+            if(document.getElementById('llc')) document.getElementById('llc').value = d['LLC'];
+            
+            const providerSelect = document.getElementById('providerSelect');
+            if(providerSelect) {
+                providerSelect.value = d['Provider'];
+                toggleProviderFields();
+            }
+            
+            const savedCode = d['PIN Code'] || d['Account Number'] || '';
+            const pinIn = document.getElementById('pin_code');
+            const accIn = document.getElementById('account_number');
+            if(pinIn) pinIn.value = savedCode;
+            if(accIn) accIn.value = savedCode;
+            
+            showToast("Lead Loaded Successfully");
+        } else {
+            showToast("Order ID not found.", true);
+        }
+    } catch(e) { console.error(e); showToast("Error fetching data", true); }
+    finally { if(!rowIndex && btn) btn.innerText = "Find"; }
+}
+
+// --- 4. DOM EVENTS & AUTO-FORMATTING ---
+document.addEventListener("DOMContentLoaded", function() {
+
+    // A. Submit Handler
+    const form = document.getElementById('billingForm');
+    if(form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('submitBtn');
+            const originalText = btn.innerText;
+            
+            // Lock Button
+            btn.innerText = 'Processing...';
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+
+            const formData = new FormData(e.target);
+            try {
+                const res = await fetch('/api/save-lead', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showToast(data.message);
+                    fetchNightStats(); 
+                    if(document.getElementById('isEdit').value !== "true") {
+                        form.reset(); // Only clear if new submission
+                        toggleProviderFields();
+                    }
+                } else { showToast(data.message, true); }
+            } catch (err) { showToast('Submission Failed', true); } 
+            finally { 
+                // Unlock Button
+                btn.innerText = originalText; 
+                btn.disabled = false;
+                btn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
         });
     }
 
-    const ctx = document.getElementById('analysisChart').getContext('2d');
-    if (chartInstance) chartInstance.destroy();
-    chartInstance = new Chart(ctx, {
-        type: 'bar',
-        data: { labels: Array.from({length: 24}, (_, i) => `${i}:00`), datasets: [{ label: 'Charged Amount ($)', data: hourlyCounts, backgroundColor: 'rgba(34, 197, 94, 0.6)', borderColor: '#22c55e', borderWidth: 1 }] },
-        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }, x: { grid: { display: false }, ticks: { color: '#94a3b8' } } }, plugins: { legend: { labels: { color: '#e2e8f0' } } } }
-    });
-}
+    // B. Auto-Format Card Number ( #### #### #### #### )
+    const cardInput = document.getElementById('card_number');
+    if (cardInput) {
+        cardInput.addEventListener('input', function (e) {
+            let value = e.target.value.replace(/\D/g, ''); // Remove non-digits
+            if (value.length > 16) value = value.substring(0, 16); // Max 16
+            let formattedValue = value.match(/.{1,4}/g)?.join(' ') || value;
+            e.target.value = formattedValue;
+        });
+    }
 
-// --- PENDING TAB (DETAILED CARDS) ---
-function switchPendingSubTab(type) {
-    currentPendingType = type;
-    document.getElementById('subBill').className = type === 'billing' ? "text-lg font-bold text-blue-400 border-b-2 border-blue-400 pb-1" : "text-lg font-bold text-slate-500 hover:text-white pb-1";
-    document.getElementById('subIns').className = type === 'insurance' ? "text-lg font-bold text-blue-400 border-b-2 border-blue-400 pb-1" : "text-lg font-bold text-slate-500 hover:text-white pb-1";
-    renderPending();
-}
-
-function renderPending() {
-    const container = document.getElementById('pendingContainer');
-    container.innerHTML = '';
-    const data = allData[currentPendingType] || [];
-    const getStatus = (row) => { const key = Object.keys(row).find(k => k.toLowerCase().includes('status')); return key ? row[key] : ''; };
-    const pending = data.filter(r => (getStatus(r) || '').toLowerCase() === 'pending');
-    
-    if(pending.length === 0) { container.innerHTML = '<div class="col-span-3 text-center text-slate-500 py-10">No Pending Approvals</div>'; return; }
-
-    pending.forEach(item => {
-        const id = item['Order ID'] || item['Record_ID'];
-        const agent = item['Agent Name'] || item['Agent'];
-        const amount = item['Charge'] || item['Charge Amount'] || item['Amount'];
-        const client = item['Client Name'] || item['Name'] || 'Unknown';
-        const phone = item['Phone'] || item['Ph Number'] || item['Phone Number'] || 'N/A';
-        const email = item['Email'] || 'N/A';
-        const timeVal = item['Timestamp'] || item['Date'] || '';
-
-        container.innerHTML += `
-            <div id="pending-${id}" class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl relative overflow-hidden group hover:border-blue-500 transition">
-                <div class="absolute top-0 right-0 bg-blue-600/20 text-blue-400 text-xs font-bold px-3 py-1 rounded-bl-lg border-b border-l border-blue-500/20">#${id}</div>
-                <div class="flex justify-between items-start mb-6 mt-2">
-                    <div><div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-0.5">Agent</div><div class="text-xl font-bold text-white">${agent}</div></div>
-                    <div class="text-right"><div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-0.5">Amount</div><div class="text-3xl font-black text-green-400">${amount}</div></div>
-                </div>
-                <div class="space-y-3 mb-6 bg-slate-900/50 p-4 rounded-lg border border-slate-700/50">
-                    <div class="flex justify-between items-center text-sm"><span class="text-slate-500">Client:</span><span class="text-white font-medium truncate ml-2">${client}</span></div>
-                    <div class="flex justify-between items-center text-sm"><span class="text-slate-500">Phone:</span><span class="text-slate-300 font-mono select-all ml-2">${phone}</span></div>
-                    <div class="flex justify-between items-center text-sm"><span class="text-slate-500">Email:</span><span class="text-slate-300 truncate w-32 text-right ml-2" title="${email}">${email}</span></div>
-                    <div class="flex justify-between items-center text-sm border-t border-slate-700/50 pt-2 mt-2"><span class="text-slate-500">Time:</span><span class="text-yellow-500 font-mono text-xs">${timeVal}</span></div>
-                </div>
-                <div class="flex gap-3">
-                    <button onclick="updateStatus('${id}', 'Charged', '${currentPendingType}')" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-green-900/20 transition transform active:scale-95">Approve</button>
-                    <button onclick="updateStatus('${id}', 'Declined', '${currentPendingType}')" class="flex-1 bg-slate-700 hover:bg-red-600 hover:text-white text-slate-300 font-bold py-3 rounded-lg shadow-lg transition transform active:scale-95">Decline</button>
-                </div>
-            </div>`;
-    });
-}
-
-async function updateStatus(id, newStatus, sheetType) {
-    if(!confirm(`Mark Lead #${id} as ${newStatus}?`)) return;
-    const formData = new FormData();
-    formData.append('type', sheetType);
-    formData.append('id', id);
-    formData.append('status', newStatus);
-    try {
-        const res = await fetch('/api/manager/update_status', { method: 'POST', body: formData });
-        const data = await res.json();
-        if(data.status === 'success') {
-            const el = document.getElementById(`pending-${id}`);
-            if(el) el.remove();
-            showToast(`Marked as ${newStatus}`);
-            fetchAllData(); 
-        } else { alert(data.message); }
-    } catch(e) { console.error(e); }
-}
-
-// --- CHARGEBACK TAB (OPTIMIZED) ---
-function renderChargebackList() {
-    const sheet = document.getElementById('cbSheetSelector').value;
-    const filter = document.getElementById('cbSearch').value.toLowerCase().trim();
-    const container = document.getElementById('cbListContainer');
-    container.innerHTML = '';
-
-    if(filter.length === 0) { container.innerHTML = `<div class="text-center text-slate-500 py-10">Enter ID, Name, or Card Number to search...</div>`; return; }
-
-    const data = allData[sheet] || [];
-    const getStatus = (row) => { const key = Object.keys(row).find(k => k.toLowerCase().includes('status')); return key ? row[key] : ''; };
-    const charged = data.filter(r => { const s = (getStatus(r) || '').toLowerCase(); return s === 'charged' || s === 'approved'; });
-    
-    const filtered = charged.filter(r => {
-        const client = (r['Client Name'] || r['Name'] || '').toLowerCase();
-        const card = (r['Card Number'] || '').toLowerCase();
-        const id = (r['Order ID'] || r['Record_ID'] || '').toString().toLowerCase();
-        const agent = (r['Agent Name'] || r['Agent'] || '').toLowerCase();
-        return client.includes(filter) || card.includes(filter) || id.includes(filter) || agent.includes(filter);
-    });
-
-    if(filtered.length === 0) { container.innerHTML = `<div class="text-center text-slate-500 py-4">No results found</div>`; return; }
-
-    filtered.forEach(item => {
-        const id = item['Order ID'] || item['Record_ID'];
-        const agent = item['Agent Name'] || item['Agent'];
-        const amount = item['Charge'] || item['Charge Amount'] || item['Amount'];
-        const cardLast4 = (item['Card Number'] || '****').slice(-4);
-        container.innerHTML += `
-            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 flex justify-between items-center group hover:border-red-500/50 transition">
-                <div>
-                    <div class="font-bold text-white flex items-center gap-2">${agent} <span class="bg-slate-700 text-slate-300 text-[10px] px-1.5 py-0.5 rounded">#${id}</span></div>
-                    <div class="text-sm text-slate-400 mt-1">${item['Client Name'] || item['Name']} <span class="mx-1">•</span> Card: ...${cardLast4}</div>
-                    <div class="text-green-400 font-mono font-bold mt-1">${amount}</div>
-                </div>
-                <button onclick="markAsChargeback('${sheet}', '${id}')" class="bg-red-900/30 hover:bg-red-600 text-red-200 hover:text-white px-4 py-2 rounded-lg font-bold transition border border-red-800/50">Mark Chargeback</button>
-            </div>`;
-    });
-}
-
-async function markAsChargeback(type, id) {
-    if(!confirm(`Warning: This will MOVE Lead #${id} to the Chargeback Sheet. Continue?`)) return;
-    const formData = new FormData();
-    formData.append('type', type);
-    formData.append('id', id);
-    try {
-        const res = await fetch('/api/manager/mark_chargeback', { method: 'POST', body: formData });
-        const data = await res.json();
-        if(data.status === 'success') { showToast("Moved to Chargeback Sheet"); fetchAllData(); } else { alert(data.message); }
-    } catch(e) { console.error(e); }
-}
-
-document.getElementById('pwdForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const userId = document.getElementById('pwdUserId').value;
-    const oldP = document.getElementById('oldPwd').value;
-    const newP = document.getElementById('newPwd').value;
-    const formData = new FormData();
-    formData.append('user_id', userId); formData.append('old_password', oldP); formData.append('new_password', newP);
-    const res = await fetch('/api/manager/change_password', {method: 'POST', body: formData});
-    const data = await res.json();
-    if(data.status === 'success') { alert("Password Changed Successfully. You may now login."); document.getElementById('pwdModal').classList.add('hidden'); document.getElementById('pwdForm').reset(); } else { alert(data.message); }
+    // C. Auto-Format Expiry Date ( MM/YY )
+    const expInput = document.getElementById('exp_date');
+    if (expInput) {
+        expInput.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, ''); // Remove non-digits
+            if (value.length >= 2) {
+                value = value.substring(0, 2) + '/' + value.substring(2, 4);
+            }
+            e.target.value = value;
+        });
+    }
 });
-
-function searchForEdit() {
-    const id = document.getElementById('editSearchId').value;
-    const type = document.getElementById('editSheetType').value;
-    if(!id) return;
-    const record = allData[type].find(r => (r['Order ID'] == id || r['Record_ID'] == id));
-    if(record) {
-        document.getElementById('editForm').classList.remove('hidden');
-        document.getElementById('e_type').value = type;
-        document.getElementById('e_order_id').value = id;
-        document.getElementById('e_agent').value = record['Agent Name'] || record['Agent'];
-        document.getElementById('e_client').value = record['Client Name'] || record['Name'];
-        const key = Object.keys(record).find(k => k.toLowerCase().includes('status'));
-        document.getElementById('e_status').value = record[key] || 'Pending';
-    } else { alert("Not Found"); }
-}
-
-async function updateStatusFromEdit() {
-    const type = document.getElementById('e_type').value;
-    const id = document.getElementById('e_order_id').value;
-    const status = document.getElementById('e_status').value;
-    await updateStatus(id, status, type);
-}
-
-async function deleteCurrentRecord() {
-    if(!confirm("DELETE this record?")) return;
-    const type = document.getElementById('e_type').value;
-    const id = document.getElementById('e_order_id').value;
-    const formData = new FormData();
-    formData.append('type', type);
-    formData.append('id', id);
-    const res = await fetch('/api/delete-lead', {method: 'POST', body: formData});
-    const d = await res.json();
-    if(d.status === 'success') { alert("Deleted"); document.getElementById('editForm').reset(); document.getElementById('editForm').classList.add('hidden'); fetchAllData(); }
-}
-
-function showToast(msg) {
-    let t = document.createElement('div');
-    t.className = "fixed bottom-5 right-5 bg-blue-600 text-white px-6 py-3 rounded-xl shadow-2xl z-50 animate-bounce";
-    t.innerText = msg;
-    document.body.appendChild(t);
-    setTimeout(() => t.remove(), 3000);
-}
