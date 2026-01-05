@@ -1,5 +1,5 @@
 // --- GLOBAL DATA STORE ---
-let allData = { billing: [], insurance: [], stats_bill: {}, stats_ins: {} };
+let allData = { billing: [], insurance: [], telecom_cb: [], insurance_cb: [], stats_bill: {}, stats_ins: {} };
 let currentTab = 'stats';
 let currentPendingType = 'billing';
 let authUser = null;
@@ -51,7 +51,6 @@ function switchMainTab(tab) {
         b.classList.remove('bg-blue-600', 'text-white');
         b.classList.add('text-slate-400', 'hover:bg-slate-700');
     });
-    // Handle special names logic for ID matching
     let navId = 'nav' + tab.charAt(0).toUpperCase() + tab.slice(1);
     if(tab === 'chargebacks') navId = 'navCB';
     const activeBtn = document.getElementById(navId);
@@ -77,7 +76,7 @@ function switchMainTab(tab) {
         renderChargebackList();
     } else if (tab === 'analysis') {
         document.getElementById('viewAnalysis').classList.remove('hidden');
-        updateAgentSelector(); // Populate agents
+        updateAgentSelector();
         renderAnalysis();
     }
 }
@@ -104,15 +103,19 @@ function updateDashboardStats() {
     }
 }
 
-// --- ANALYSIS TAB (Restored) ---
+// --- ANALYSIS TAB (UPDATED) ---
 function updateAgentSelector() {
     const sheet = document.getElementById('analysisSheetSelector').value;
-    const data = allData[sheet];
+    // Combine Main + CB data for list
+    const main = allData[sheet] || [];
+    const cb = allData[sheet === 'billing' ? 'telecom_cb' : 'insurance_cb'] || [];
+    const rows = [...main, ...cb];
+    
     const selector = document.getElementById('analysisAgentSelector');
     selector.innerHTML = '<option value="all">All Agents</option>';
     
     const agents = new Set();
-    data.forEach(row => {
+    rows.forEach(row => {
         const agent = row['Agent Name'] || row['Agent'];
         if(agent) agents.add(agent);
     });
@@ -132,7 +135,21 @@ function renderAnalysis() {
     const statusFilter = document.getElementById('analysisStatusSelector').value;
     const searchText = document.getElementById('analysisSearch').value.toLowerCase();
     
-    let rows = allData[sheet];
+    // MERGE MAIN + CB FOR ANALYSIS
+    const main = allData[sheet] || [];
+    const cb = allData[sheet === 'billing' ? 'telecom_cb' : 'insurance_cb'] || [];
+    
+    // Tag CB rows with 'Chargeback' status if not present, for easy filtering
+    const cb_tagged = cb.map(r => {
+        // Clone to avoid mutating original
+        const newR = {...r}; 
+        // Find status key and force it to 'Chargeback' for display consistency
+        const k = Object.keys(newR).find(key => key.toLowerCase().includes('status'));
+        if(k) newR[k] = 'Chargeback';
+        return newR;
+    });
+    
+    let rows = [...main, ...cb_tagged];
     
     // Filters
     if (dateStart) rows = rows.filter(r => (r['Timestamp'] || r['Date']) >= dateStart);
@@ -146,28 +163,26 @@ function renderAnalysis() {
     };
 
     if (statusFilter !== 'all') {
-        rows = rows.filter(r => {
-            const s = getStatus(r).toLowerCase();
-            return s.includes(statusFilter.toLowerCase());
-        });
+        rows = rows.filter(r => getStatus(r).toLowerCase().includes(statusFilter.toLowerCase()));
     }
 
-    // Calc Stats
-    let total = 0;
+    // Calc Totals
+    let tCharged = 0, tDeclined = 0, tCB = 0;
+    
     rows.forEach(r => {
         const s = getStatus(r).toLowerCase();
-        if(s === 'charged' || s === 'approved') {
-            const val = r['Charge'] || r['Charge Amount'] || r['Amount'];
-            const num = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
-            total += num;
-        }
+        const val = r['Charge'] || r['Charge Amount'] || r['Amount'];
+        const num = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
+        
+        if(s.includes('charged') || s.includes('approved')) tCharged += num;
+        else if(s.includes('declined')) tDeclined += num;
+        else if(s.includes('chargeback')) tCB += num;
     });
 
-    const avg = rows.length ? (total / rows.length) : 0;
-    
-    document.getElementById('anaTotal').innerText = '$' + total.toFixed(2);
+    document.getElementById('anaCharged').innerText = '$' + tCharged.toFixed(2);
+    document.getElementById('anaDeclined').innerText = '$' + tDeclined.toFixed(2);
+    document.getElementById('anaCB').innerText = '$' + tCB.toFixed(2);
     document.getElementById('anaCount').innerText = rows.length;
-    document.getElementById('anaAvg').innerText = '$' + avg.toFixed(2);
 
     // Table
     const thead = document.getElementById('analysisHeader');
@@ -175,22 +190,20 @@ function renderAnalysis() {
     thead.innerHTML = ''; tbody.innerHTML = '';
 
     if (rows.length > 0) {
-        // Dynamic Headers
-        const headers = Object.keys(rows[0]).filter(k => k !== 'row_index'); // Hide index
-        headers.forEach(h => {
-            thead.innerHTML += `<th class="px-4 py-2">${h}</th>`;
-        });
+        const headers = Object.keys(rows[0]).filter(k => k !== 'row_index');
+        headers.forEach(h => thead.innerHTML += `<th class="px-4 py-2">${h}</th>`);
 
-        // Rows (Max 100 for performance)
         rows.slice(0, 100).forEach(row => {
             const tr = document.createElement('tr');
             headers.forEach(h => {
                 let val = row[h];
                 let colorClass = 'text-slate-300';
                 if(h.toLowerCase().includes('status')) {
-                    if(val === 'Charged') colorClass = 'text-green-400 font-bold';
-                    if(val === 'Declined') colorClass = 'text-red-400 font-bold';
-                    if(val === 'Pending') colorClass = 'text-yellow-400 font-bold';
+                    const s = String(val).toLowerCase();
+                    if(s.includes('charged')) colorClass = 'text-green-400 font-bold';
+                    else if(s.includes('declined')) colorClass = 'text-red-400 font-bold';
+                    else if(s.includes('pending')) colorClass = 'text-yellow-400 font-bold';
+                    else if(s.includes('chargeback')) colorClass = 'text-purple-400 font-bold';
                 }
                 tr.innerHTML += `<td class="px-4 py-2 border-b border-slate-800 ${colorClass}">${val}</td>`;
             });
@@ -199,19 +212,20 @@ function renderAnalysis() {
     }
 }
 
-// --- CHARGEBACK TAB (Updated Search) ---
+// --- CHARGEBACK TAB ---
 function renderChargebackList() {
     const sheet = document.getElementById('cbSheetSelector').value;
     const filter = document.getElementById('cbSearch').value.toLowerCase();
     const container = document.getElementById('cbListContainer');
     container.innerHTML = '';
 
-    const data = allData[sheet];
+    const data = allData[sheet] || [];
     const getStatus = (row) => {
         const key = Object.keys(row).find(k => k.toLowerCase().includes('status'));
         return key ? row[key] : '';
     };
 
+    // List only charged items to mark as CB
     const charged = data.filter(r => {
         const s = (getStatus(r) || '').toLowerCase();
         return s === 'charged' || s === 'approved';
@@ -223,7 +237,6 @@ function renderChargebackList() {
         const id = (r['Order ID'] || r['Record_ID'] || '').toString().toLowerCase();
         const agent = (r['Agent Name'] || r['Agent'] || '').toLowerCase();
         
-        // --- SEARCH LOGIC UPDATED ---
         return client.includes(filter) || card.includes(filter) || id.includes(filter) || agent.includes(filter);
     });
 
@@ -270,11 +283,7 @@ async function markAsChargeback(type, id) {
     } catch(e) { console.error(e); }
 }
 
-// --- PASSWORD CHANGE (Login Screen) ---
-function openPwdModal() {
-    document.getElementById('pwdModal').classList.remove('hidden');
-}
-
+// --- PASSWORD CHANGE (Logic in HTML/Modal, this handles submit) ---
 document.getElementById('pwdForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const userId = document.getElementById('pwdUserId').value;
@@ -309,12 +318,10 @@ function switchPendingSubTab(type) {
 function renderPending() {
     const container = document.getElementById('pendingContainer');
     container.innerHTML = '';
-    const data = allData[currentPendingType];
+    const data = allData[currentPendingType] || [];
     const getStatus = (row) => { const key = Object.keys(row).find(k => k.toLowerCase().includes('status')); return key ? row[key] : ''; };
     const pending = data.filter(r => (getStatus(r) || '').toLowerCase() === 'pending');
-    
     if(pending.length === 0) { container.innerHTML = '<div class="col-span-3 text-center text-slate-500 py-10">No Pending Approvals</div>'; return; }
-
     pending.forEach(item => {
         const id = item['Order ID'] || item['Record_ID'];
         const agent = item['Agent Name'] || item['Agent'];
