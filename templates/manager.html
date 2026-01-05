@@ -96,8 +96,8 @@
             <div id="viewAnalysis" class="space-y-6 hidden fade-in">
                 <div class="flex flex-col xl:flex-row justify-between items-end xl:items-center gap-4 bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
                     <div class="flex gap-4 w-full xl:w-auto flex-wrap">
-                        <div class="flex flex-col gap-1"><label class="text-xs text-slate-400 font-bold uppercase">From</label><input type="date" id="dateStart" onchange="renderAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none text-white"></div>
-                        <div class="flex flex-col gap-1"><label class="text-xs text-slate-400 font-bold uppercase">To</label><input type="date" id="dateEnd" onchange="renderAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none text-white"></div>
+                        <div class="flex flex-col gap-1"><label class="text-xs text-slate-400 font-bold uppercase">From (Timestamp)</label><input type="datetime-local" id="dateStart" onchange="renderAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none text-white"></div>
+                        <div class="flex flex-col gap-1"><label class="text-xs text-slate-400 font-bold uppercase">To (Timestamp)</label><input type="datetime-local" id="dateEnd" onchange="renderAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none text-white"></div>
                     </div>
                     <div class="flex gap-2 w-full xl:w-auto flex-wrap">
                         <select id="analysisSheetSelector" onchange="updateAgentSelector(); renderAnalysis()" class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 text-sm outline-none font-bold"><option value="billing">Billing</option><option value="insurance">Insurance</option></select>
@@ -145,7 +145,7 @@
                         <option value="insurance">Insurance Leads</option>
                     </select>
                 </div>
-                <p class="text-slate-400 text-sm">Search by ID, Name, or Card Number.</p>
+                <p class="text-slate-400 text-sm">Search by ID, Name, or Card Number to load data.</p>
                 <input type="text" id="cbSearch" onkeyup="renderChargebackList()" placeholder="Type to search..." class="bg-slate-900 border border-slate-700 p-3 rounded-lg w-full text-white">
                 <div id="cbListContainer" class="grid grid-cols-1 gap-4 max-h-[600px] overflow-y-auto"></div>
             </div>
