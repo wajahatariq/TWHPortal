@@ -79,9 +79,9 @@ def get_worksheet(sheet_type):
         if sheet_type == 'billing': return sh.get_worksheet(0)
         if sheet_type == 'insurance': return sh.get_worksheet(1)
         if sheet_type == 'auth': return sh.get_worksheet(2)
-        # --- NEW SHEETS ---
-        if sheet_type == 'telecom_cb': return sh.worksheet("TELECOM CB") # Ensure tab is named exactly this
-        if sheet_type == 'insurance_cb': return sh.worksheet("INSURANCE CB") # Ensure tab is named exactly this
+        # --- NEW SHEETS (Make sure tabs exist in GSheets) ---
+        if sheet_type == 'telecom_cb': return sh.worksheet("TELECOM CB")
+        if sheet_type == 'insurance_cb': return sh.worksheet("INSURANCE CB")
     except Exception as e:
         print(f"Sheet Access Error (forcing reconnect): {e}")
         gc = None 
@@ -126,46 +126,54 @@ def find_column(df, candidates):
         if key in cols: return cols[key]
     return None
 
-def calculate_stats(df):
+# Updated to accept a secondary dataframe (CB data) for totals
+def calculate_stats(df, cb_df=None):
     if df.empty: 
-        return {
-            "today": 0, "night": 0, "pending": 0, 
-            "declined_amt": 0, "cb_amt": 0, "pending_amt": 0,
-            "breakdown": {}
-        }
-    
+        df = pd.DataFrame() # Ensure it's a DF even if empty
+
     col_charge = find_column(df, ['Charge', 'Charge Amount', 'Amount'])
     col_status = find_column(df, ['Status', 'State'])
     col_time = find_column(df, ['Timestamp', 'Date', 'Time'])
     col_agent = find_column(df, ['Agent Name', 'Agent'])
 
-    if col_charge:
-        df['ChargeFloat'] = df[col_charge].astype(str).replace(r'[^0-9.]', '', regex=True)
-        df['ChargeFloat'] = pd.to_numeric(df['ChargeFloat'], errors='coerce').fillna(0.0)
-    else:
-        df['ChargeFloat'] = 0.0
+    # Helper to clean charge column
+    def clean_charge_col(dataframe, col_name):
+        if col_name and not dataframe.empty:
+            return pd.to_numeric(dataframe[col_name].astype(str).replace(r'[^0-9.]', '', regex=True), errors='coerce').fillna(0.0)
+        return pd.Series([0.0] * len(dataframe))
 
-    if col_time:
+    df['ChargeFloat'] = clean_charge_col(df, col_charge)
+
+    if col_time and not df.empty:
         df['dt'] = pd.to_datetime(df[col_time], format='mixed', errors='coerce')
     else:
         df['dt'] = pd.NaT
 
-    # --- UPDATED STATS CALCULATION ---
-    if col_status:
+    # --- PENDING & DECLINED (From Main Sheet) ---
+    pending_count = 0
+    pending_amt = 0.0
+    declined_amt = 0.0
+    
+    if col_status and not df.empty:
         df['StatusClean'] = df[col_status].astype(str).str.strip().str.title()
-        pending_count = len(df[df['StatusClean'] == 'Pending'])
+        pending_mask = df['StatusClean'] == 'Pending'
+        declined_mask = df['StatusClean'] == 'Declined'
         
-        # Calculate Amounts for different statuses
-        pending_amt = df.loc[df['StatusClean'] == 'Pending', 'ChargeFloat'].sum()
-        declined_amt = df.loc[df['StatusClean'] == 'Declined', 'ChargeFloat'].sum()
-        cb_amt = df.loc[df['StatusClean'].str.contains('Chargeback', case=False), 'ChargeFloat'].sum()
+        pending_count = len(df[pending_mask])
+        pending_amt = df.loc[pending_mask, 'ChargeFloat'].sum()
+        declined_amt = df.loc[declined_mask, 'ChargeFloat'].sum()
     else:
         df['StatusClean'] = "Unknown"
-        pending_count = 0
-        pending_amt = 0
-        declined_amt = 0
-        cb_amt = 0
 
+    # --- CHARGEBACKS (From CB Sheet) ---
+    cb_amt = 0.0
+    if cb_df is not None and not cb_df.empty:
+        # Assuming CB sheet has similar columns
+        cb_col_charge = find_column(cb_df, ['Charge', 'Charge Amount', 'Amount'])
+        cb_charges = clean_charge_col(cb_df, cb_col_charge)
+        cb_amt = cb_charges.sum()
+
+    # --- NIGHT / TODAY STATS ---
     now = datetime.now(TZ_KARACHI)
     today = now.date()
     yesterday = today - timedelta(days=1)
@@ -194,14 +202,14 @@ def calculate_stats(df):
     night_total = 0.0
     breakdown = {}
 
-    if window_start and col_status and col_time:
+    if window_start and col_status and col_time and not df.empty:
         night_mask = ((df['StatusClean'] == "Charged") & (df['dt'] >= window_start) & (df['dt'] <= window_end))
         night_df = df.loc[night_mask]
         night_total = night_df['ChargeFloat'].sum()
         if col_agent: breakdown = night_df.groupby(col_agent)['ChargeFloat'].sum().to_dict()
 
     today_total = 0.0
-    if col_status and col_time:
+    if col_status and col_time and not df.empty:
         today_start = datetime.combine(today, time(0,0))
         today_mask = (df['StatusClean'] == "Charged") & (df['dt'] >= today_start)
         today_total = df.loc[today_mask, 'ChargeFloat'].sum()
@@ -260,7 +268,6 @@ async def view_manager(request: Request):
 
 @app.get("/api/public/night-stats")
 async def get_public_stats():
-    # NO CACHE - FETCH FRESH
     def fetch_op():
         ws_bill = get_worksheet('billing')
         ws_ins = get_worksheet('insurance')
@@ -268,6 +275,8 @@ async def get_public_stats():
 
         bill_data = rows_to_dict(ws_bill.get_all_values())
         ins_data = rows_to_dict(ws_ins.get_all_values())
+        
+        # Calculate stats (CB is optional for public stats, usually not needed)
         stats_bill = calculate_stats(pd.DataFrame(bill_data))
         stats_ins = calculate_stats(pd.DataFrame(ins_data))
         
@@ -454,6 +463,7 @@ async def manager_login(user_id: str = Form(...), password: str = Form(...)):
         return JSONResponse({"status": "error", "message": "Invalid password"}, 401)
     except Exception as e: return JSONResponse({"status": "error", "message": str(e)}, 500)
 
+# --- NEW: CHANGE PASSWORD ---
 @app.post("/api/manager/change_password")
 async def change_password(user_id: str = Form(...), old_password: str = Form(...), new_password: str = Form(...)):
     def pw_op():
@@ -473,9 +483,6 @@ async def change_password(user_id: str = Form(...), old_password: str = Form(...
         if old_password != stored_pw and hashed_old != stored_pw:
             return "Incorrect Old Password"
             
-        # Update Password (Store Plaintext or Hash?) 
-        # Keeping consistent with your login: storing plaintext for now based on your code, 
-        # but normally we should hash.
         ws.update_cell(cell.row, 2, new_password)
         return "Success"
 
@@ -485,23 +492,33 @@ async def change_password(user_id: str = Form(...), old_password: str = Form(...
         return {"status": "error", "message": res}
     except Exception as e: return {"status": "error", "message": str(e)}
 
+# --- NEW: FETCH MANAGER DATA (Including Chargebacks) ---
 @app.get("/api/manager/data")
 async def get_manager_data(token: str):
-    # NO CACHE
     def fetch_manager_data():
         ws_bill = get_worksheet('billing')
-        time_module.sleep(1) 
+        time_module.sleep(0.5) 
         ws_ins = get_worksheet('insurance')
+        time_module.sleep(0.5) 
+        ws_tel_cb = get_worksheet('telecom_cb')
+        time_module.sleep(0.5) 
+        ws_ins_cb = get_worksheet('insurance_cb')
 
+        # Fetch Data
         bill_data = rows_to_dict(ws_bill.get_all_values()) if ws_bill else []
         ins_data = rows_to_dict(ws_ins.get_all_values()) if ws_ins else []
+        tel_cb_data = rows_to_dict(ws_tel_cb.get_all_values()) if ws_tel_cb else []
+        ins_cb_data = rows_to_dict(ws_ins_cb.get_all_values()) if ws_ins_cb else []
         
-        stats_bill = calculate_stats(pd.DataFrame(bill_data))
-        stats_ins = calculate_stats(pd.DataFrame(ins_data))
+        # Calculate Stats (Including CB totals)
+        stats_bill = calculate_stats(pd.DataFrame(bill_data), pd.DataFrame(tel_cb_data))
+        stats_ins = calculate_stats(pd.DataFrame(ins_data), pd.DataFrame(ins_cb_data))
         
         return {
-            "billing": bill_data, "insurance": ins_data, 
-            "stats_bill": stats_bill, "stats_ins": stats_ins
+            "billing": bill_data, 
+            "insurance": ins_data, 
+            "stats_bill": stats_bill, 
+            "stats_ins": stats_ins
         }
     try:
         return safe_db_op(fetch_manager_data)
@@ -535,6 +552,7 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
 
         if not candidates: raise Exception(f"ID '{id}' not found.")
         
+        # Smart Select: Prefer Pending
         pending_matches = [c for c in candidates if c['status'] == 'Pending']
         target_match = max(pending_matches, key=lambda x: x['row_index']) if pending_matches else max(candidates, key=lambda x: x['row_index'])
         
@@ -557,9 +575,9 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "success", "message": "Updated"}
     except Exception as e: return {"status": "error", "message": str(e)}
 
+# --- NEW: MARK CHARGEBACK (Move Row Logic) ---
 @app.post("/api/manager/mark_chargeback")
 async def mark_chargeback(type: str = Form(...), id: str = Form(...)):
-    # LOGIC: Move from Main Sheet -> CB Sheet
     def move_op():
         src_ws = get_worksheet(type)
         if type == 'billing': dest_ws = get_worksheet('telecom_cb')
@@ -567,7 +585,7 @@ async def mark_chargeback(type: str = Form(...), id: str = Form(...)):
         
         if not src_ws or not dest_ws: raise Exception("Sheet Configuration Error")
 
-        # Find the row
+        # Find row by ID
         try: cell = src_ws.find(id, in_column=1)
         except: cell = None
         
@@ -576,14 +594,10 @@ async def mark_chargeback(type: str = Form(...), id: str = Form(...)):
         # Get Data
         row_values = src_ws.row_values(cell.row)
         
-        # 1. Append to Destination
+        # Append to Destination
         dest_ws.append_row(row_values)
         
-        # 2. Update Status to 'Chargeback' in Destination (Optional, but good for clarity)
-        # Assuming Status column is roughly same position
-        # dest_ws.update_cell(dest_ws.row_count, STATUS_COL, "Chargeback") 
-        
-        # 3. Delete from Source
+        # Delete from Source
         src_ws.delete_rows(cell.row)
         
         return "Moved"
