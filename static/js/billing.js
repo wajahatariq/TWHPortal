@@ -1,8 +1,7 @@
 /* =========================================
-   BILLING SUBMISSION LOGIC (Final Version)
+   BILLING SUBMISSION LOGIC
    ========================================= */
 
-// --- 1. GLOBAL VARIABLES & NIGHT STATS ---
 let nightStats = { billing: {total:0, breakdown:{}}, insurance: {total:0, breakdown:{}} };
 
 async function fetchNightStats() {
@@ -35,11 +34,9 @@ function updateNightWidget() {
     } else { listDiv.classList.add('hidden'); }
 }
 
-// Start polling
 fetchNightStats(); 
 setInterval(fetchNightStats, 120000); 
 
-// --- 2. UI HELPERS ---
 function toggleProviderFields() {
     const provider = document.getElementById('providerSelect').value;
     const pinDiv = document.getElementById('pinContainer');
@@ -48,12 +45,10 @@ function toggleProviderFields() {
     const pinInput = document.getElementById('pin_code');
     const accInput = document.getElementById('account_number');
 
-    // Default: Hide Inputs
     pinDiv.classList.add('hidden');
     accDiv.classList.add('hidden');
     if(placeholder) placeholder.classList.remove('hidden');
     
-    // Reset requirements
     if(pinInput) pinInput.required = false;
     if(accInput) accInput.required = false;
 
@@ -106,7 +101,6 @@ function clearForm() {
     showToast("Form Cleared");
 }
 
-// --- 3. SEARCH & EDIT LOGIC ---
 async function searchLead(rowIndex = null) {
     const id = document.getElementById('searchId').value.trim();
     if(!id) return showToast("Enter an Order ID", true);
@@ -121,7 +115,6 @@ async function searchLead(rowIndex = null) {
         const res = await fetch(url);
         const json = await res.json();
         
-        // --- DUPLICATE HANDLING ---
         if(json.status === 'multiple') {
             const list = document.getElementById('duplicateList');
             list.innerHTML = '';
@@ -134,15 +127,10 @@ async function searchLead(rowIndex = null) {
 
                 const item = document.createElement('div');
                 item.className = "p-3 bg-slate-700/50 rounded-lg cursor-pointer hover:bg-blue-600/50 border border-slate-600 transition flex justify-between items-center";
-                
                 item.innerHTML = `
-                    <div>
-                        <div class="font-bold text-white">${name}</div>
-                        <div class="text-xs text-slate-400">${date}</div>
-                    </div>
+                    <div><div class="font-bold text-white">${name}</div><div class="text-xs text-slate-400">${date}</div></div>
                     <div class="text-green-400 font-mono font-bold">${charge}</div>
                 `;
-                
                 item.onclick = () => {
                     document.getElementById('duplicateModal').classList.add('hidden');
                     searchLead(rIndex);
@@ -153,7 +141,6 @@ async function searchLead(rowIndex = null) {
             return; 
         }
 
-        // --- SUCCESSFUL LOAD ---
         if(json.status === 'success') {
             const d = json.data;
             document.getElementById('isEdit').value = "true";
@@ -164,8 +151,6 @@ async function searchLead(rowIndex = null) {
             submitBtn.classList.replace('hover:bg-blue-500', 'hover:bg-green-500');
             
             document.getElementById('editOptions').classList.remove('hidden');
-            
-            // Populate Fields
             document.getElementById('original_timestamp').value = d['Timestamp'] || d['timestamp'];
             document.getElementById('row_index').value = d['row_index'];
 
@@ -174,7 +159,7 @@ async function searchLead(rowIndex = null) {
             
             const orderInput = document.getElementById('order_id');
             orderInput.value = d['Record_ID'] || d['Order ID'];
-            orderInput.readOnly = true; // Lock ID on edit
+            orderInput.readOnly = true;
 
             document.getElementById('phone').value = d['Ph Number'] || d['Phone'];
             document.getElementById('address').value = d['Address'];
@@ -210,10 +195,9 @@ async function searchLead(rowIndex = null) {
     finally { if(!rowIndex && btn) btn.innerText = "Find"; }
 }
 
-// --- 4. DOM EVENTS & AUTO-FORMATTING ---
 document.addEventListener("DOMContentLoaded", function() {
 
-    // A. Submit Handler
+    // A. Submit Handler (NO AUTO-CLEAR)
     const form = document.getElementById('billingForm');
     if(form) {
         form.addEventListener('submit', async (e) => {
@@ -221,7 +205,6 @@ document.addEventListener("DOMContentLoaded", function() {
             const btn = document.getElementById('submitBtn');
             const originalText = btn.innerText;
             
-            // Lock Button
             btn.innerText = 'Processing...';
             btn.disabled = true;
             btn.classList.add('opacity-50', 'cursor-not-allowed');
@@ -233,14 +216,10 @@ document.addEventListener("DOMContentLoaded", function() {
                 if (data.status === 'success') {
                     showToast(data.message);
                     fetchNightStats(); 
-                    if(document.getElementById('isEdit').value !== "true") {
-                        form.reset(); // Only clear if new submission
-                        toggleProviderFields();
-                    }
+                    // NO CLEARING
                 } else { showToast(data.message, true); }
             } catch (err) { showToast('Submission Failed', true); } 
             finally { 
-                // Unlock Button
                 btn.innerText = originalText; 
                 btn.disabled = false;
                 btn.classList.remove('opacity-50', 'cursor-not-allowed');
@@ -248,22 +227,22 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
-    // B. Auto-Format Card Number ( #### #### #### #### )
+    // B. Auto-Format Card
     const cardInput = document.getElementById('card_number');
     if (cardInput) {
         cardInput.addEventListener('input', function (e) {
-            let value = e.target.value.replace(/\D/g, ''); // Remove non-digits
-            if (value.length > 16) value = value.substring(0, 16); // Max 16
+            let value = e.target.value.replace(/\D/g, ''); 
+            if (value.length > 16) value = value.substring(0, 16); 
             let formattedValue = value.match(/.{1,4}/g)?.join(' ') || value;
             e.target.value = formattedValue;
         });
     }
 
-    // C. Auto-Format Expiry Date ( MM/YY )
+    // C. Auto-Format Expiry
     const expInput = document.getElementById('exp_date');
     if (expInput) {
         expInput.addEventListener('input', function(e) {
-            let value = e.target.value.replace(/\D/g, ''); // Remove non-digits
+            let value = e.target.value.replace(/\D/g, ''); 
             if (value.length >= 2) {
                 value = value.substring(0, 2) + '/' + value.substring(2, 4);
             }
