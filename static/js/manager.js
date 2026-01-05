@@ -3,7 +3,7 @@ let allData = { billing: [], insurance: [], telecom_cb: [], insurance_cb: [], st
 let currentTab = 'stats';
 let currentPendingType = 'billing';
 let authUser = null;
-let chartInstance = null; // Store chart instance
+let chartInstance = null; 
 
 // --- LOGIN ---
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
@@ -102,7 +102,7 @@ function updateDashboardStats() {
     }
 }
 
-// --- ANALYSIS TAB (FULL RESTORED LOGIC) ---
+// --- ANALYSIS TAB ---
 function updateAgentSelector() {
     const sheet = document.getElementById('analysisSheetSelector').value;
     const main = allData[sheet] || [];
@@ -124,16 +124,18 @@ function updateAgentSelector() {
 
 function renderAnalysis() {
     const sheet = document.getElementById('analysisSheetSelector').value;
-    const dateStart = document.getElementById('dateStart').value;
-    const dateEnd = document.getElementById('dateEnd').value;
+    let dateStart = document.getElementById('dateStart').value;
+    let dateEnd = document.getElementById('dateEnd').value;
     const selectedAgent = document.getElementById('analysisAgentSelector').value;
     const statusFilter = document.getElementById('analysisStatusSelector').value;
     const searchText = document.getElementById('analysisSearch').value.toLowerCase();
     
+    if(dateStart) dateStart = dateStart.replace('T', ' ');
+    if(dateEnd) dateEnd = dateEnd.replace('T', ' ');
+
     const main = allData[sheet] || [];
     const cb = allData[sheet === 'billing' ? 'telecom_cb' : 'insurance_cb'] || [];
     
-    // Tag CB rows with 'Chargeback' status
     const cb_tagged = cb.map(r => {
         const newR = {...r}; 
         const k = Object.keys(newR).find(key => key.toLowerCase().includes('status'));
@@ -143,9 +145,8 @@ function renderAnalysis() {
     
     let rows = [...main, ...cb_tagged];
     
-    // Filters
-    if (dateStart) rows = rows.filter(r => (r['Timestamp'] || r['Date']) >= dateStart);
-    if (dateEnd) rows = rows.filter(r => (r['Timestamp'] || r['Date']) <= dateEnd + " 23:59:59");
+    if (dateStart) rows = rows.filter(r => (r['Timestamp'] || r['Date'] || '') >= dateStart);
+    if (dateEnd) rows = rows.filter(r => (r['Timestamp'] || r['Date'] || '') <= dateEnd);
     if (selectedAgent !== 'all') rows = rows.filter(r => (r['Agent Name'] || r['Agent']) === selectedAgent);
     if (searchText) rows = rows.filter(r => Object.values(r).join(' ').toLowerCase().includes(searchText));
     
@@ -158,7 +159,6 @@ function renderAnalysis() {
         rows = rows.filter(r => getStatus(r).toLowerCase().includes(statusFilter.toLowerCase()));
     }
 
-    // --- CALCULATE TOTALS ---
     let tCharged = 0, tDeclined = 0, tCB = 0;
     let hourlyCounts = Array(24).fill(0);
     
@@ -169,18 +169,16 @@ function renderAnalysis() {
         
         if(s.includes('charged') || s.includes('approved')) {
             tCharged += num;
-            // Peak Hour Logic (Only for charged)
             const timeStr = r['Timestamp'] || r['Date'];
             if(timeStr && timeStr.includes(' ')) {
                 const hour = parseInt(timeStr.split(' ')[1].split(':')[0]);
-                if(!isNaN(hour)) hourlyCounts[hour] += num; // Sum amount per hour
+                if(!isNaN(hour)) hourlyCounts[hour] += num;
             }
         }
         else if(s.includes('declined')) tDeclined += num;
         else if(s.includes('chargeback')) tCB += num;
     });
 
-    // Avg Sale & Peak Hour
     const chargedCount = rows.filter(r => {
         const s = getStatus(r).toLowerCase();
         return s.includes('charged') || s.includes('approved');
@@ -198,13 +196,15 @@ function renderAnalysis() {
     document.getElementById('anaAvg').innerText = '$' + avg.toFixed(2);
     document.getElementById('anaPeak').innerText = peakHourStr;
 
-    // --- RENDER TABLE ---
     const thead = document.getElementById('analysisHeader');
     const tbody = document.getElementById('analysisBody');
     thead.innerHTML = ''; tbody.innerHTML = '';
 
     if (rows.length > 0) {
-        const headers = Object.keys(rows[0]).filter(k => k !== 'row_index');
+        let headers = Object.keys(rows[0]).filter(k => k !== 'row_index');
+        const tsKey = headers.find(k => k.toLowerCase().includes('timestamp') || k.toLowerCase() === 'date');
+        if (tsKey) { headers = headers.filter(k => k !== tsKey); headers.unshift(tsKey); }
+
         headers.forEach(h => thead.innerHTML += `<th class="px-4 py-2">${h}</th>`);
 
         rows.slice(0, 100).forEach(row => {
@@ -225,10 +225,8 @@ function renderAnalysis() {
         });
     }
 
-    // --- RENDER CHART ---
     const ctx = document.getElementById('analysisChart').getContext('2d');
     if (chartInstance) chartInstance.destroy();
-    
     chartInstance = new Chart(ctx, {
         type: 'bar',
         data: {
@@ -242,8 +240,7 @@ function renderAnalysis() {
             }]
         },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
+            responsive: true, maintainAspectRatio: false,
             scales: {
                 y: { beginAtZero: true, grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
                 x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
@@ -253,18 +250,124 @@ function renderAnalysis() {
     });
 }
 
+// --- PENDING TAB (RESTORED DETAILED LAYOUT) ---
+function switchPendingSubTab(type) {
+    currentPendingType = type;
+    document.getElementById('subBill').className = type === 'billing' ? "text-lg font-bold text-blue-400 border-b-2 border-blue-400 pb-1" : "text-lg font-bold text-slate-500 hover:text-white pb-1";
+    document.getElementById('subIns').className = type === 'insurance' ? "text-lg font-bold text-blue-400 border-b-2 border-blue-400 pb-1" : "text-lg font-bold text-slate-500 hover:text-white pb-1";
+    renderPending();
+}
+
+function renderPending() {
+    const container = document.getElementById('pendingContainer');
+    container.innerHTML = '';
+    const data = allData[currentPendingType] || [];
+    
+    const getStatus = (row) => { 
+        const key = Object.keys(row).find(k => k.toLowerCase().includes('status')); 
+        return key ? row[key] : ''; 
+    };
+    
+    const pending = data.filter(r => (getStatus(r) || '').toLowerCase() === 'pending');
+    
+    if(pending.length === 0) { 
+        container.innerHTML = '<div class="col-span-3 text-center text-slate-500 py-10">No Pending Approvals</div>'; 
+        return; 
+    }
+
+    pending.forEach(item => {
+        const id = item['Order ID'] || item['Record_ID'];
+        const agent = item['Agent Name'] || item['Agent'];
+        const amount = item['Charge'] || item['Charge Amount'] || item['Amount'];
+        
+        // Extract Detailed Info
+        const client = item['Client Name'] || item['Name'] || 'Unknown';
+        const phone = item['Phone'] || item['Ph Number'] || item['Phone Number'] || 'N/A';
+        const email = item['Email'] || 'N/A';
+        const timeVal = item['Timestamp'] || item['Date'] || '';
+
+        container.innerHTML += `
+            <div id="pending-${id}" class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl relative overflow-hidden group hover:border-blue-500 transition">
+                <div class="absolute top-0 right-0 bg-blue-600/20 text-blue-400 text-xs font-bold px-3 py-1 rounded-bl-lg border-b border-l border-blue-500/20">
+                    #${id}
+                </div>
+                
+                <div class="flex justify-between items-start mb-6 mt-2">
+                    <div>
+                        <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-0.5">Agent</div>
+                        <div class="text-xl font-bold text-white">${agent}</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-0.5">Amount</div>
+                        <div class="text-3xl font-black text-green-400">${amount}</div>
+                    </div>
+                </div>
+
+                <div class="space-y-3 mb-6 bg-slate-900/50 p-4 rounded-lg border border-slate-700/50">
+                    <div class="flex justify-between items-center text-sm">
+                        <span class="text-slate-500">Client:</span>
+                        <span class="text-white font-medium truncate ml-2">${client}</span>
+                    </div>
+                    <div class="flex justify-between items-center text-sm">
+                        <span class="text-slate-500">Phone:</span>
+                        <span class="text-slate-300 font-mono select-all ml-2">${phone}</span>
+                    </div>
+                    <div class="flex justify-between items-center text-sm">
+                        <span class="text-slate-500">Email:</span>
+                        <span class="text-slate-300 truncate w-32 text-right ml-2" title="${email}">${email}</span>
+                    </div>
+                    <div class="flex justify-between items-center text-sm border-t border-slate-700/50 pt-2 mt-2">
+                        <span class="text-slate-500">Time:</span>
+                        <span class="text-yellow-500 font-mono text-xs">${timeVal}</span>
+                    </div>
+                </div>
+
+                <div class="flex gap-3">
+                    <button onclick="updateStatus('${id}', 'Charged', '${currentPendingType}')" 
+                        class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-green-900/20 transition transform active:scale-95">
+                        Approve
+                    </button>
+                    <button onclick="updateStatus('${id}', 'Declined', '${currentPendingType}')" 
+                        class="flex-1 bg-slate-700 hover:bg-red-600 hover:text-white text-slate-300 font-bold py-3 rounded-lg shadow-lg transition transform active:scale-95">
+                        Decline
+                    </button>
+                </div>
+            </div>`;
+    });
+}
+
+async function updateStatus(id, newStatus, sheetType) {
+    if(!confirm(`Mark Lead #${id} as ${newStatus}?`)) return;
+    const formData = new FormData();
+    formData.append('type', sheetType);
+    formData.append('id', id);
+    formData.append('status', newStatus);
+    try {
+        const res = await fetch('/api/manager/update_status', { method: 'POST', body: formData });
+        const data = await res.json();
+        if(data.status === 'success') {
+            const el = document.getElementById(`pending-${id}`);
+            if(el) el.remove();
+            showToast(`Marked as ${newStatus}`);
+            fetchAllData(); 
+        } else { alert(data.message); }
+    } catch(e) { console.error(e); }
+}
+
 // --- CHARGEBACK TAB ---
 function renderChargebackList() {
     const sheet = document.getElementById('cbSheetSelector').value;
-    const filter = document.getElementById('cbSearch').value.toLowerCase();
+    const filter = document.getElementById('cbSearch').value.toLowerCase().trim();
     const container = document.getElementById('cbListContainer');
     container.innerHTML = '';
 
+    if(filter.length === 0) {
+        container.innerHTML = `<div class="text-center text-slate-500 py-10">Enter ID, Name, or Card Number to search...</div>`;
+        return;
+    }
+
     const data = allData[sheet] || [];
-    const getStatus = (row) => {
-        const key = Object.keys(row).find(k => k.toLowerCase().includes('status'));
-        return key ? row[key] : '';
-    };
+    const getStatus = (row) => { const key = Object.keys(row).find(k => k.toLowerCase().includes('status')); return key ? row[key] : ''; };
 
     const charged = data.filter(r => {
         const s = (getStatus(r) || '').toLowerCase();
@@ -278,6 +381,11 @@ function renderChargebackList() {
         const agent = (r['Agent Name'] || r['Agent'] || '').toLowerCase();
         return client.includes(filter) || card.includes(filter) || id.includes(filter) || agent.includes(filter);
     });
+
+    if(filtered.length === 0) {
+        container.innerHTML = `<div class="text-center text-slate-500 py-4">No results found</div>`;
+        return;
+    }
 
     filtered.forEach(item => {
         const id = item['Order ID'] || item['Record_ID'];
@@ -344,57 +452,7 @@ document.getElementById('pwdForm').addEventListener('submit', async (e) => {
     } else { alert(data.message); }
 });
 
-// --- PENDING / EDIT HELPERS ---
-function switchPendingSubTab(type) {
-    currentPendingType = type;
-    document.getElementById('subBill').className = type === 'billing' ? "text-lg font-bold text-blue-400 border-b-2 border-blue-400 pb-1" : "text-lg font-bold text-slate-500 hover:text-white pb-1";
-    document.getElementById('subIns').className = type === 'insurance' ? "text-lg font-bold text-blue-400 border-b-2 border-blue-400 pb-1" : "text-lg font-bold text-slate-500 hover:text-white pb-1";
-    renderPending();
-}
-
-function renderPending() {
-    const container = document.getElementById('pendingContainer');
-    container.innerHTML = '';
-    const data = allData[currentPendingType] || [];
-    const getStatus = (row) => { const key = Object.keys(row).find(k => k.toLowerCase().includes('status')); return key ? row[key] : ''; };
-    const pending = data.filter(r => (getStatus(r) || '').toLowerCase() === 'pending');
-    if(pending.length === 0) { container.innerHTML = '<div class="col-span-3 text-center text-slate-500 py-10">No Pending Approvals</div>'; return; }
-    pending.forEach(item => {
-        const id = item['Order ID'] || item['Record_ID'];
-        const agent = item['Agent Name'] || item['Agent'];
-        const amount = item['Charge'] || item['Charge Amount'] || item['Amount'];
-        container.innerHTML += `
-            <div id="pending-${id}" class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg hover:border-blue-500 transition relative">
-                <div class="absolute top-4 right-4 text-xs font-mono text-slate-500">#${id}</div>
-                <h3 class="font-bold text-xl text-white mb-1">${agent}</h3>
-                <div class="text-2xl font-black text-green-400 mb-4">${amount}</div>
-                <div class="grid grid-cols-2 gap-2 text-sm text-slate-400 mb-4"><div>${item['Client Name'] || item['Name']}</div><div>${item['Timestamp'] || item['Date']}</div></div>
-                <div class="flex gap-2">
-                    <button onclick="updateStatus('${id}', 'Charged', '${currentPendingType}')" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-2 rounded-lg">Approve</button>
-                    <button onclick="updateStatus('${id}', 'Declined', '${currentPendingType}')" class="flex-1 bg-slate-700 hover:bg-red-600 hover:text-white text-slate-300 font-bold py-2 rounded-lg">Decline</button>
-                </div>
-            </div>`;
-    });
-}
-
-async function updateStatus(id, newStatus, sheetType) {
-    if(!confirm(`Mark Lead #${id} as ${newStatus}?`)) return;
-    const formData = new FormData();
-    formData.append('type', sheetType);
-    formData.append('id', id);
-    formData.append('status', newStatus);
-    try {
-        const res = await fetch('/api/manager/update_status', { method: 'POST', body: formData });
-        const data = await res.json();
-        if(data.status === 'success') {
-            const el = document.getElementById(`pending-${id}`);
-            if(el) el.remove();
-            showToast(`Marked as ${newStatus}`);
-            fetchAllData(); 
-        } else { alert(data.message); }
-    } catch(e) { console.error(e); }
-}
-
+// --- EDIT TAB ---
 function searchForEdit() {
     const id = document.getElementById('editSearchId').value;
     const type = document.getElementById('editSheetType').value;
