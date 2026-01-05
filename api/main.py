@@ -33,21 +33,6 @@ pusher_client = pusher.Pusher(
   ssl=True
 )
 
-# --- CACHE SETUP ---
-STATS_CACHE = {
-    "last_updated": 0,
-    "data": {
-        "billing": {"total": 0, "breakdown": {}}, 
-        "insurance": {"total": 0, "breakdown": {}}
-    }
-}
-
-MANAGER_CACHE = {
-    "last_updated": 0,
-    "data": None
-}
-CACHE_DURATION = 60 
-
 # --- CHAT SETUP ---
 CHAT_HISTORY = []
 CHAT_RATE_LIMIT = {"start": 0, "count": 0}
@@ -64,7 +49,7 @@ templates = Jinja2Templates(directory=TEMPLATES_DIR)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 TZ_KARACHI = pytz.timezone("Asia/Karachi")
 
-# --- SHEETS SETUP (ROBUST) ---
+# --- SHEETS SETUP ---
 gc = None
 SHEET_NAME = "Company_Transactions"
 
@@ -94,9 +79,12 @@ def get_worksheet(sheet_type):
         if sheet_type == 'billing': return sh.get_worksheet(0)
         if sheet_type == 'insurance': return sh.get_worksheet(1)
         if sheet_type == 'auth': return sh.get_worksheet(2)
+        # --- NEW SHEETS ---
+        if sheet_type == 'telecom_cb': return sh.worksheet("TELECOM CB") # Ensure tab is named exactly this
+        if sheet_type == 'insurance_cb': return sh.worksheet("INSURANCE CB") # Ensure tab is named exactly this
     except Exception as e:
         print(f"Sheet Access Error (forcing reconnect): {e}")
-        gc = None # Force reset
+        gc = None 
         return None
     return None
 
@@ -139,7 +127,12 @@ def find_column(df, candidates):
     return None
 
 def calculate_stats(df):
-    if df.empty: return {"today": 0, "night": 0, "pending": 0, "breakdown": {}}
+    if df.empty: 
+        return {
+            "today": 0, "night": 0, "pending": 0, 
+            "declined_amt": 0, "cb_amt": 0, "pending_amt": 0,
+            "breakdown": {}
+        }
     
     col_charge = find_column(df, ['Charge', 'Charge Amount', 'Amount'])
     col_status = find_column(df, ['Status', 'State'])
@@ -157,12 +150,21 @@ def calculate_stats(df):
     else:
         df['dt'] = pd.NaT
 
-    pending = 0
+    # --- UPDATED STATS CALCULATION ---
     if col_status:
         df['StatusClean'] = df[col_status].astype(str).str.strip().str.title()
-        pending = len(df[df['StatusClean'] == 'Pending'])
+        pending_count = len(df[df['StatusClean'] == 'Pending'])
+        
+        # Calculate Amounts for different statuses
+        pending_amt = df.loc[df['StatusClean'] == 'Pending', 'ChargeFloat'].sum()
+        declined_amt = df.loc[df['StatusClean'] == 'Declined', 'ChargeFloat'].sum()
+        cb_amt = df.loc[df['StatusClean'].str.contains('Chargeback', case=False), 'ChargeFloat'].sum()
     else:
         df['StatusClean'] = "Unknown"
+        pending_count = 0
+        pending_amt = 0
+        declined_amt = 0
+        cb_amt = 0
 
     now = datetime.now(TZ_KARACHI)
     today = now.date()
@@ -204,9 +206,16 @@ def calculate_stats(df):
         today_mask = (df['StatusClean'] == "Charged") & (df['dt'] >= today_start)
         today_total = df.loc[today_mask, 'ChargeFloat'].sum()
 
-    return { "today": round(today_total, 2), "night": round(night_total, 2), "pending": pending, "breakdown": breakdown }
+    return { 
+        "today": round(today_total, 2), 
+        "night": round(night_total, 2), 
+        "pending": pending_count, 
+        "pending_amt": round(pending_amt, 2),
+        "declined_amt": round(declined_amt, 2),
+        "cb_amt": round(cb_amt, 2),
+        "breakdown": breakdown 
+    }
 
-# --- HELPER: RETRY LOGIC ---
 def safe_db_op(operation_func, retries=3):
     global gc
     last_error = None
@@ -215,14 +224,13 @@ def safe_db_op(operation_func, retries=3):
             return operation_func()
         except Exception as e:
             last_error = e
-            # Check for network/connection errors
             err_str = str(e).lower()
             if "connection aborted" in err_str or "remote end closed" in err_str or "429" in err_str:
                 print(f"DB Connection dropped. Retrying ({i+1}/{retries})...")
-                gc = None # Force Reconnect
-                time_module.sleep(1) # Wait a bit
+                gc = None 
+                time_module.sleep(1) 
             else:
-                raise e # Real error (like missing column), don't retry
+                raise e 
     raise last_error
 
 # --- ROUTES ---
@@ -233,42 +241,30 @@ async def index(request: Request): return templates.TemplateResponse("index.html
 @app.get("/billing", response_class=HTMLResponse)
 async def view_billing(request: Request):
     return templates.TemplateResponse("billing.html", {
-        "request": request, 
-        "agents": AGENTS_BILLING, 
-        "providers": PROVIDERS, 
-        "llcs": LLC_SPEC,
-        "pusher_key": PUSHER_KEY,
-        "pusher_cluster": PUSHER_CLUSTER
+        "request": request, "agents": AGENTS_BILLING, "providers": PROVIDERS, "llcs": LLC_SPEC,
+        "pusher_key": PUSHER_KEY, "pusher_cluster": PUSHER_CLUSTER
     })
 
 @app.get("/insurance", response_class=HTMLResponse)
 async def view_insurance(request: Request):
     return templates.TemplateResponse("insurance.html", {
-        "request": request, 
-        "agents": AGENTS_INSURANCE, 
-        "llcs": LLC_INS,
-        "pusher_key": PUSHER_KEY,
-        "pusher_cluster": PUSHER_CLUSTER
+        "request": request, "agents": AGENTS_INSURANCE, "llcs": LLC_INS,
+        "pusher_key": PUSHER_KEY, "pusher_cluster": PUSHER_CLUSTER
     })
 
 @app.get("/manager", response_class=HTMLResponse)
 async def view_manager(request: Request):
     return templates.TemplateResponse("manager.html", {
-        "request": request, 
-        "pusher_key": PUSHER_KEY, 
-        "pusher_cluster": PUSHER_CLUSTER
+        "request": request, "pusher_key": PUSHER_KEY, "pusher_cluster": PUSHER_CLUSTER
     })
 
 @app.get("/api/public/night-stats")
 async def get_public_stats():
-    current_time = time_module.time()
-    if current_time - STATS_CACHE["last_updated"] < CACHE_DURATION:
-        return STATS_CACHE["data"]
-
+    # NO CACHE - FETCH FRESH
     def fetch_op():
         ws_bill = get_worksheet('billing')
         ws_ins = get_worksheet('insurance')
-        if not ws_bill or not ws_ins: return STATS_CACHE["data"]
+        if not ws_bill or not ws_ins: return {}
 
         bill_data = rows_to_dict(ws_bill.get_all_values())
         ins_data = rows_to_dict(ws_ins.get_all_values())
@@ -281,26 +277,17 @@ async def get_public_stats():
         }
 
     try:
-        new_data = safe_db_op(fetch_op)
-        STATS_CACHE["data"] = new_data
-        STATS_CACHE["last_updated"] = current_time
-        return new_data
+        return safe_db_op(fetch_op)
     except Exception as e:
         print(f"Stats Error: {e}")
-        return STATS_CACHE["data"]
+        return {}
 
 # --- CHAT ENDPOINTS ---
-
 @app.get("/api/chat/history")
-async def get_chat_history():
-    return CHAT_HISTORY
+async def get_chat_history(): return CHAT_HISTORY
 
 @app.post("/api/chat/send")
-async def send_chat(
-    sender: str = Form(...),
-    message: str = Form(...),
-    role: str = Form(...) 
-):
+async def send_chat(sender: str = Form(...), message: str = Form(...), role: str = Form(...)):
     current_time = time_module.time()
     if current_time - CHAT_RATE_LIMIT["start"] > 3600:
         CHAT_RATE_LIMIT["start"] = current_time
@@ -311,42 +298,25 @@ async def send_chat(
     CHAT_RATE_LIMIT["count"] += 1
     t_str = datetime.now(TZ_KARACHI).strftime("%I:%M %p")
     msg_data = {"sender": sender, "message": message, "role": role, "time": t_str}
-    
     CHAT_HISTORY.append(msg_data)
     if len(CHAT_HISTORY) > 50: CHAT_HISTORY.pop(0)
 
     try: pusher_client.trigger('techware-channel', 'new-chat', msg_data)
     except Exception as e: print(f"Pusher Chat Error: {e}")
-
     return {"status": "success"}
 
 @app.post("/api/save-lead")
 async def save_lead(
-    request: Request,
-    type: str = Form(...), 
-    is_edit: str = Form("false"),
-    agent: str = Form(...),
-    client_name: str = Form(...),
-    phone: str = Form(...),
-    address: str = Form(...),
-    email: str = Form(...),
-    card_holder: str = Form(...),
-    card_number: str = Form(...),
-    exp_date: str = Form(...),
-    cvc: str = Form(...),
-    charge_amt: str = Form(...),
-    llc: str = Form(...),
-    status: Optional[str] = Form("Pending"),
-    order_id: Optional[str] = Form(None),
-    provider: Optional[str] = Form(None),
-    pin_code: Optional[str] = Form(""),
-    account_number: Optional[str] = Form(""),  
-    record_id: Optional[str] = Form(None),
-    timestamp_mode: Optional[str] = Form("keep"),
-    original_timestamp: Optional[str] = Form(None),
-    row_index: Optional[int] = Form(None)
+    request: Request, type: str = Form(...), is_edit: str = Form("false"),
+    agent: str = Form(...), client_name: str = Form(...), phone: str = Form(...),
+    address: str = Form(...), email: str = Form(...), card_holder: str = Form(...),
+    card_number: str = Form(...), exp_date: str = Form(...), cvc: str = Form(...),
+    charge_amt: str = Form(...), llc: str = Form(...), status: Optional[str] = Form("Pending"),
+    order_id: Optional[str] = Form(None), provider: Optional[str] = Form(None),
+    pin_code: Optional[str] = Form(""), account_number: Optional[str] = Form(""),  
+    record_id: Optional[str] = Form(None), timestamp_mode: Optional[str] = Form("keep"),
+    original_timestamp: Optional[str] = Form(None), row_index: Optional[int] = Form(None)
 ):
-    # --- DATA PREP ---
     try:
         clean_charge = float(str(charge_amt).replace('$', '').replace(',', '').strip())
         final_charge = f"${clean_charge:.2f}"
@@ -371,11 +341,9 @@ async def save_lead(
         row_data = [primary_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge, llc, date_str, final_status, timestamp_str]
         range_end = f"O{row_index}"
 
-    # --- DB OPERATION (WITH RETRY) ---
     def db_save_op():
         ws = get_worksheet(type)
         if not ws: raise Exception("DB Connection Failed")
-        
         if is_edit == 'true' and row_index:
             range_start = f"A{row_index}"
             ws.update(f"{range_start}:{range_end}", [row_data])
@@ -384,18 +352,10 @@ async def save_lead(
 
     try:
         safe_db_op(db_save_op)
-        
-        # Post-Save Actions
-        STATS_CACHE["last_updated"] = 0
-        MANAGER_CACHE["last_updated"] = 0 
-        
         if is_edit == 'true':
             try:
                 pusher_client.trigger('techware-channel', 'lead-edited', {
-                    'agent': agent,
-                    'id': primary_id,
-                    'type': type,
-                    'client': client_name, 
+                    'agent': agent, 'id': primary_id, 'type': type, 'client': client_name,
                     'message': f"{type.title()} Lead #{primary_id} was edited by {agent}"
                 })
             except Exception as e: print(f"Pusher Edit Error: {e}")
@@ -403,15 +363,12 @@ async def save_lead(
         else:
             try:
                 pusher_client.trigger('techware-channel', 'new-lead', {
-                    'agent': agent,
-                    'amount': final_charge,
-                    'type': type,
+                    'agent': agent, 'amount': final_charge, 'type': type,
                     'message': f"New {type} lead from {agent}"
                 })
             except Exception as e: print(f"Pusher Error: {e}")
             send_pushbullet(f"New {type.title()} Lead", f"{agent} - {final_charge}")
             return {"status": "success", "message": "Lead Submitted Successfully"}
-
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, 500)
 
@@ -425,25 +382,17 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
             ws.delete_rows(cell.row)
             return True
         return False
-
     try:
         found = safe_db_op(delete_op)
-        if found:
-            STATS_CACHE["last_updated"] = 0
-            MANAGER_CACHE["last_updated"] = 0
-            return {"status": "success", "message": "Deleted successfully"}
+        if found: return {"status": "success", "message": "Deleted successfully"}
         return {"status": "error", "message": "ID not found"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+    except Exception as e: return {"status": "error", "message": str(e)}
 
 @app.get("/api/get-lead")
 async def get_lead(type: str, id: str, row_index: Optional[int] = None):
-    # This is a read op, we can wrap it too
     def fetch_lead_op():
         ws = get_worksheet(type)
         if not ws: raise Exception("DB Error")
-        
-        # 1. FETCH BY ROW INDEX
         if row_index:
             row_values = ws.row_values(row_index)
             headers = ws.row_values(1)
@@ -451,18 +400,13 @@ async def get_lead(type: str, id: str, row_index: Optional[int] = None):
             data['row_index'] = row_index
             if 'Record_ID' not in data and 'Order ID' in data: data['Record_ID'] = data['Order ID']
             return {"status": "success", "data": data}
-        
-        # 2. SEARCH BY ID
         cells = []
         try: cells = ws.findall(id, in_column=1)
         except: pass
         if not cells and str(id).strip().isdigit():
             try: cells = ws.findall(int(id), in_column=1)
             except: pass
-
-        if not cells: return None # Signal Not Found
-        
-        # 3. HANDLE DUPLICATES
+        if not cells: return None
         if len(cells) == 1:
             row_values = ws.row_values(cells[0].row)
             headers = ws.row_values(1)
@@ -476,10 +420,12 @@ async def get_lead(type: str, id: str, row_index: Optional[int] = None):
             for cell in cells:
                 r_vals = ws.row_values(cell.row)
                 d = dict(zip(headers, r_vals))
-                name = d.get('Client Name', d.get('Name', 'Unknown'))
-                charge = d.get('Charge', d.get('Charge Amount', '$0'))
-                time_val = d.get('Timestamp', 'No Time')
-                candidates.append({"row_index": cell.row, "name": name, "charge": charge, "timestamp": time_val})
+                candidates.append({
+                    "row_index": cell.row, 
+                    "name": d.get('Client Name', d.get('Name', 'Unknown')), 
+                    "charge": d.get('Charge', d.get('Charge Amount', '$0')), 
+                    "timestamp": d.get('Timestamp', 'No Time')
+                })
             candidates.sort(key=lambda x: x['row_index'], reverse=True)
             return {"status": "multiple", "candidates": candidates}
 
@@ -487,8 +433,7 @@ async def get_lead(type: str, id: str, row_index: Optional[int] = None):
         result = safe_db_op(fetch_lead_op)
         if result is None: return JSONResponse({"status": "error", "message": "Not Found"}, 404)
         return result
-    except Exception as e: 
-        return JSONResponse({"status": "error", "message": str(e)}, 500)
+    except Exception as e: return JSONResponse({"status": "error", "message": str(e)}, 500)
 
 @app.post("/api/manager/login")
 async def manager_login(user_id: str = Form(...), password: str = Form(...)):
@@ -496,9 +441,7 @@ async def manager_login(user_id: str = Form(...), password: str = Form(...)):
         ws = get_worksheet('auth')
         if not ws: raise Exception("Auth DB Error")
         records = ws.get_all_records()
-        df = pd.DataFrame(records)
-        return df
-    
+        return pd.DataFrame(records)
     try:
         df = safe_db_op(login_op)
         if 'ID' not in df.columns: return JSONResponse({"status": "error", "message": "Config Error"}, 500)
@@ -509,15 +452,42 @@ async def manager_login(user_id: str = Form(...), password: str = Form(...)):
         if password == stored or hashed == stored:
             return {"status": "success", "token": f"auth_{user_id}", "role": "Manager"}
         return JSONResponse({"status": "error", "message": "Invalid password"}, 401)
-    except Exception as e:
-        return JSONResponse({"status": "error", "message": str(e)}, 500)
+    except Exception as e: return JSONResponse({"status": "error", "message": str(e)}, 500)
+
+@app.post("/api/manager/change_password")
+async def change_password(user_id: str = Form(...), old_password: str = Form(...), new_password: str = Form(...)):
+    def pw_op():
+        ws = get_worksheet('auth')
+        if not ws: raise Exception("Auth DB Error")
+        
+        # Find User
+        try: cell = ws.find(user_id, in_column=1)
+        except: cell = None
+        
+        if not cell: return "User Not Found"
+        
+        # Verify Old Password (Column 2)
+        stored_pw = str(ws.cell(cell.row, 2).value)
+        hashed_old = hashlib.sha256(old_password.encode()).hexdigest()
+        
+        if old_password != stored_pw and hashed_old != stored_pw:
+            return "Incorrect Old Password"
+            
+        # Update Password (Store Plaintext or Hash?) 
+        # Keeping consistent with your login: storing plaintext for now based on your code, 
+        # but normally we should hash.
+        ws.update_cell(cell.row, 2, new_password)
+        return "Success"
+
+    try:
+        res = safe_db_op(pw_op)
+        if res == "Success": return {"status": "success", "message": "Password Changed"}
+        return {"status": "error", "message": res}
+    except Exception as e: return {"status": "error", "message": str(e)}
 
 @app.get("/api/manager/data")
 async def get_manager_data(token: str):
-    current_time = time_module.time()
-    if current_time - MANAGER_CACHE["last_updated"] < CACHE_DURATION and MANAGER_CACHE["data"]:
-        return MANAGER_CACHE["data"]
-
+    # NO CACHE
     def fetch_manager_data():
         ws_bill = get_worksheet('billing')
         time_module.sleep(1) 
@@ -530,99 +500,96 @@ async def get_manager_data(token: str):
         stats_ins = calculate_stats(pd.DataFrame(ins_data))
         
         return {
-            "billing": bill_data, 
-            "insurance": ins_data, 
-            "stats_bill": stats_bill, 
-            "stats_ins": stats_ins
+            "billing": bill_data, "insurance": ins_data, 
+            "stats_bill": stats_bill, "stats_ins": stats_ins
         }
-
     try:
-        response_data = safe_db_op(fetch_manager_data)
-        MANAGER_CACHE["data"] = response_data
-        MANAGER_CACHE["last_updated"] = current_time
-        return response_data
+        return safe_db_op(fetch_manager_data)
     except Exception as e:
         print(f"Manager Data Error: {e}")
-        return JSONResponse({"status": "error", "message": "Data sync failed, please refresh"}, 500)
+        return JSONResponse({"status": "error", "message": "Data sync failed"}, 500)
 
-# --- SMART UPDATE STATUS (Fixed for Duplicates) ---
 @app.post("/api/manager/update_status")
 async def update_status(type: str = Form(...), id: str = Form(...), status: str = Form(...)):
     def update_op():
         ws = get_worksheet(type)
         if not ws: raise Exception("DB Connection Failed")
-        
-        # 1. Fetch ALL data to perform efficient search
         all_values = ws.get_all_values()
         if not all_values: raise Exception("Empty Sheet")
         
-        # 2. Find Status Column
         headers = [str(h).strip().lower() for h in all_values[0]]
         status_col_idx = -1
         possible_status = ["status", "state", "approval", "current status"]
         for i, h in enumerate(headers):
             if h in possible_status:
-                status_col_idx = i
-                break
-        if status_col_idx == -1:
-            status_col_idx = 14 if type == 'billing' else 13
+                status_col_idx = i; break
+        if status_col_idx == -1: status_col_idx = 14 if type == 'billing' else 13
 
-        # 3. Find Matches & Check Status
         target_id = str(id).strip()
         candidates = []
-        
         for row_num, row in enumerate(all_values):
-            # Skip header (row_num 0)
             if row_num == 0: continue
-            
-            # Check ID (Column 1 -> index 0)
             if len(row) > 0 and str(row[0]).strip() == target_id:
                 curr_status = str(row[status_col_idx]).strip().title() if len(row) > status_col_idx else ""
-                candidates.append({
-                    "row_index": row_num + 1, # 1-based index for GSheets
-                    "status": curr_status,
-                    "data": row
-                })
+                candidates.append({"row_index": row_num + 1, "status": curr_status, "data": row})
 
-        if not candidates:
-            raise Exception(f"ID '{id}' not found.")
-
-        # 4. SELECT THE RIGHT ROW
-        # PRIORITY: Last "Pending" Row > Last Row
-        pending_matches = [c for c in candidates if c['status'] == 'Pending']
+        if not candidates: raise Exception(f"ID '{id}' not found.")
         
-        if pending_matches:
-            target_match = max(pending_matches, key=lambda x: x['row_index'])
-        else:
-            target_match = max(candidates, key=lambda x: x['row_index'])
-
+        pending_matches = [c for c in candidates if c['status'] == 'Pending']
+        target_match = max(pending_matches, key=lambda x: x['row_index']) if pending_matches else max(candidates, key=lambda x: x['row_index'])
+        
         target_row = target_match['row_index']
         target_data = target_match['data']
-        
-        # Get Names for Notification
         headers_map = dict(zip(all_values[0], target_data))
         agent_name = headers_map.get('Agent Name', 'Unknown Agent')
         client_name = headers_map.get('Client Name', headers_map.get('Name', 'Unknown Client'))
 
-        # 5. Update
-        ws.update_cell(target_row, status_col_idx + 1, status) # +1 for 1-based column
+        ws.update_cell(target_row, status_col_idx + 1, status)
         return agent_name, client_name
 
     try:
         agent_name, client_name = safe_db_op(update_op)
-        STATS_CACHE["last_updated"] = 0
-        MANAGER_CACHE["last_updated"] = 0 
-        
         try:
             pusher_client.trigger('techware-channel', 'status-update', {
-                'id': id,
-                'status': status,
-                'type': type,
-                'agent': agent_name,
-                'client': client_name
+                'id': id, 'status': status, 'type': type, 'agent': agent_name, 'client': client_name
             })
         except Exception as e: print(f"Pusher Error: {e}")
-
         return {"status": "success", "message": "Updated"}
+    except Exception as e: return {"status": "error", "message": str(e)}
+
+@app.post("/api/manager/mark_chargeback")
+async def mark_chargeback(type: str = Form(...), id: str = Form(...)):
+    # LOGIC: Move from Main Sheet -> CB Sheet
+    def move_op():
+        src_ws = get_worksheet(type)
+        if type == 'billing': dest_ws = get_worksheet('telecom_cb')
+        else: dest_ws = get_worksheet('insurance_cb')
+        
+        if not src_ws or not dest_ws: raise Exception("Sheet Configuration Error")
+
+        # Find the row
+        try: cell = src_ws.find(id, in_column=1)
+        except: cell = None
+        
+        if not cell: raise Exception("Lead ID not found in source sheet")
+        
+        # Get Data
+        row_values = src_ws.row_values(cell.row)
+        
+        # 1. Append to Destination
+        dest_ws.append_row(row_values)
+        
+        # 2. Update Status to 'Chargeback' in Destination (Optional, but good for clarity)
+        # Assuming Status column is roughly same position
+        # dest_ws.update_cell(dest_ws.row_count, STATUS_COL, "Chargeback") 
+        
+        # 3. Delete from Source
+        src_ws.delete_rows(cell.row)
+        
+        return "Moved"
+
+    try:
+        safe_db_op(move_op)
+        return {"status": "success", "message": "Moved to Chargeback Sheet"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
