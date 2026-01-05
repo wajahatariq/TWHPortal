@@ -3,6 +3,7 @@ let allData = { billing: [], insurance: [], telecom_cb: [], insurance_cb: [], st
 let currentTab = 'stats';
 let currentPendingType = 'billing';
 let authUser = null;
+let chartInstance = null; // Store chart instance
 
 // --- LOGIN ---
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
@@ -17,9 +18,8 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
             document.getElementById('dashboard').classList.remove('hidden');
             fetchAllData();
         } else {
-            const err = document.getElementById('loginError');
-            err.innerText = data.message;
-            err.classList.remove('hidden');
+            document.getElementById('loginError').innerText = data.message;
+            document.getElementById('loginError').classList.remove('hidden');
         }
     } catch (e) { console.error(e); }
 });
@@ -46,7 +46,6 @@ function manualRefresh() {
 
 function switchMainTab(tab) {
     currentTab = tab;
-    // UI Updates
     document.querySelectorAll('nav button[id^="nav"]').forEach(b => {
         b.classList.remove('bg-blue-600', 'text-white');
         b.classList.add('text-slate-400', 'hover:bg-slate-700');
@@ -103,23 +102,19 @@ function updateDashboardStats() {
     }
 }
 
-// --- ANALYSIS TAB (UPDATED) ---
+// --- ANALYSIS TAB (FULL RESTORED LOGIC) ---
 function updateAgentSelector() {
     const sheet = document.getElementById('analysisSheetSelector').value;
-    // Combine Main + CB data for list
     const main = allData[sheet] || [];
     const cb = allData[sheet === 'billing' ? 'telecom_cb' : 'insurance_cb'] || [];
     const rows = [...main, ...cb];
-    
     const selector = document.getElementById('analysisAgentSelector');
     selector.innerHTML = '<option value="all">All Agents</option>';
-    
     const agents = new Set();
     rows.forEach(row => {
         const agent = row['Agent Name'] || row['Agent'];
         if(agent) agents.add(agent);
     });
-    
     agents.forEach(a => {
         const opt = document.createElement('option');
         opt.value = a; opt.innerText = a;
@@ -135,15 +130,12 @@ function renderAnalysis() {
     const statusFilter = document.getElementById('analysisStatusSelector').value;
     const searchText = document.getElementById('analysisSearch').value.toLowerCase();
     
-    // MERGE MAIN + CB FOR ANALYSIS
     const main = allData[sheet] || [];
     const cb = allData[sheet === 'billing' ? 'telecom_cb' : 'insurance_cb'] || [];
     
-    // Tag CB rows with 'Chargeback' status if not present, for easy filtering
+    // Tag CB rows with 'Chargeback' status
     const cb_tagged = cb.map(r => {
-        // Clone to avoid mutating original
         const newR = {...r}; 
-        // Find status key and force it to 'Chargeback' for display consistency
         const k = Object.keys(newR).find(key => key.toLowerCase().includes('status'));
         if(k) newR[k] = 'Chargeback';
         return newR;
@@ -166,25 +158,47 @@ function renderAnalysis() {
         rows = rows.filter(r => getStatus(r).toLowerCase().includes(statusFilter.toLowerCase()));
     }
 
-    // Calc Totals
+    // --- CALCULATE TOTALS ---
     let tCharged = 0, tDeclined = 0, tCB = 0;
+    let hourlyCounts = Array(24).fill(0);
     
     rows.forEach(r => {
         const s = getStatus(r).toLowerCase();
         const val = r['Charge'] || r['Charge Amount'] || r['Amount'];
         const num = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
         
-        if(s.includes('charged') || s.includes('approved')) tCharged += num;
+        if(s.includes('charged') || s.includes('approved')) {
+            tCharged += num;
+            // Peak Hour Logic (Only for charged)
+            const timeStr = r['Timestamp'] || r['Date'];
+            if(timeStr && timeStr.includes(' ')) {
+                const hour = parseInt(timeStr.split(' ')[1].split(':')[0]);
+                if(!isNaN(hour)) hourlyCounts[hour] += num; // Sum amount per hour
+            }
+        }
         else if(s.includes('declined')) tDeclined += num;
         else if(s.includes('chargeback')) tCB += num;
     });
+
+    // Avg Sale & Peak Hour
+    const chargedCount = rows.filter(r => {
+        const s = getStatus(r).toLowerCase();
+        return s.includes('charged') || s.includes('approved');
+    }).length;
+    const avg = chargedCount ? (tCharged / chargedCount) : 0;
+    
+    const peakHourIdx = hourlyCounts.indexOf(Math.max(...hourlyCounts));
+    const peakHourAmt = hourlyCounts[peakHourIdx];
+    const peakHourStr = peakHourAmt > 0 ? `${peakHourIdx}:00 - ${peakHourIdx+1}:00` : "-";
 
     document.getElementById('anaCharged').innerText = '$' + tCharged.toFixed(2);
     document.getElementById('anaDeclined').innerText = '$' + tDeclined.toFixed(2);
     document.getElementById('anaCB').innerText = '$' + tCB.toFixed(2);
     document.getElementById('anaCount').innerText = rows.length;
+    document.getElementById('anaAvg').innerText = '$' + avg.toFixed(2);
+    document.getElementById('anaPeak').innerText = peakHourStr;
 
-    // Table
+    // --- RENDER TABLE ---
     const thead = document.getElementById('analysisHeader');
     const tbody = document.getElementById('analysisBody');
     thead.innerHTML = ''; tbody.innerHTML = '';
@@ -210,6 +224,33 @@ function renderAnalysis() {
             tbody.appendChild(tr);
         });
     }
+
+    // --- RENDER CHART ---
+    const ctx = document.getElementById('analysisChart').getContext('2d');
+    if (chartInstance) chartInstance.destroy();
+    
+    chartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: Array.from({length: 24}, (_, i) => `${i}:00`),
+            datasets: [{
+                label: 'Charged Amount ($)',
+                data: hourlyCounts,
+                backgroundColor: 'rgba(34, 197, 94, 0.6)',
+                borderColor: '#22c55e',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true, grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
+                x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+            },
+            plugins: { legend: { labels: { color: '#e2e8f0' } } }
+        }
+    });
 }
 
 // --- CHARGEBACK TAB ---
@@ -225,7 +266,6 @@ function renderChargebackList() {
         return key ? row[key] : '';
     };
 
-    // List only charged items to mark as CB
     const charged = data.filter(r => {
         const s = (getStatus(r) || '').toLowerCase();
         return s === 'charged' || s === 'approved';
@@ -236,7 +276,6 @@ function renderChargebackList() {
         const card = (r['Card Number'] || '').toLowerCase();
         const id = (r['Order ID'] || r['Record_ID'] || '').toString().toLowerCase();
         const agent = (r['Agent Name'] || r['Agent'] || '').toLowerCase();
-        
         return client.includes(filter) || card.includes(filter) || id.includes(filter) || agent.includes(filter);
     });
 
@@ -269,7 +308,7 @@ function renderChargebackList() {
 }
 
 async function markAsChargeback(type, id) {
-    if(!confirm(`Warning: This will MOVE Lead #${id} to the Chargeback Sheet and delete it from here. Continue?`)) return;
+    if(!confirm(`Warning: This will MOVE Lead #${id} to the Chargeback Sheet. Continue?`)) return;
     const formData = new FormData();
     formData.append('type', type);
     formData.append('id', id);
@@ -283,7 +322,7 @@ async function markAsChargeback(type, id) {
     } catch(e) { console.error(e); }
 }
 
-// --- PASSWORD CHANGE (Logic in HTML/Modal, this handles submit) ---
+// --- PASSWORD CHANGE ---
 document.getElementById('pwdForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const userId = document.getElementById('pwdUserId').value;
@@ -302,9 +341,7 @@ document.getElementById('pwdForm').addEventListener('submit', async (e) => {
         alert("Password Changed Successfully. You may now login.");
         document.getElementById('pwdModal').classList.add('hidden');
         document.getElementById('pwdForm').reset();
-    } else {
-        alert(data.message);
-    }
+    } else { alert(data.message); }
 });
 
 // --- PENDING / EDIT HELPERS ---
