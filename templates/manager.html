@@ -106,12 +106,20 @@
                         <input type="text" id="analysisSearch" onkeyup="renderAnalysis()" placeholder="Search..." class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 text-sm outline-none flex-grow">
                     </div>
                 </div>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div class="bg-slate-800 p-4 rounded-xl border border-slate-700"><div class="text-xs text-slate-400 uppercase font-bold">Total Charged</div><div id="anaCharged" class="text-2xl font-black text-green-400">$0.00</div></div>
-                    <div class="bg-slate-800 p-4 rounded-xl border border-slate-700"><div class="text-xs text-slate-400 uppercase font-bold">Total Declined</div><div id="anaDeclined" class="text-2xl font-black text-red-400">$0.00</div></div>
-                    <div class="bg-slate-800 p-4 rounded-xl border border-slate-700"><div class="text-xs text-slate-400 uppercase font-bold">Total Chargeback</div><div id="anaCB" class="text-2xl font-black text-purple-400">$0.00</div></div>
-                    <div class="bg-slate-800 p-4 rounded-xl border border-slate-700"><div class="text-xs text-slate-400 uppercase font-bold">Record Count</div><div id="anaCount" class="text-2xl font-bold text-white">0</div></div>
+                
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                    <div class="bg-slate-800 p-4 rounded-xl border border-slate-700"><div class="text-xs text-slate-400 uppercase font-bold">Total Charged</div><div id="anaCharged" class="text-xl font-black text-green-400">$0.00</div></div>
+                    <div class="bg-slate-800 p-4 rounded-xl border border-slate-700"><div class="text-xs text-slate-400 uppercase font-bold">Total Declined</div><div id="anaDeclined" class="text-xl font-black text-red-400">$0.00</div></div>
+                    <div class="bg-slate-800 p-4 rounded-xl border border-slate-700"><div class="text-xs text-slate-400 uppercase font-bold">Total Chargeback</div><div id="anaCB" class="text-xl font-black text-purple-400">$0.00</div></div>
+                    <div class="bg-slate-800 p-4 rounded-xl border border-slate-700"><div class="text-xs text-slate-400 uppercase font-bold">Count</div><div id="anaCount" class="text-xl font-bold text-white">0</div></div>
+                    <div class="bg-slate-800 p-4 rounded-xl border border-slate-700"><div class="text-xs text-slate-400 uppercase font-bold">Avg Sale</div><div id="anaAvg" class="text-xl font-bold text-blue-400">$0.00</div></div>
+                    <div class="bg-slate-800 p-4 rounded-xl border border-slate-700"><div class="text-xs text-slate-400 uppercase font-bold">Peak Hour</div><div id="anaPeak" class="text-xl font-bold text-yellow-400">-</div></div>
                 </div>
+
+                <div class="h-64 bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+                    <canvas id="analysisChart"></canvas>
+                </div>
+
                 <div class="overflow-x-auto bg-slate-800 rounded-xl border border-slate-700 shadow-lg">
                     <table class="w-full text-sm">
                         <thead class="bg-slate-900/50 border-b border-slate-700 text-left uppercase text-xs text-slate-400"><tr id="analysisHeader"></tr></thead>
