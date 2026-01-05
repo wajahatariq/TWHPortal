@@ -73,13 +73,11 @@ def get_worksheet(sheet_type):
     global gc
     if not gc: get_gc()
     if not gc: return None
-    
     try:
         sh = gc.open(SHEET_NAME)
         if sheet_type == 'billing': return sh.get_worksheet(0)
         if sheet_type == 'insurance': return sh.get_worksheet(1)
         if sheet_type == 'auth': return sh.get_worksheet(2)
-        # --- NEW SHEETS (Make sure tabs exist in GSheets) ---
         if sheet_type == 'telecom_cb': return sh.worksheet("TELECOM CB")
         if sheet_type == 'insurance_cb': return sh.worksheet("INSURANCE CB")
     except Exception as e:
@@ -126,17 +124,14 @@ def find_column(df, candidates):
         if key in cols: return cols[key]
     return None
 
-# Updated to accept a secondary dataframe (CB data) for totals
 def calculate_stats(df, cb_df=None):
-    if df.empty: 
-        df = pd.DataFrame() # Ensure it's a DF even if empty
+    if df.empty: df = pd.DataFrame() 
 
     col_charge = find_column(df, ['Charge', 'Charge Amount', 'Amount'])
     col_status = find_column(df, ['Status', 'State'])
     col_time = find_column(df, ['Timestamp', 'Date', 'Time'])
     col_agent = find_column(df, ['Agent Name', 'Agent'])
 
-    # Helper to clean charge column
     def clean_charge_col(dataframe, col_name):
         if col_name and not dataframe.empty:
             return pd.to_numeric(dataframe[col_name].astype(str).replace(r'[^0-9.]', '', regex=True), errors='coerce').fillna(0.0)
@@ -149,7 +144,6 @@ def calculate_stats(df, cb_df=None):
     else:
         df['dt'] = pd.NaT
 
-    # --- PENDING & DECLINED (From Main Sheet) ---
     pending_count = 0
     pending_amt = 0.0
     declined_amt = 0.0
@@ -165,15 +159,12 @@ def calculate_stats(df, cb_df=None):
     else:
         df['StatusClean'] = "Unknown"
 
-    # --- CHARGEBACKS (From CB Sheet) ---
     cb_amt = 0.0
     if cb_df is not None and not cb_df.empty:
-        # Assuming CB sheet has similar columns
         cb_col_charge = find_column(cb_df, ['Charge', 'Charge Amount', 'Amount'])
         cb_charges = clean_charge_col(cb_df, cb_col_charge)
         cb_amt = cb_charges.sum()
 
-    # --- NIGHT / TODAY STATS ---
     now = datetime.now(TZ_KARACHI)
     today = now.date()
     yesterday = today - timedelta(days=1)
@@ -275,8 +266,6 @@ async def get_public_stats():
 
         bill_data = rows_to_dict(ws_bill.get_all_values())
         ins_data = rows_to_dict(ws_ins.get_all_values())
-        
-        # Calculate stats (CB is optional for public stats, usually not needed)
         stats_bill = calculate_stats(pd.DataFrame(bill_data))
         stats_ins = calculate_stats(pd.DataFrame(ins_data))
         
@@ -284,14 +273,13 @@ async def get_public_stats():
             "billing": { "total": stats_bill['night'], "breakdown": stats_bill['breakdown'] },
             "insurance": { "total": stats_ins['night'], "breakdown": stats_ins['breakdown'] }
         }
-
     try:
         return safe_db_op(fetch_op)
     except Exception as e:
         print(f"Stats Error: {e}")
         return {}
 
-# --- CHAT ENDPOINTS ---
+# --- CHAT ---
 @app.get("/api/chat/history")
 async def get_chat_history(): return CHAT_HISTORY
 
@@ -299,8 +287,7 @@ async def get_chat_history(): return CHAT_HISTORY
 async def send_chat(sender: str = Form(...), message: str = Form(...), role: str = Form(...)):
     current_time = time_module.time()
     if current_time - CHAT_RATE_LIMIT["start"] > 3600:
-        CHAT_RATE_LIMIT["start"] = current_time
-        CHAT_RATE_LIMIT["count"] = 0
+        CHAT_RATE_LIMIT["start"] = current_time; CHAT_RATE_LIMIT["count"] = 0
     if CHAT_RATE_LIMIT["count"] >= 30:
         return JSONResponse({"status": "error", "message": "Global chat limit reached (30/hr)."}, 429)
 
@@ -387,13 +374,10 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
         ws = get_worksheet(type)
         if not ws: raise Exception("DB Error")
         cell = ws.find(id, in_column=1)
-        if cell:
-            ws.delete_rows(cell.row)
-            return True
+        if cell: ws.delete_rows(cell.row); return True
         return False
     try:
-        found = safe_db_op(delete_op)
-        if found: return {"status": "success", "message": "Deleted successfully"}
+        if safe_db_op(delete_op): return {"status": "success", "message": "Deleted successfully"}
         return {"status": "error", "message": "ID not found"}
     except Exception as e: return {"status": "error", "message": str(e)}
 
@@ -463,36 +447,26 @@ async def manager_login(user_id: str = Form(...), password: str = Form(...)):
         return JSONResponse({"status": "error", "message": "Invalid password"}, 401)
     except Exception as e: return JSONResponse({"status": "error", "message": str(e)}, 500)
 
-# --- NEW: CHANGE PASSWORD ---
 @app.post("/api/manager/change_password")
 async def change_password(user_id: str = Form(...), old_password: str = Form(...), new_password: str = Form(...)):
     def pw_op():
         ws = get_worksheet('auth')
         if not ws: raise Exception("Auth DB Error")
-        
-        # Find User
         try: cell = ws.find(user_id, in_column=1)
         except: cell = None
-        
         if not cell: return "User Not Found"
-        
-        # Verify Old Password (Column 2)
         stored_pw = str(ws.cell(cell.row, 2).value)
         hashed_old = hashlib.sha256(old_password.encode()).hexdigest()
-        
         if old_password != stored_pw and hashed_old != stored_pw:
             return "Incorrect Old Password"
-            
         ws.update_cell(cell.row, 2, new_password)
         return "Success"
-
     try:
         res = safe_db_op(pw_op)
         if res == "Success": return {"status": "success", "message": "Password Changed"}
         return {"status": "error", "message": res}
     except Exception as e: return {"status": "error", "message": str(e)}
 
-# --- NEW: FETCH MANAGER DATA (Including Chargebacks) ---
 @app.get("/api/manager/data")
 async def get_manager_data(token: str):
     def fetch_manager_data():
@@ -504,7 +478,6 @@ async def get_manager_data(token: str):
         time_module.sleep(0.5) 
         ws_ins_cb = get_worksheet('insurance_cb')
 
-        # Fetch Data
         bill_data = rows_to_dict(ws_bill.get_all_values()) if ws_bill else []
         ins_data = rows_to_dict(ws_ins.get_all_values()) if ws_ins else []
         tel_cb_data = rows_to_dict(ws_tel_cb.get_all_values()) if ws_tel_cb else []
@@ -517,6 +490,8 @@ async def get_manager_data(token: str):
         return {
             "billing": bill_data, 
             "insurance": ins_data, 
+            "telecom_cb": tel_cb_data,  # Sent to frontend
+            "insurance_cb": ins_cb_data, # Sent to frontend
             "stats_bill": stats_bill, 
             "stats_ins": stats_ins
         }
@@ -533,13 +508,11 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         if not ws: raise Exception("DB Connection Failed")
         all_values = ws.get_all_values()
         if not all_values: raise Exception("Empty Sheet")
-        
         headers = [str(h).strip().lower() for h in all_values[0]]
         status_col_idx = -1
         possible_status = ["status", "state", "approval", "current status"]
         for i, h in enumerate(headers):
-            if h in possible_status:
-                status_col_idx = i; break
+            if h in possible_status: status_col_idx = i; break
         if status_col_idx == -1: status_col_idx = 14 if type == 'billing' else 13
 
         target_id = str(id).strip()
@@ -551,11 +524,8 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
                 candidates.append({"row_index": row_num + 1, "status": curr_status, "data": row})
 
         if not candidates: raise Exception(f"ID '{id}' not found.")
-        
-        # Smart Select: Prefer Pending
         pending_matches = [c for c in candidates if c['status'] == 'Pending']
         target_match = max(pending_matches, key=lambda x: x['row_index']) if pending_matches else max(candidates, key=lambda x: x['row_index'])
-        
         target_row = target_match['row_index']
         target_data = target_match['data']
         headers_map = dict(zip(all_values[0], target_data))
@@ -564,7 +534,6 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
 
         ws.update_cell(target_row, status_col_idx + 1, status)
         return agent_name, client_name
-
     try:
         agent_name, client_name = safe_db_op(update_op)
         try:
@@ -575,35 +544,21 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "success", "message": "Updated"}
     except Exception as e: return {"status": "error", "message": str(e)}
 
-# --- NEW: MARK CHARGEBACK (Move Row Logic) ---
 @app.post("/api/manager/mark_chargeback")
 async def mark_chargeback(type: str = Form(...), id: str = Form(...)):
     def move_op():
         src_ws = get_worksheet(type)
         if type == 'billing': dest_ws = get_worksheet('telecom_cb')
         else: dest_ws = get_worksheet('insurance_cb')
-        
         if not src_ws or not dest_ws: raise Exception("Sheet Configuration Error")
-
-        # Find row by ID
         try: cell = src_ws.find(id, in_column=1)
         except: cell = None
-        
         if not cell: raise Exception("Lead ID not found in source sheet")
-        
-        # Get Data
         row_values = src_ws.row_values(cell.row)
-        
-        # Append to Destination
         dest_ws.append_row(row_values)
-        
-        # Delete from Source
         src_ws.delete_rows(cell.row)
-        
         return "Moved"
-
     try:
         safe_db_op(move_op)
         return {"status": "success", "message": "Moved to Chargeback Sheet"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+    except Exception as e: return {"status": "error", "message": str(e)}
