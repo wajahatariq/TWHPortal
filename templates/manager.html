@@ -87,9 +87,9 @@
                     </select>
                 </div>
 
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-6">
                     <div class="bg-slate-800 p-6 rounded-2xl border border-green-500/30 shadow-lg">
-                        <div class="text-slate-400 text-xs font-bold uppercase mb-1">Total Charged</div>
+                        <div class="text-slate-400 text-xs font-bold uppercase mb-1">Today's Charged</div>
                         <div id="dispToday" class="text-3xl font-black text-green-400">$0.00</div>
                     </div>
                     <div class="bg-slate-800 p-6 rounded-2xl border border-blue-500/30 shadow-lg">
@@ -97,12 +97,16 @@
                         <div id="dispNight" class="text-3xl font-black text-blue-400">$0.00</div>
                     </div>
                     <div class="bg-slate-800 p-6 rounded-2xl border border-yellow-500/30 shadow-lg">
-                        <div class="text-slate-400 text-xs font-bold uppercase mb-1">Pending Amount</div>
+                        <div class="text-slate-400 text-xs font-bold uppercase mb-1">Pending</div>
                         <div id="dispPendingAmt" class="text-3xl font-black text-yellow-400">$0.00</div>
                     </div>
                     <div class="bg-slate-800 p-6 rounded-2xl border border-red-500/30 shadow-lg">
-                        <div class="text-slate-400 text-xs font-bold uppercase mb-1">Declined Total</div>
+                        <div class="text-slate-400 text-xs font-bold uppercase mb-1">Declined</div>
                         <div id="dispDeclined" class="text-3xl font-black text-red-400">$0.00</div>
+                    </div>
+                    <div class="bg-slate-800 p-6 rounded-2xl border border-purple-500/30 shadow-lg">
+                        <div class="text-slate-400 text-xs font-bold uppercase mb-1">Chargebacks</div>
+                        <div id="dispCB" class="text-3xl font-black text-purple-400">$0.00</div>
                     </div>
                 </div>
 
