@@ -1,4 +1,3 @@
-
 import os
 import json
 import gspread
@@ -33,21 +32,6 @@ pusher_client = pusher.Pusher(
   cluster=PUSHER_CLUSTER,
   ssl=True
 )
-
-# --- CACHE SETUP ---
-STATS_CACHE = {
-    "last_updated": 0,
-    "data": {
-        "billing": {"total": 0, "breakdown": {}}, 
-        "insurance": {"total": 0, "breakdown": {}}
-    }
-}
-
-MANAGER_CACHE = {
-    "last_updated": 0,
-    "data": None
-}
-CACHE_DURATION = 60 
 
 # --- CHAT SETUP ---
 CHAT_HISTORY = []
@@ -262,14 +246,12 @@ async def view_manager(request: Request):
 
 @app.get("/api/public/night-stats")
 async def get_public_stats():
-    current_time = time_module.time()
-    if current_time - STATS_CACHE["last_updated"] < CACHE_DURATION:
-        return STATS_CACHE["data"]
-
+    # DIRECT FETCH - NO CACHE
     def fetch_op():
         ws_bill = get_worksheet('billing')
         ws_ins = get_worksheet('insurance')
-        if not ws_bill or not ws_ins: return STATS_CACHE["data"]
+        if not ws_bill or not ws_ins: 
+            raise Exception("DB Connection Failed")
 
         bill_data = rows_to_dict(ws_bill.get_all_values())
         ins_data = rows_to_dict(ws_ins.get_all_values())
@@ -283,12 +265,14 @@ async def get_public_stats():
 
     try:
         new_data = safe_db_op(fetch_op)
-        STATS_CACHE["data"] = new_data
-        STATS_CACHE["last_updated"] = current_time
         return new_data
     except Exception as e:
         print(f"Stats Error: {e}")
-        return STATS_CACHE["data"]
+        # Return empty stats on failure so frontend doesn't crash
+        return {
+            "billing": { "total": 0, "breakdown": {} },
+            "insurance": { "total": 0, "breakdown": {} }
+        }
 
 # --- CHAT ENDPOINTS ---
 
@@ -387,8 +371,6 @@ async def save_lead(
         safe_db_op(db_save_op)
         
         # Post-Save Actions
-        STATS_CACHE["last_updated"] = 0
-        MANAGER_CACHE["last_updated"] = 0 
         
         if is_edit == 'true':
             try:
@@ -430,8 +412,6 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
     try:
         found = safe_db_op(delete_op)
         if found:
-            STATS_CACHE["last_updated"] = 0
-            MANAGER_CACHE["last_updated"] = 0
             return {"status": "success", "message": "Deleted successfully"}
         return {"status": "error", "message": "ID not found"}
     except Exception as e:
@@ -515,9 +495,7 @@ async def manager_login(user_id: str = Form(...), password: str = Form(...)):
 
 @app.get("/api/manager/data")
 async def get_manager_data(token: str):
-    current_time = time_module.time()
-    if current_time - MANAGER_CACHE["last_updated"] < CACHE_DURATION and MANAGER_CACHE["data"]:
-        return MANAGER_CACHE["data"]
+    # DIRECT FETCH - NO CACHE
 
     def fetch_manager_data():
         ws_bill = get_worksheet('billing')
@@ -539,8 +517,6 @@ async def get_manager_data(token: str):
 
     try:
         response_data = safe_db_op(fetch_manager_data)
-        MANAGER_CACHE["data"] = response_data
-        MANAGER_CACHE["last_updated"] = current_time
         return response_data
     except Exception as e:
         print(f"Manager Data Error: {e}")
@@ -611,8 +587,6 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
 
     try:
         agent_name, client_name = safe_db_op(update_op)
-        STATS_CACHE["last_updated"] = 0
-        MANAGER_CACHE["last_updated"] = 0 
         
         try:
             pusher_client.trigger('techware-channel', 'status-update', {
