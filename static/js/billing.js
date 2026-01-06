@@ -234,8 +234,8 @@ document.addEventListener("DOMContentLoaded", function() {
                     showToast(data.message);
                     fetchNightStats(); 
                     if(document.getElementById('isEdit').value !== "true") {
-                        form.reset(); // Only clear if new submission
-                        toggleProviderFields();
+                        // form.reset(); // <--- COMMENTED OUT TO PREVENT FORM DISAPPEARING
+                        // toggleProviderFields(); // <--- COMMENTED OUT
                     }
                 } else { showToast(data.message, true); }
             } catch (err) { showToast('Submission Failed', true); } 
