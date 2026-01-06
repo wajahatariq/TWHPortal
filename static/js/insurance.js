@@ -53,7 +53,7 @@ document.getElementById("insuranceForm").addEventListener("submit", async functi
         const result = await response.json();
         if (result.status === "success") {
             showNotification("Lead Submitted Successfully!", "success");
-            this.reset();
+            // this.reset(); // <--- COMMENTED OUT TO PREVENT FORM DISAPPEARING
         } else {
             showNotification("Error: " + result.message, "error");
         }
