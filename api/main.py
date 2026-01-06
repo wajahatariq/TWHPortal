@@ -1,3 +1,5 @@
+#
+
 import os
 import json
 import gspread
@@ -36,6 +38,61 @@ pusher_client = pusher.Pusher(
 # --- CHAT SETUP ---
 CHAT_HISTORY = []
 CHAT_RATE_LIMIT = {"start": 0, "count": 0}
+
+# --- GLOBAL DATA THROTTLE (CACHE) ---
+# This prevents hitting Google Sheets API more than once every 10 seconds.
+DATA_CACHE = {
+    "billing": [],
+    "insurance": [],
+    "last_fetch": 0
+}
+CACHE_TTL = 10  # Seconds to wait before fetching again
+
+def invalidate_cache():
+    """Forces the next request to fetch fresh data immediately."""
+    global DATA_CACHE
+    DATA_CACHE["last_fetch"] = 0
+
+def get_data_throttled():
+    """
+    Returns data from memory if called within 10 seconds of the last fetch.
+    Otherwise, fetches fresh data from Google Sheets.
+    """
+    global DATA_CACHE
+    current_time = time_module.time()
+
+    # 1. Return Cache if within 10 seconds and we actually have data
+    if current_time - DATA_CACHE["last_fetch"] < CACHE_TTL:
+        if DATA_CACHE["billing"] or DATA_CACHE["insurance"]:
+            return DATA_CACHE["billing"], DATA_CACHE["insurance"]
+
+    # 2. Fetch Fresh Data
+    ws_bill = get_worksheet('billing')
+    ws_ins = get_worksheet('insurance')
+
+    if not ws_bill or not ws_ins:
+        # If DB fails but we have old data, serve it to keep site running
+        if DATA_CACHE["billing"]:
+            print("DB Error: Serving stale cache to prevent crash")
+            return DATA_CACHE["billing"], DATA_CACHE["insurance"]
+        raise Exception("DB Connection Failed")
+
+    try:
+        bill_data = rows_to_dict(ws_bill.get_all_values())
+        ins_data = rows_to_dict(ws_ins.get_all_values())
+
+        # 3. Update Cache
+        DATA_CACHE["billing"] = bill_data
+        DATA_CACHE["insurance"] = ins_data
+        DATA_CACHE["last_fetch"] = current_time
+        
+        return bill_data, ins_data
+    except Exception as e:
+        # If API limit is hit, serve old data
+        if DATA_CACHE["billing"]:
+            print(f"Read Error ({e}): Serving stale cache")
+            return DATA_CACHE["billing"], DATA_CACHE["insurance"]
+        raise e
 
 # --- SETUP ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -246,15 +303,10 @@ async def view_manager(request: Request):
 
 @app.get("/api/public/night-stats")
 async def get_public_stats():
-    # DIRECT FETCH - NO CACHE
+    # USES THROTTLED DATA TO PREVENT API ERRORS
     def fetch_op():
-        ws_bill = get_worksheet('billing')
-        ws_ins = get_worksheet('insurance')
-        if not ws_bill or not ws_ins: 
-            raise Exception("DB Connection Failed")
-
-        bill_data = rows_to_dict(ws_bill.get_all_values())
-        ins_data = rows_to_dict(ws_ins.get_all_values())
+        bill_data, ins_data = get_data_throttled()
+        
         stats_bill = calculate_stats(pd.DataFrame(bill_data))
         stats_ins = calculate_stats(pd.DataFrame(ins_data))
         
@@ -370,7 +422,8 @@ async def save_lead(
     try:
         safe_db_op(db_save_op)
         
-        # Post-Save Actions
+        # --- INVALIDATE CACHE TO SHOW NEW DATA IMMEDIATELY ---
+        invalidate_cache()
         
         if is_edit == 'true':
             try:
@@ -412,6 +465,7 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
     try:
         found = safe_db_op(delete_op)
         if found:
+            invalidate_cache() # Ensure deletion is seen immediately
             return {"status": "success", "message": "Deleted successfully"}
         return {"status": "error", "message": "ID not found"}
     except Exception as e:
@@ -419,7 +473,7 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
 
 @app.get("/api/get-lead")
 async def get_lead(type: str, id: str, row_index: Optional[int] = None):
-    # This is a read op, we can wrap it too
+    # Fetch specific lead - okay to hit DB directly as this isn't polled frequently
     def fetch_lead_op():
         ws = get_worksheet(type)
         if not ws: raise Exception("DB Error")
@@ -495,15 +549,9 @@ async def manager_login(user_id: str = Form(...), password: str = Form(...)):
 
 @app.get("/api/manager/data")
 async def get_manager_data(token: str):
-    # DIRECT FETCH - NO CACHE
-
+    # USES THROTTLED DATA
     def fetch_manager_data():
-        ws_bill = get_worksheet('billing')
-        time_module.sleep(1) 
-        ws_ins = get_worksheet('insurance')
-
-        bill_data = rows_to_dict(ws_bill.get_all_values()) if ws_bill else []
-        ins_data = rows_to_dict(ws_ins.get_all_values()) if ws_ins else []
+        bill_data, ins_data = get_data_throttled()
         
         stats_bill = calculate_stats(pd.DataFrame(bill_data))
         stats_ins = calculate_stats(pd.DataFrame(ins_data))
@@ -587,6 +635,9 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
 
     try:
         agent_name, client_name = safe_db_op(update_op)
+        
+        # --- INVALIDATE CACHE TO SHOW UPDATE IMMEDIATELY ---
+        invalidate_cache()
         
         try:
             pusher_client.trigger('techware-channel', 'status-update', {
