@@ -1,5 +1,3 @@
-#
-
 import os
 import json
 import gspread
@@ -8,6 +6,7 @@ import pytz
 import requests
 import hashlib
 import time as time_module
+import tempfile
 from datetime import datetime, timedelta, time
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -39,59 +38,81 @@ pusher_client = pusher.Pusher(
 CHAT_HISTORY = []
 CHAT_RATE_LIMIT = {"start": 0, "count": 0}
 
-# --- GLOBAL DATA THROTTLE (CACHE) ---
-# This prevents hitting Google Sheets API more than once every 10 seconds.
-DATA_CACHE = {
-    "billing": [],
-    "insurance": [],
-    "last_fetch": 0
-}
-CACHE_TTL = 10  # Seconds to wait before fetching again
+# --- FILE-BASED CACHE SETUP ---
+# stored in the system's temp folder to be shared across workers/processes
+CACHE_FILE = os.path.join(tempfile.gettempdir(), "twh_data_cache.json")
+CACHE_TTL = 10  # Seconds to keep data before refreshing
+
+def load_cache_from_disk():
+    """Reads the cache file if it exists."""
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Cache Read Error: {e}")
+            return None
+    return None
+
+def save_cache_to_disk(data):
+    """Writes data to the cache file."""
+    try:
+        with open(CACHE_FILE, 'w') as f:
+            json.dump(data, f)
+    except Exception as e:
+        print(f"Cache Write Error: {e}")
 
 def invalidate_cache():
-    """Forces the next request to fetch fresh data immediately."""
-    global DATA_CACHE
-    DATA_CACHE["last_fetch"] = 0
+    """Forces the next request to fetch fresh data by expiring the timestamp."""
+    cache = load_cache_from_disk()
+    if cache:
+        cache["timestamp"] = 0 # Set to 0 to force refresh
+        save_cache_to_disk(cache)
 
 def get_data_throttled():
     """
-    Returns data from memory if called within 10 seconds of the last fetch.
-    Otherwise, fetches fresh data from Google Sheets.
+    Returns data from File Cache if < 10 seconds old.
+    If old, fetches from Google.
+    If Google fails, returns File Cache (even if old) to prevent crash/sleeping.
     """
-    global DATA_CACHE
     current_time = time_module.time()
+    cached_data = load_cache_from_disk()
 
-    # 1. Return Cache if within 10 seconds and we actually have data
-    if current_time - DATA_CACHE["last_fetch"] < CACHE_TTL:
-        if DATA_CACHE["billing"] or DATA_CACHE["insurance"]:
-            return DATA_CACHE["billing"], DATA_CACHE["insurance"]
+    # 1. Return Cache if valid (less than 10 seconds old)
+    if cached_data:
+        age = current_time - cached_data.get("timestamp", 0)
+        if age < CACHE_TTL:
+            return cached_data["billing"], cached_data["insurance"]
 
-    # 2. Fetch Fresh Data
+    # 2. Fetch Fresh Data (if cache expired or doesn't exist)
     ws_bill = get_worksheet('billing')
     ws_ins = get_worksheet('insurance')
 
     if not ws_bill or not ws_ins:
-        # If DB fails but we have old data, serve it to keep site running
-        if DATA_CACHE["billing"]:
-            print("DB Error: Serving stale cache to prevent crash")
-            return DATA_CACHE["billing"], DATA_CACHE["insurance"]
+        # DB Connection Failed -> Return Stale Cache if available
+        if cached_data:
+            print("DB Conn Error: Serving stale cache")
+            return cached_data["billing"], cached_data["insurance"]
         raise Exception("DB Connection Failed")
 
     try:
         bill_data = rows_to_dict(ws_bill.get_all_values())
         ins_data = rows_to_dict(ws_ins.get_all_values())
 
-        # 3. Update Cache
-        DATA_CACHE["billing"] = bill_data
-        DATA_CACHE["insurance"] = ins_data
-        DATA_CACHE["last_fetch"] = current_time
+        # 3. Save to Disk
+        new_cache = {
+            "timestamp": current_time,
+            "billing": bill_data,
+            "insurance": ins_data
+        }
+        save_cache_to_disk(new_cache)
         
         return bill_data, ins_data
     except Exception as e:
-        # If API limit is hit, serve old data
-        if DATA_CACHE["billing"]:
-            print(f"Read Error ({e}): Serving stale cache")
-            return DATA_CACHE["billing"], DATA_CACHE["insurance"]
+        # API Error (Rate Limit etc) -> Return Stale Cache immediately (No Sleeping)
+        if cached_data:
+            print(f"API Error ({e}): Serving stale cache")
+            return cached_data["billing"], cached_data["insurance"]
         raise e
 
 # --- SETUP ---
@@ -106,7 +127,7 @@ templates = Jinja2Templates(directory=TEMPLATES_DIR)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 TZ_KARACHI = pytz.timezone("Asia/Karachi")
 
-# --- SHEETS SETUP (ROBUST) ---
+# --- SHEETS SETUP ---
 gc = None
 SHEET_NAME = "Company_Transactions"
 
@@ -138,7 +159,7 @@ def get_worksheet(sheet_type):
         if sheet_type == 'auth': return sh.get_worksheet(2)
     except Exception as e:
         print(f"Sheet Access Error (forcing reconnect): {e}")
-        gc = None # Force reset
+        gc = None 
         return None
     return None
 
@@ -248,24 +269,24 @@ def calculate_stats(df):
 
     return { "today": round(today_total, 2), "night": round(night_total, 2), "pending": pending, "breakdown": breakdown }
 
-# --- HELPER: RETRY LOGIC ---
-def safe_db_op(operation_func, retries=3):
+# --- HELPER: RETRY LOGIC (SIMPLIFIED FOR NO SLEEP) ---
+def safe_db_op(operation_func):
+    """
+    Executes a DB operation. If it fails, it propagates the error
+    so the caller can decide to use stale cache or show error.
+    Does NOT sleep/retry to avoid delay.
+    """
     global gc
-    last_error = None
-    for i in range(retries):
+    try:
+        return operation_func()
+    except Exception as e:
+        # Try one quick reconnect
+        print(f"Op Error: {e} - Retrying once...")
+        gc = None
         try:
             return operation_func()
-        except Exception as e:
-            last_error = e
-            # Check for network/connection errors
-            err_str = str(e).lower()
-            if "connection aborted" in err_str or "remote end closed" in err_str or "429" in err_str:
-                print(f"DB Connection dropped. Retrying ({i+1}/{retries})...")
-                gc = None # Force Reconnect
-                time_module.sleep(1) # Wait a bit
-            else:
-                raise e # Real error (like missing column), don't retry
-    raise last_error
+        except Exception as e2:
+            raise e2
 
 # --- ROUTES ---
 
@@ -303,7 +324,7 @@ async def view_manager(request: Request):
 
 @app.get("/api/public/night-stats")
 async def get_public_stats():
-    # USES THROTTLED DATA TO PREVENT API ERRORS
+    # USES FILE CACHE TO SYNC ACROSS WORKERS
     def fetch_op():
         bill_data, ins_data = get_data_throttled()
         
@@ -316,11 +337,11 @@ async def get_public_stats():
         }
 
     try:
-        new_data = safe_db_op(fetch_op)
+        # safe_db_op is less critical here since get_data_throttled handles safety
+        new_data = fetch_op()
         return new_data
     except Exception as e:
         print(f"Stats Error: {e}")
-        # Return empty stats on failure so frontend doesn't crash
         return {
             "billing": { "total": 0, "breakdown": {} },
             "insurance": { "total": 0, "breakdown": {} }
@@ -408,7 +429,7 @@ async def save_lead(
         row_data = [primary_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge, llc, date_str, final_status, timestamp_str]
         range_end = f"O{row_index}"
 
-    # --- DB OPERATION (WITH RETRY) ---
+    # --- DB OPERATION ---
     def db_save_op():
         ws = get_worksheet(type)
         if not ws: raise Exception("DB Connection Failed")
@@ -473,7 +494,9 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
 
 @app.get("/api/get-lead")
 async def get_lead(type: str, id: str, row_index: Optional[int] = None):
-    # Fetch specific lead - okay to hit DB directly as this isn't polled frequently
+    # This Endpoint is used for individual lookups, so we can check cache first
+    # but strictly speaking, edits usually need fresh data.
+    # To be safe and fast, we hit DB directly but with the 'safe_db_op' wrapper
     def fetch_lead_op():
         ws = get_worksheet(type)
         if not ws: raise Exception("DB Error")
@@ -549,7 +572,7 @@ async def manager_login(user_id: str = Form(...), password: str = Form(...)):
 
 @app.get("/api/manager/data")
 async def get_manager_data(token: str):
-    # USES THROTTLED DATA
+    # USES FILE CACHE
     def fetch_manager_data():
         bill_data, ins_data = get_data_throttled()
         
@@ -564,24 +587,21 @@ async def get_manager_data(token: str):
         }
 
     try:
-        response_data = safe_db_op(fetch_manager_data)
+        response_data = fetch_manager_data()
         return response_data
     except Exception as e:
         print(f"Manager Data Error: {e}")
         return JSONResponse({"status": "error", "message": "Data sync failed, please refresh"}, 500)
 
-# --- SMART UPDATE STATUS (Fixed for Duplicates) ---
 @app.post("/api/manager/update_status")
 async def update_status(type: str = Form(...), id: str = Form(...), status: str = Form(...)):
     def update_op():
         ws = get_worksheet(type)
         if not ws: raise Exception("DB Connection Failed")
         
-        # 1. Fetch ALL data to perform efficient search
         all_values = ws.get_all_values()
         if not all_values: raise Exception("Empty Sheet")
         
-        # 2. Find Status Column
         headers = [str(h).strip().lower() for h in all_values[0]]
         status_col_idx = -1
         possible_status = ["status", "state", "approval", "current status"]
@@ -592,19 +612,15 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         if status_col_idx == -1:
             status_col_idx = 14 if type == 'billing' else 13
 
-        # 3. Find Matches & Check Status
         target_id = str(id).strip()
         candidates = []
         
         for row_num, row in enumerate(all_values):
-            # Skip header (row_num 0)
             if row_num == 0: continue
-            
-            # Check ID (Column 1 -> index 0)
             if len(row) > 0 and str(row[0]).strip() == target_id:
                 curr_status = str(row[status_col_idx]).strip().title() if len(row) > status_col_idx else ""
                 candidates.append({
-                    "row_index": row_num + 1, # 1-based index for GSheets
+                    "row_index": row_num + 1,
                     "status": curr_status,
                     "data": row
                 })
@@ -612,10 +628,7 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         if not candidates:
             raise Exception(f"ID '{id}' not found.")
 
-        # 4. SELECT THE RIGHT ROW
-        # PRIORITY: Last "Pending" Row > Last Row
         pending_matches = [c for c in candidates if c['status'] == 'Pending']
-        
         if pending_matches:
             target_match = max(pending_matches, key=lambda x: x['row_index'])
         else:
@@ -624,13 +637,11 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         target_row = target_match['row_index']
         target_data = target_match['data']
         
-        # Get Names for Notification
         headers_map = dict(zip(all_values[0], target_data))
         agent_name = headers_map.get('Agent Name', 'Unknown Agent')
         client_name = headers_map.get('Client Name', headers_map.get('Name', 'Unknown Client'))
 
-        # 5. Update
-        ws.update_cell(target_row, status_col_idx + 1, status) # +1 for 1-based column
+        ws.update_cell(target_row, status_col_idx + 1, status)
         return agent_name, client_name
 
     try:
