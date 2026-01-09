@@ -1,45 +1,62 @@
 /* =========================================
-   Techware Hub - Professional Dark Theme
+   Techware Hub - Authors Arsenal Theme
    ========================================= */
 
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Slab:wght@400;700&display=swap');
+
+:root {
+    /* Extracted Authors Arsenal Colors */
+    --aa-bg-main: #292229;       /* Dark Charcoal/Purple */
+    --aa-bg-card: #1a161a;       /* Darker background for cards */
+    --aa-accent: #6E1A2D;        /* Burgundy */
+    --aa-text-main: #F8F2E4;     /* Paper White */
+    --aa-text-muted: #E6EFED;    /* Cool Grey */
+    --aa-border: #54595F;        /* Slate Grey */
+    --aa-highlight: #6EC1E4;     /* Light Blue */
+}
+
 body {
-    background-color: #0f172a; /* Slate 900 */
-    color: #e2e8f0;            /* Slate 200 */
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: var(--aa-bg-main);
+    color: var(--aa-text-main);
+    font-family: 'Roboto', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Roboto Slab', serif; /* Serif for headings */
 }
 
 /* --- Card & Container --- */
 .card-hover { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
 .card-hover:hover {
     transform: translateY(-8px);
-    box-shadow: 0 20px 25px -5px rgba(59, 130, 246, 0.25);
-    border-color: #3b82f6;
+    box-shadow: 0 20px 25px -5px rgba(110, 26, 45, 0.5); /* Burgundy Shadow */
+    border-color: var(--aa-accent);
 }
 
 /* --- Input Fields --- */
 .input-field {
     width: 100%;
-    background-color: #1e293b !important;
-    border: 1px solid #334155;
+    background-color: #000000 !important; /* Pure Black Inputs */
+    border: 1px solid var(--aa-border);
     border-radius: 0.75rem;
     padding: 0.75rem 1rem;
-    color: #ffffff !important;
+    color: var(--aa-text-main) !important;
     font-size: 1rem;
     outline: none;
     transition: all 0.2s ease-in-out;
     appearance: none;
 }
 .input-field:focus {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-    background-color: #1e293b;
+    border-color: var(--aa-accent);
+    box-shadow: 0 0 0 2px rgba(110, 26, 45, 0.3);
+    background-color: #000000;
 }
-.input-field::placeholder { color: #94a3b8; }
+.input-field::placeholder { color: var(--aa-text-muted); opacity: 0.5; }
 
 /* Select Arrow Fix */
 select.input-field {
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23E6EFED' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
     background-position: right 0.75rem center;
     background-repeat: no-repeat;
     background-size: 1.5em 1.5em;
@@ -48,9 +65,9 @@ select.input-field {
 
 /* Autofill Fix */
 input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus, input:-webkit-autofill:active {
-    -webkit-box-shadow: 0 0 0 30px #1e293b inset !important;
-    -webkit-text-fill-color: white !important;
-    caret-color: white;
+    -webkit-box-shadow: 0 0 0 30px #000000 inset !important;
+    -webkit-text-fill-color: var(--aa-text-main) !important;
+    caret-color: var(--aa-text-main);
     transition: background-color 5000s ease-in-out 0s;
 }
 
@@ -58,8 +75,8 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 .toast {
     visibility: hidden;
     min-width: 250px;
-    background-color: #10b981; /* Green */
-    color: #fff;
+    background-color: #61CE70; /* Authors Green */
+    color: #000;
     text-align: center;
     border-radius: 8px;
     padding: 16px;
@@ -72,18 +89,19 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
     opacity: 0;
     transition: opacity 0.3s, top 0.3s;
+    font-weight: bold;
 }
 .toast.show {
     visibility: visible;
     opacity: 1;
     top: 50px;
 }
-.toast.error { background-color: #ef4444; }
+.toast.error { background-color: var(--aa-accent); color: #fff; } /* Burgundy for Error */
 
 /* --- PENDING CARD STYLES --- */
 .pending-card {
-    background: #1e293b;
-    border: 1px solid #334155;
+    background: var(--aa-bg-card);
+    border: 1px solid var(--aa-border);
     border-radius: 1rem;
     padding: 1.5rem;
     display: flex;
@@ -91,19 +109,19 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
     gap: 1rem;
     transition: transform 0.2s;
 }
-.pending-card:hover { transform: scale(1.01); border-color: #475569; }
+.pending-card:hover { transform: scale(1.01); border-color: var(--aa-accent); }
 
 .detail-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 0.5rem 0;
-    border-bottom: 1px solid #334155;
-    font-size: 1.1rem; /* Bigger Text */
+    border-bottom: 1px solid var(--aa-border);
+    font-size: 1.1rem;
 }
 .detail-row:last-child { border-bottom: none; }
-.detail-label { color: #94a3b8; font-size: 0.9rem; }
-.detail-value { color: white; font-weight: 600; font-family: monospace; letter-spacing: 0.05em; text-align: right;}
+.detail-label { color: var(--aa-text-muted); font-size: 0.9rem; }
+.detail-value { color: var(--aa-text-main); font-weight: 600; font-family: monospace; letter-spacing: 0.05em; text-align: right;}
 
 /* --- CHAT WIDGET STYLES --- */
 .chat-window-enter {
@@ -116,10 +134,10 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
     transition: all 0.2s ease-out;
 }
 
-/* Custom Scrollbar for Chat */
+/* Custom Scrollbar */
 #chatMessages::-webkit-scrollbar { width: 6px; }
-#chatMessages::-webkit-scrollbar-track { background: #1e293b; }
-#chatMessages::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+#chatMessages::-webkit-scrollbar-track { background: var(--aa-bg-main); }
+#chatMessages::-webkit-scrollbar-thumb { background: var(--aa-border); border-radius: 3px; }
 
 /* Message Animations */
 @keyframes fadeInUp {
