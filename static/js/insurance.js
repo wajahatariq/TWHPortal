@@ -1,5 +1,5 @@
 /* =========================================
-   INSURANCE PORTAL LOGIC (Fixed & Complete)
+   INSURANCE PORTAL LOGIC
    ========================================= */
 
 document.addEventListener("DOMContentLoaded", function() {
@@ -17,19 +17,20 @@ document.addEventListener("DOMContentLoaded", function() {
    CORE FUNCTIONS
    ======================== */
 
-// Generate a random 6-digit ID for new orders
+// Generate a random 6-digit ID (Ensures Uniqueness)
 function generateRandomId() {
     const randomId = Math.floor(100000 + Math.random() * 900000);
     const idField = document.getElementById('recordId');
     if(idField) {
         idField.value = randomId;
+        console.log("New Record ID generated:", randomId);
     }
-    // Also update the search field placeholder to hint functionality
+    // Update placeholder to indicate ID availability
     const searchInput = document.getElementById('searchId');
     if(searchInput) searchInput.placeholder = "Enter Record ID to Edit...";
 }
 
-// Helper to set dropdown values safely
+// Helper to set dropdown values
 function setSelectValue(id, value) {
     const select = document.getElementById(id);
     if (!select || !value) return;
@@ -41,11 +42,11 @@ function setSelectValue(id, value) {
     }
 }
 
-// Notification System (Fixed to prevent crashing)
+// Notification System
 function showNotification(msg, type) {
     let notif = document.getElementById("notification");
     
-    // Create the notification element if it doesn't exist
+    // Create element if missing
     if (!notif) {
         notif = document.createElement('div');
         notif.id = "notification";
@@ -55,11 +56,9 @@ function showNotification(msg, type) {
     notif.innerText = msg;
     notif.className = `fixed bottom-5 right-5 px-6 py-3 rounded-lg shadow-xl transform transition-all duration-300 z-50 font-bold ${type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`;
     
-    // Animate In
     notif.style.transform = "translateY(0)";
     notif.style.opacity = "1";
 
-    // Animate Out after 3 seconds
     setTimeout(() => {
         notif.style.transform = "translateY(150%)";
         notif.style.opacity = "0";
@@ -67,7 +66,7 @@ function showNotification(msg, type) {
 }
 
 /* ========================
-   FORM SUBMISSION (Create & Update)
+   FORM SUBMISSION
    ======================== */
 const form = document.getElementById("insuranceForm");
 if (form) {
@@ -83,7 +82,7 @@ if (form) {
         try {
             const formData = new FormData(this);
             
-            // Ensure Record ID exists (Fix for new leads)
+            // Ensure Record ID exists if missing
             if (!formData.get('record_id')) {
                 const newId = Math.floor(100000 + Math.random() * 900000);
                 formData.set('record_id', newId);
@@ -99,11 +98,15 @@ if (form) {
             if (result.status === "success") {
                 showNotification(result.message || "Saved Successfully!", "success");
                 
-                // Only clear form if it was a NEW submission
+                // --- CHANGED LOGIC HERE ---
+                // 1. Do NOT clear the form (User wants to see data)
+                // 2. DO generate a NEW ID for the next submission
+                //    This ensures "Unique Everytime" even if they submit the same form twice.
                 const isEdit = document.getElementById('isEdit').value;
                 if (isEdit !== 'true') {
-                    clearForm();
+                    generateRandomId(); 
                 }
+
             } else {
                 showNotification("Error: " + result.message, "error");
             }
@@ -112,7 +115,6 @@ if (form) {
             showNotification("Server Error. Check console.", "error");
         }
 
-        // Reset Button
         btn.innerText = originalText;
         btn.disabled = false;
         btn.classList.remove('opacity-50', 'cursor-not-allowed');
@@ -126,16 +128,16 @@ function clearForm() {
     const form = document.getElementById('insuranceForm');
     if (form) form.reset();
 
-    // 1. Reset Hidden Fields
+    // Reset Hidden Values
     document.getElementById('isEdit').value = 'false';
     document.getElementById('row_index').value = '';
     document.getElementById('original_timestamp').value = '';
     
-    // 2. Hide Edit Specifics
+    // Hide Edit UI
     const editOptions = document.getElementById('editOptions');
     if(editOptions) editOptions.classList.add('hidden');
 
-    // 3. Reset Button Style
+    // Reset Button
     const submitBtn = document.getElementById('submitBtn');
     if(submitBtn) {
         submitBtn.innerText = "Submit Insurance";
@@ -143,8 +145,10 @@ function clearForm() {
         submitBtn.classList.replace('hover:bg-blue-500', 'hover:bg-green-500');
     }
 
-    // 4. Generate New ID & Reset Date
+    // Generate NEW Unique ID
     generateRandomId();
+    
+    // Reset Date
     const dateField = document.getElementById('displayDate');
     if(dateField) dateField.value = new Date().toISOString().split('T')[0].replace(/-/g, '/');
 
@@ -162,7 +166,6 @@ async function searchLead(rowIndex = null) {
     const btn = document.querySelector('button[onclick="searchLead()"]');
     if(btn) btn.innerText = "...";
 
-    // Build URL (Search by ID or specific Row Index)
     let url = `/api/get-lead?type=insurance&id=${id}`;
     if (rowIndex) url += `&row_index=${rowIndex}`;
 
@@ -171,16 +174,10 @@ async function searchLead(rowIndex = null) {
         const json = await res.json();
 
         if (json.status === 'success') {
-            // SINGLE RECORD FOUND -> Populate Main Form
             populateMainForm(json.data);
-            
-            // Close duplicate modal if open
             document.getElementById('duplicateModal').classList.add('hidden');
-            
         } else if (json.status === 'multiple') {
-            // MULTIPLE RECORDS -> Show Selection Modal
             showDuplicateSelection(json.candidates);
-            
         } else {
             showNotification(json.message || "Lead not found", "error");
         }
@@ -193,56 +190,56 @@ async function searchLead(rowIndex = null) {
 }
 
 function populateMainForm(data) {
-    // 1. Switch to Edit Mode
     document.getElementById('isEdit').value = 'true';
     document.getElementById('editOptions').classList.remove('hidden');
 
-    // 2. Update Button
     const submitBtn = document.getElementById('submitBtn');
     submitBtn.innerText = "Update Insurance";
     submitBtn.classList.replace('bg-green-600', 'bg-blue-600');
     submitBtn.classList.replace('hover:bg-green-500', 'hover:bg-blue-500');
 
-    // 3. Populate Hidden Fields
     document.getElementById('row_index').value = data.row_index || '';
     document.getElementById('original_timestamp').value = data['Timestamp'] || '';
     document.getElementById('recordId').value = data['Record_ID'] || data['Order ID'];
 
-    // 4. Populate Visible Fields
-    // Using safe checks in case IDs differ slightly
-    if(document.getElementById('agent')) document.getElementById('agent').value = data['Agent Name'];
-    if(document.getElementById('client_name')) document.getElementById('client_name').value = data['Name'] || data['Client Name'];
-    if(document.getElementById('phone')) document.getElementById('phone').value = data['Ph Number'];
-    if(document.getElementById('email')) document.getElementById('email').value = data['Email'];
-    if(document.getElementById('address')) document.getElementById('address').value = data['Address'];
-    
-    if(document.getElementById('card_holder')) document.getElementById('card_holder').value = data['Card Holder Name'];
-    if(document.getElementById('card_number')) document.getElementById('card_number').value = data['Card Number'];
-    if(document.getElementById('exp_date')) document.getElementById('exp_date').value = data['Expiry Date'];
-    if(document.getElementById('cvc')) document.getElementById('cvc').value = data['CVC'];
-    
-    // Clean up charge amount (remove $ symbol)
+    // Safe Assignments
+    const fields = {
+        'agent': 'Agent Name',
+        'client_name': 'Name', // or 'Client Name' handled by || check in obj
+        'phone': 'Ph Number',
+        'email': 'Email',
+        'address': 'Address',
+        'card_holder': 'Card Holder Name',
+        'card_number': 'Card Number',
+        'exp_date': 'Expiry Date',
+        'cvc': 'CVC'
+    };
+
+    for (const [id, key] of Object.entries(fields)) {
+        if(document.getElementById(id)) {
+            // Check both potential keys (e.g. Name vs Client Name)
+            let val = data[key];
+            if(!val && key === 'Name') val = data['Client Name'];
+            document.getElementById(id).value = val || '';
+        }
+    }
+
     let charge = data['Charge'] || data['Charge Amount'] || '';
     charge = charge.replace(/[^0-9.]/g, '');
     if(document.getElementById('charge_amt')) document.getElementById('charge_amt').value = charge;
 
-    // Dropdown
     setSelectValue('llc', data['LLC']);
-
     showNotification("Lead Loaded. You can now edit.", "success");
 }
 
 function showDuplicateSelection(candidates) {
     const container = document.getElementById('duplicateList');
     if(!container) return;
-    
-    container.innerHTML = ''; // Clear previous
+    container.innerHTML = ''; 
 
     candidates.forEach(c => {
         const btn = document.createElement('button');
         btn.className = "w-full text-left bg-slate-700 hover:bg-slate-600 p-3 rounded-lg border border-slate-600 flex justify-between items-center transition group mb-2";
-        
-        // When clicked, call searchLead again with the specific ROW INDEX
         btn.onclick = () => searchLead(c.row_index);
         
         btn.innerHTML = `
@@ -255,14 +252,5 @@ function showDuplicateSelection(candidates) {
         container.appendChild(btn);
     });
 
-    // Show the modal
     document.getElementById('duplicateModal').classList.remove('hidden');
-}
-
-/* ========================
-   UI UTILITIES (Tabs, etc)
-   ======================== */
-// Kept for compatibility if you add tabs later
-function switchTab(tabName) {
-    console.log("Switching tab to:", tabName);
 }
