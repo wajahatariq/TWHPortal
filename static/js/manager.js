@@ -1,4 +1,3 @@
-
 let allData = { 
     billing: [], 
     insurance: [], 
@@ -121,18 +120,25 @@ function updateDashboardStats() {
 }
 
 function switchMainTab(tab) {
-    ['viewStats', 'viewPending', 'viewAnalysis', 'viewEdit'].forEach(id => document.getElementById(id).classList.add('hidden'));
-    ['navStats', 'navPending', 'navAnalysis', 'navEdit'].forEach(id => {
+    // Hide all views
+    ['viewStats', 'viewPending', 'viewAnalysis', 'viewEdit', 'viewDaily'].forEach(id => document.getElementById(id).classList.add('hidden'));
+    
+    // Reset all nav buttons
+    ['navStats', 'navPending', 'navAnalysis', 'navEdit', 'navDaily'].forEach(id => {
         document.getElementById(id).classList.remove('bg-blue-600', 'text-white');
         document.getElementById(id).classList.add('text-slate-400');
     });
+
     const viewId = 'view' + tab.charAt(0).toUpperCase() + tab.slice(1);
     const navId = 'nav' + tab.charAt(0).toUpperCase() + tab.slice(1);
+    
     document.getElementById(viewId).classList.remove('hidden');
     document.getElementById(navId).classList.remove('text-slate-400');
     document.getElementById(navId).classList.add('bg-blue-600', 'text-white');
+
     if(tab === 'pending') renderPendingCards();
     if(tab === 'analysis') { updateAgentSelector(); renderAnalysis(); }
+    if(tab === 'daily') renderDailyTotal(); 
 }
 
 function switchPendingSubTab(tab) {
@@ -149,8 +155,6 @@ function switchPendingSubTab(tab) {
     renderPendingCards();
 }
 
-// [In static/js/manager.js] - Replace the renderPendingCards function
-
 function renderPendingCards() {
     const container = document.getElementById('pendingContainer');
     container.innerHTML = '';
@@ -163,7 +167,7 @@ function renderPendingCards() {
     }
 
     data.forEach(row => {
-        const id = row['Record_ID'] || row['Order ID']; // Fallback for ID key
+        const id = row['Record_ID'] || row['Order ID']; 
         const cleanCharge = String(row['Charge'] || row['Charge Amount'] || '').replace(/[^0-9.]/g, '');
         const cleanCard = String(row['Card Number'] || '').replace(/\s+/g, ''); 
         const cleanExpiry = String(row['Expiry Date'] || '').replace(/[\/\\]/g, ''); 
@@ -173,7 +177,6 @@ function renderPendingCards() {
         const firstName = nameParts[0] || '';
         const lastName = nameParts.slice(1).join(' ') || '';
         
-        // New fields
         const clientName = row['Name'] || row['Client Name'] || '';
         const phoneNumber = row['Ph Number'] || row['Phone'] || '';
         const email = row['Email'] || '';
@@ -215,37 +218,31 @@ function updateAgentSelector() {
     agents.forEach(agent => { if(agent) { const opt = document.createElement('option'); opt.value = agent; opt.innerText = agent; selector.appendChild(opt); } });
 }
 
-// ============================================
-// FIX 2: Added Time-Based Filtering Logic
-// ============================================
 function renderAnalysis() {
     const type = document.getElementById('analysisSheetSelector').value;
     const search = document.getElementById('analysisSearch').value.toLowerCase();
     const agentFilter = document.getElementById('analysisAgentSelector').value;
     const statusFilter = document.getElementById('analysisStatusSelector').value;
     
-    // --- DATE & TIME INPUTS ---
     const dateStartVal = document.getElementById('dateStart').value;
     const timeStartVal = document.getElementById('timeStart').value;
     const dateEndVal = document.getElementById('dateEnd').value;
     const timeEndVal = document.getElementById('timeEnd').value;
 
-    // Create Start Date Object
     let dStart = new Date(dateStartVal);
     if(timeStartVal) {
         const [h, m] = timeStartVal.split(':');
         dStart.setHours(h, m, 0); 
     } else {
-        dStart.setHours(0, 0, 0); // Default Midnight
+        dStart.setHours(0, 0, 0); 
     }
 
-    // Create End Date Object
     let dEnd = new Date(dateEndVal);
     if(timeEndVal) {
         const [h, m] = timeEndVal.split(':');
         dEnd.setHours(h, m, 59); 
     } else {
-        dEnd.setHours(23, 59, 59); // Default End of Day
+        dEnd.setHours(23, 59, 59); 
     }
 
     const data = (type === 'billing' ? allData.billing : allData.insurance).slice().reverse();
@@ -253,10 +250,8 @@ function renderAnalysis() {
     const filtered = data.filter(row => {
         const t = new Date(row['Timestamp']);
         
-        // Filter by Date AND Time
         if(t < dStart || t > dEnd) return false;
 
-        // Normal Filters
         if(agentFilter !== 'all' && row['Agent Name'] !== agentFilter) return false;
         if(statusFilter !== 'all' && row['Status'] !== statusFilter) return false;
         return JSON.stringify(row).toLowerCase().includes(search);
@@ -348,7 +343,6 @@ async function setStatus(type, id, status, btnElement) {
     const card = btnElement.closest('.pending-card');
     const btns = card.querySelectorAll('button');
     
-    // 1. UI: Disable buttons & show loading
     btns.forEach(b => { b.disabled = true; b.classList.add('opacity-50'); });
     const originalText = btnElement.innerText;
     btnElement.innerText = "...";
@@ -359,29 +353,22 @@ async function setStatus(type, id, status, btnElement) {
         formData.append('id', id); 
         formData.append('status', status);
         
-        // 2. Call API
         const res = await fetch('/api/manager/update_status', { method: 'POST', body: formData });
         
-        // Handle server errors (500/404)
         if (!res.ok) throw new Error(`Server Error (${res.status})`);
 
         const data = await res.json();
         
         if(data.status === 'success') { 
-            // ============================================
-            // FIX: Play Sound IMMEDIATELY upon success
-            // ============================================
             if (status === 'Charged') {
-                soundSuccess.currentTime = 0; // Reset sound to start
+                soundSuccess.currentTime = 0; 
                 soundSuccess.play().catch(e => console.error("Audio Play failed:", e));
             }
 
-            // 3. UI: Animate card removal
             card.style.transition = "all 0.5s"; 
             card.style.opacity = "0"; 
             card.style.transform = "scale(0.9)"; 
             
-            // Refresh grid after animation
             setTimeout(() => { fetchData(); }, 500); 
         } else { 
             alert("Error: " + data.message); 
@@ -449,21 +436,16 @@ async function deleteCurrentRecord() {
     else alert(data.message);
 }
 
-// =======================
-// NEW REFRESH BUTTON LOGIC
-// =======================
 async function manualRefresh() {
     const btn = document.getElementById('refreshBtn');
     const icon = btn.querySelector('svg');
     
-    // Start Animation
     icon.classList.add('animate-spin'); 
     btn.disabled = true;
     btn.classList.add('opacity-50');
 
-    await fetchData(); // Force reload
+    await fetchData(); 
 
-    // Stop Animation
     setTimeout(() => {
         icon.classList.remove('animate-spin');
         btn.disabled = false;
@@ -471,13 +453,85 @@ async function manualRefresh() {
     }, 500);
 }
 
-// Safe Auto-Refresh (Every 60 Seconds)
 setInterval(() => {
     console.log("Auto-refreshing data...");
     fetchData();
 }, 120000);
 
+// ============================================
+// NEW FUNCTION: Render Daily Total (6PM - 9AM)
+// ============================================
+function renderDailyTotal() {
+    const type = document.getElementById('dailySheetSelector').value;
+    const rawData = type === 'billing' ? allData.billing : allData.insurance;
+    const tbody = document.getElementById('dailyTotalBody');
+    tbody.innerHTML = '';
 
+    // Loop through the last 30 days
+    for (let i = 0; i < 30; i++) {
+        // 1. Define the Window
+        // Start: Day 'i' at 6:00 PM (18:00)
+        let winStart = new Date();
+        winStart.setDate(winStart.getDate() - i); 
+        winStart.setHours(18, 0, 0, 0);
 
+        // End: Day 'i+1' at 9:00 AM (09:00)
+        let winEnd = new Date(winStart);
+        winEnd.setDate(winEnd.getDate() + 1); 
+        winEnd.setHours(9, 0, 0, 0);
 
+        // 2. Filter Data for this specific window
+        let dailySum = 0;
+        let agentScores = {};
 
+        rawData.forEach(row => {
+            const t = new Date(row['Timestamp']);
+            const status = row['Status'] || '';
+            
+            // Check if time is in window AND status is Charged
+            if (t >= winStart && t < winEnd && status === 'Charged') {
+                const rawPrice = String(row['Charge'] || row['Charge Amount']).replace(/[^0-9.]/g, '');
+                const price = parseFloat(rawPrice) || 0;
+                
+                dailySum += price;
+
+                // Track Agent Score
+                const agent = row['Agent Name'] || 'Unknown';
+                if (!agentScores[agent]) agentScores[agent] = 0;
+                agentScores[agent] += price;
+            }
+        });
+
+        // 3. Find Top Agent
+        let topAgent = "-";
+        let maxScore = 0;
+        for (const [agent, score] of Object.entries(agentScores)) {
+            if (score > maxScore) {
+                maxScore = score;
+                topAgent = `${agent} ($${score.toFixed(0)})`;
+            }
+        }
+
+        // 4. Create Table Row (Only if there is data or it's today/yesterday)
+        if (dailySum > 0 || i < 5) { 
+            const rowHtml = `
+                <tr class="hover:bg-slate-700/50 border-b border-slate-700 transition">
+                    <td class="p-4 text-white">
+                        <div class="font-bold">${winStart.toLocaleDateString()}</div>
+                        <div class="text-xs text-slate-500">
+                            ${winStart.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} - 
+                            ${winEnd.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} (+1 Day)
+                        </div>
+                    </td>
+                    <td class="p-4 font-mono font-bold text-green-400 text-lg">
+                        $${dailySum.toLocaleString('en-US', {minimumFractionDigits: 2})}
+                    </td>
+                    <td class="p-4 text-blue-300 font-semibold">
+                        ${topAgent}
+                    </td>
+                </tr>
+            `;
+            tbody.innerHTML += rowHtml;
+        }
+    }
+}
