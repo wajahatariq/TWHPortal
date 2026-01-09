@@ -3,7 +3,7 @@
    ========================================= */
 
 document.addEventListener("DOMContentLoaded", function() {
-    // 1. Generate a Random Order ID on page load
+    // 1. Generate a Random Alphanumeric ID on page load
     generateRandomId();
 
     // 2. Initialize Date Field
@@ -17,14 +17,24 @@ document.addEventListener("DOMContentLoaded", function() {
    CORE FUNCTIONS
    ======================== */
 
-// Generate a random 6-digit ID (Ensures Uniqueness)
+// Generate a Random Alphanumeric ID (Letters & Numbers)
 function generateRandomId() {
-    const randomId = Math.floor(100000 + Math.random() * 900000);
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let result = '';
+    // Generate 6 random characters
+    for (let i = 0; i < 6; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    
+    // Optional: Add a prefix like 'INS-' for Insurance if you want
+    // result = 'INS-' + result; 
+
     const idField = document.getElementById('recordId');
     if(idField) {
-        idField.value = randomId;
-        console.log("New Record ID generated:", randomId);
+        idField.value = result;
+        console.log("New Record ID generated:", result);
     }
+    
     // Update placeholder to indicate ID availability
     const searchInput = document.getElementById('searchId');
     if(searchInput) searchInput.placeholder = "Enter Record ID to Edit...";
@@ -46,7 +56,6 @@ function setSelectValue(id, value) {
 function showNotification(msg, type) {
     let notif = document.getElementById("notification");
     
-    // Create element if missing
     if (!notif) {
         notif = document.createElement('div');
         notif.id = "notification";
@@ -82,9 +91,11 @@ if (form) {
         try {
             const formData = new FormData(this);
             
-            // Ensure Record ID exists if missing
+            // Generate ID if missing (Fallback)
             if (!formData.get('record_id')) {
-                const newId = Math.floor(100000 + Math.random() * 900000);
+                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+                let newId = '';
+                for (let i = 0; i < 6; i++) newId += chars.charAt(Math.floor(Math.random() * chars.length));
                 formData.set('record_id', newId);
             }
 
@@ -98,10 +109,9 @@ if (form) {
             if (result.status === "success") {
                 showNotification(result.message || "Saved Successfully!", "success");
                 
-                // --- CHANGED LOGIC HERE ---
-                // 1. Do NOT clear the form (User wants to see data)
-                // 2. DO generate a NEW ID for the next submission
-                //    This ensures "Unique Everytime" even if they submit the same form twice.
+                // --- UNIQUE ID LOGIC ---
+                // 1. Form stays filled (No clearForm)
+                // 2. Generate NEW Alphanumeric ID immediately for next click
                 const isEdit = document.getElementById('isEdit').value;
                 if (isEdit !== 'true') {
                     generateRandomId(); 
@@ -202,10 +212,9 @@ function populateMainForm(data) {
     document.getElementById('original_timestamp').value = data['Timestamp'] || '';
     document.getElementById('recordId').value = data['Record_ID'] || data['Order ID'];
 
-    // Safe Assignments
     const fields = {
         'agent': 'Agent Name',
-        'client_name': 'Name', // or 'Client Name' handled by || check in obj
+        'client_name': 'Name', 
         'phone': 'Ph Number',
         'email': 'Email',
         'address': 'Address',
@@ -217,7 +226,6 @@ function populateMainForm(data) {
 
     for (const [id, key] of Object.entries(fields)) {
         if(document.getElementById(id)) {
-            // Check both potential keys (e.g. Name vs Client Name)
             let val = data[key];
             if(!val && key === 'Name') val = data['Client Name'];
             document.getElementById(id).value = val || '';
