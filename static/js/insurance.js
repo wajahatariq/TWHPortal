@@ -1,41 +1,77 @@
 /* =========================================
-   INSURANCE PORTAL LOGIC
+   INSURANCE PORTAL LOGIC (Complete)
    ========================================= */
 
+// --- 1. GLOBAL VARIABLES & NIGHT STATS ---
+let nightStats = { billing: {total:0, breakdown:{}}, insurance: {total:0, breakdown:{}} };
+
+async function fetchNightStats() {
+    try {
+        const res = await fetch('/api/public/night-stats');
+        nightStats = await res.json();
+        updateNightWidget();
+    } catch(e) { console.error("Stats Error", e); }
+}
+
+function updateNightWidget() {
+    const selector = document.getElementById('nightWidgetSelect');
+    if(!selector) return;
+    
+    const type = selector.value;
+    const data = nightStats[type] || {total:0, breakdown:{}};
+    
+    const amountEl = document.getElementById('nightWidgetAmount');
+    if(amountEl) amountEl.innerText = '$' + data.total.toFixed(2);
+    
+    const listDiv = document.getElementById('nightBreakdown');
+    if(!listDiv) return;
+
+    listDiv.innerHTML = '';
+    if (data.breakdown && Object.keys(data.breakdown).length > 0) {
+        listDiv.classList.remove('hidden');
+        for (const [agent, amount] of Object.entries(data.breakdown)) {
+            const row = document.createElement('div');
+            row.className = "flex justify-between border-b border-slate-900/10 pb-1 last:border-0";
+            row.innerHTML = `<span class="truncate pr-2">${agent}</span> <span class="font-bold">$${amount.toFixed(2)}</span>`;
+            listDiv.appendChild(row);
+        }
+    } else { listDiv.classList.add('hidden'); }
+}
+
+// --- 2. INITIALIZATION ---
 document.addEventListener("DOMContentLoaded", function() {
-    // 1. Generate a Random Alphanumeric ID on page load
+    // A. Generate ID
     generateRandomId();
 
-    // 2. Initialize Date Field
+    // B. Set Date
     const dateField = document.getElementById('displayDate');
     if(dateField) {
         dateField.value = new Date().toISOString().split('T')[0].replace(/-/g, '/');
     }
+
+    // C. Start Night Stats polling
+    fetchNightStats();
+    setInterval(fetchNightStats, 120000); // Refresh every 2 mins
 });
 
 /* ========================
    CORE FUNCTIONS
    ======================== */
 
-// Generate a Random Alphanumeric ID (Letters & Numbers)
+// Generate a Random Alphanumeric ID
 function generateRandomId() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let result = '';
-    // Generate 6 random characters
     for (let i = 0; i < 6; i++) {
         result += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     
-    // Optional: Add a prefix like 'INS-' for Insurance if you want
-    // result = 'INS-' + result; 
-
     const idField = document.getElementById('recordId');
     if(idField) {
         idField.value = result;
         console.log("New Record ID generated:", result);
     }
     
-    // Update placeholder to indicate ID availability
     const searchInput = document.getElementById('searchId');
     if(searchInput) searchInput.placeholder = "Enter Record ID to Edit...";
 }
@@ -55,19 +91,15 @@ function setSelectValue(id, value) {
 // Notification System
 function showNotification(msg, type) {
     let notif = document.getElementById("notification");
-    
     if (!notif) {
         notif = document.createElement('div');
         notif.id = "notification";
         document.body.appendChild(notif);
     }
-
     notif.innerText = msg;
     notif.className = `fixed bottom-5 right-5 px-6 py-3 rounded-lg shadow-xl transform transition-all duration-300 z-50 font-bold ${type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`;
-    
     notif.style.transform = "translateY(0)";
     notif.style.opacity = "1";
-
     setTimeout(() => {
         notif.style.transform = "translateY(150%)";
         notif.style.opacity = "0";
@@ -91,7 +123,7 @@ if (form) {
         try {
             const formData = new FormData(this);
             
-            // Generate ID if missing (Fallback)
+            // ID Fallback
             if (!formData.get('record_id')) {
                 const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
                 let newId = '';
@@ -109,14 +141,14 @@ if (form) {
             if (result.status === "success") {
                 showNotification(result.message || "Saved Successfully!", "success");
                 
-                // --- UNIQUE ID LOGIC ---
-                // 1. Form stays filled (No clearForm)
-                // 2. Generate NEW Alphanumeric ID immediately for next click
+                // Update Stats Immediately
+                fetchNightStats(); 
+
+                // Generate NEW ID for next submission (Don't clear form)
                 const isEdit = document.getElementById('isEdit').value;
                 if (isEdit !== 'true') {
                     generateRandomId(); 
                 }
-
             } else {
                 showNotification("Error: " + result.message, "error");
             }
@@ -138,16 +170,13 @@ function clearForm() {
     const form = document.getElementById('insuranceForm');
     if (form) form.reset();
 
-    // Reset Hidden Values
     document.getElementById('isEdit').value = 'false';
     document.getElementById('row_index').value = '';
     document.getElementById('original_timestamp').value = '';
     
-    // Hide Edit UI
     const editOptions = document.getElementById('editOptions');
     if(editOptions) editOptions.classList.add('hidden');
 
-    // Reset Button
     const submitBtn = document.getElementById('submitBtn');
     if(submitBtn) {
         submitBtn.innerText = "Submit Insurance";
@@ -155,10 +184,8 @@ function clearForm() {
         submitBtn.classList.replace('hover:bg-blue-500', 'hover:bg-green-500');
     }
 
-    // Generate NEW Unique ID
     generateRandomId();
     
-    // Reset Date
     const dateField = document.getElementById('displayDate');
     if(dateField) dateField.value = new Date().toISOString().split('T')[0].replace(/-/g, '/');
 
