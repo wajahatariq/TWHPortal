@@ -1,7 +1,7 @@
 fastapi
 uvicorn
 gspread
-pandas
+pymongo
 pydantic
 python-multipart
 requests
