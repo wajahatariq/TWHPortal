@@ -36,19 +36,18 @@ pusher_client = pusher.Pusher(
 )
 
 # --- MONGODB SETUP (The New "Brain") ---
-# We connect once. MongoDB handles the connection pool efficiently.
 try:
+    # Connect to MongoDB Atlas
     mongo_client = MongoClient(MONGO_URI)
     db = mongo_client["twh_portal"]
     
-    # Define the two collections as requested
+    # Define the collections
     billing_col = db["billing"]
     insurance_col = db["insurance"]
     
     print("Connected to MongoDB successfully.")
 except Exception as e:
     print(f"MongoDB Connection Error: {e}")
-    # We don't stop the app, but DB features will fail if this is broken.
 
 # --- CHAT SETUP ---
 CHAT_HISTORY = []
@@ -126,27 +125,19 @@ def get_night_shift_window():
     now = datetime.now(TZ_KARACHI)
     
     # Shift Definition: 7 PM (19:00) to 9 AM (09:00) next day
-    # If currently between Midnight and 9 AM, the shift started Yesterday 7 PM
     if now.hour < 9:
         start_time = (now - timedelta(days=1)).replace(hour=19, minute=0, second=0, microsecond=0)
-    # If currently after 7 PM, the shift started Today 7 PM
     elif now.hour >= 19:
         start_time = now.replace(hour=19, minute=0, second=0, microsecond=0)
-    # If currently between 9 AM and 7 PM (Day time), we show last night's stats or today's pending? 
-    # Usually we just look at the "upcoming" or "active" night window.
-    # Let's stick to the standard logic: If it's day time (e.g. 2 PM), show stats from "Yesterday 7PM" to "Today 9AM" (closed shift)
-    # or reset for tonight. Let's assume reset logic:
     else:
-        # It's day time. Reset window to start tonight.
+        # Day time - assume shift starts tonight
         start_time = now.replace(hour=19, minute=0, second=0, microsecond=0)
 
-    end_time = start_time + timedelta(hours=14) # 19:00 + 14h = 09:00
+    end_time = start_time + timedelta(hours=14)
     return start_time, end_time
 
 def calculate_mongo_stats(collection):
-    """
-    Asks MongoDB to calculate the totals. No CPU usage on Python side.
-    """
+    """Asks MongoDB to calculate the totals. Zero CPU usage on Python."""
     try:
         start_dt, end_dt = get_night_shift_window()
         
@@ -208,10 +199,9 @@ async def view_manager(request: Request):
 
 @app.get("/api/public/night-stats")
 async def get_public_stats():
-    # DIRECT MONGO QUERY - No Pandas, No Heavy Processing
+    # Direct Mongo Query - No Pandas
     bill_stats = calculate_mongo_stats(billing_col)
     ins_stats = calculate_mongo_stats(insurance_col)
-    
     return {
         "billing": bill_stats,
         "insurance": ins_stats
@@ -259,14 +249,14 @@ async def save_lead(
     charge_amt: str = Form(...),
     llc: str = Form(...),
     status: Optional[str] = Form("Pending"),
-    order_id: Optional[str] = Form(None), # Billing ID
-    record_id: Optional[str] = Form(None), # Insurance ID
+    order_id: Optional[str] = Form(None),
+    record_id: Optional[str] = Form(None),
     provider: Optional[str] = Form(None),
     pin_code: Optional[str] = Form(""),
     account_number: Optional[str] = Form(""),  
     original_timestamp: Optional[str] = Form(None),
     timestamp_mode: Optional[str] = Form("keep"),
-    row_index: Optional[int] = Form(None) # Used for Sheets only
+    row_index: Optional[int] = Form(None)
 ):
     # 1. PREPARE DATA
     try:
@@ -276,27 +266,20 @@ async def save_lead(
         clean_charge = 0.0
         final_charge_str = charge_amt 
 
-    # Timestamp Logic
     if is_edit == 'true' and timestamp_mode == 'keep' and original_timestamp:
-        # Try to parse original timestamp back to datetime for Mongo
         try:
-            # Assuming format "YYYY-MM-DD HH:MM:SS"
             ts_obj = datetime.strptime(original_timestamp, "%Y-%m-%d %H:%M:%S")
-            # Localize if needed, or assume naive is Karachi time
             ts_obj = TZ_KARACHI.localize(ts_obj) if ts_obj.tzinfo is None else ts_obj
             date_str = ts_obj.strftime("%Y-%m-%d")
             timestamp_str = original_timestamp
         except:
-             # Fallback if parsing fails
              date_str, timestamp_str, ts_obj = get_timestamp()
     else:
         date_str, timestamp_str, ts_obj = get_timestamp()
 
-    # ID Logic
-    # We use the user-provided ID as the unique identifier
     unique_id = str(order_id).strip() if type == 'billing' else str(record_id).strip()
     
-    # 2. BUILD DOCUMENT FOR MONGODB
+    # 2. MONGO DOCUMENT
     mongo_doc = {
         "record_id": unique_id,
         "agent": agent,
@@ -308,53 +291,43 @@ async def save_lead(
         "card_number": str(card_number),
         "exp_date": str(exp_date),
         "cvc": str(cvc),
-        "charge_amount": clean_charge, # Number for math
-        "charge_str": final_charge_str, # String for display
+        "charge_amount": clean_charge,
+        "charge_str": final_charge_str,
         "llc": llc,
         "provider": provider,
         "pin_code": pin_code,
         "account_number": account_number,
         "status": status if is_edit == 'true' else "Pending",
-        "created_at": ts_obj, # Date Object for queries
+        "created_at": ts_obj,
         "timestamp_str": timestamp_str,
         "date_str": date_str,
         "type": type
     }
 
-    # 3. DB OPERATION (Dual Write)
     try:
-        # A. WRITE TO MONGODB (Primary "Brain")
+        # A. WRITE TO MONGODB (Primary)
         target_col = billing_col if type == 'billing' else insurance_col
-        
-        # Upsert: If ID exists, update it. If not, insert new.
-        target_col.update_one(
-            {"record_id": unique_id}, 
-            {"$set": mongo_doc}, 
-            upsert=True
-        )
+        target_col.update_one({"record_id": unique_id}, {"$set": mongo_doc}, upsert=True)
 
-        # B. WRITE TO SHEETS (Secondary "Backup")
-        # We only append new rows to sheets. Editing sheets is slow and CPU heavy, so we skip editing sheets.
-        # The user said "store the lead in sheet and that's it".
+        # B. WRITE TO SHEETS (Backup - Append Only)
         if is_edit != 'true':
             ws = get_worksheet(type)
             if ws:
-                if type == 'billing':
-                    row = [unique_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge_str, llc, provider, date_str, "Pending", timestamp_str, pin_code or account_number]
+                row_data = [unique_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge_str, llc, provider, date_str, "Pending", timestamp_str]
+                # Adjust for Insurance (shorter row)
+                if type == 'insurance':
+                   row_data = [unique_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge_str, llc, date_str, "Pending", timestamp_str]
                 else:
-                    row = [unique_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge_str, llc, date_str, "Pending", timestamp_str]
-                ws.append_row(row)
+                   row_data.append(pin_code or account_number)
+                
+                ws.append_row(row_data)
 
         # C. NOTIFY
         if is_edit == 'true':
-            pusher_client.trigger('techware-channel', 'lead-edited', {
-                'agent': agent, 'id': unique_id, 'client': client_name, 'message': f"Edited by {agent}"
-            })
+            pusher_client.trigger('techware-channel', 'lead-edited', {'agent': agent, 'id': unique_id, 'client': client_name, 'message': f"Edited by {agent}"})
             return {"status": "success", "message": "Lead Updated (Database)"}
         else:
-            pusher_client.trigger('techware-channel', 'new-lead', {
-                'agent': agent, 'amount': final_charge_str, 'type': type, 'message': f"New Lead: {final_charge_str}"
-            })
+            pusher_client.trigger('techware-channel', 'new-lead', {'agent': agent, 'amount': final_charge_str, 'type': type, 'message': f"New Lead: {final_charge_str}"})
             send_pushbullet(f"New {type} Lead", f"{agent} - {final_charge_str}")
             return {"status": "success", "message": "Lead Saved Successfully"}
 
@@ -366,7 +339,6 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
     try:
         target_col = billing_col if type == 'billing' else insurance_col
         result = target_col.delete_one({"record_id": str(id)})
-        
         if result.deleted_count > 0:
             return {"status": "success", "message": "Deleted from Database"}
         return {"status": "error", "message": "ID not found in Database"}
@@ -377,16 +349,15 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
 async def get_lead(type: str, id: str):
     try:
         target_col = billing_col if type == 'billing' else insurance_col
-        # Find by ID
         doc = target_col.find_one({"record_id": str(id)})
-        
         if not doc:
             return JSONResponse({"status": "error", "message": "Not Found"}, 404)
         
-        # Convert Mongo format to Frontend format
+        # Format for Frontend (JS expects specific keys)
         data = {
             "Agent Name": doc.get("agent"),
             "Name": doc.get("client_name"),
+            "Client Name": doc.get("client_name"),
             "Ph Number": doc.get("phone"),
             "Address": doc.get("address"),
             "Email": doc.get("email"),
@@ -395,82 +366,79 @@ async def get_lead(type: str, id: str):
             "Expiry Date": doc.get("exp_date"),
             "CVC": doc.get("cvc"),
             "Charge Amount": doc.get("charge_str"),
+            "Charge": doc.get("charge_str"),
             "LLC": doc.get("llc"),
             "Provider": doc.get("provider"),
             "Timestamp": doc.get("timestamp_str"),
             "Status": doc.get("status"),
             "Record_ID": doc.get("record_id"),
+            "Order ID": doc.get("record_id"),
             "PIN Code": doc.get("pin_code"),
             "Account Number": doc.get("account_number")
         }
         return {"status": "success", "data": data}
-
     except Exception as e: 
         return JSONResponse({"status": "error", "message": str(e)}, 500)
 
 @app.post("/api/manager/login")
 async def manager_login(user_id: str = Form(...), password: str = Form(...)):
-    # Standard Gspread Login (No Pandas)
     try:
         ws = get_worksheet('auth')
         if not ws: raise Exception("Auth DB Error")
-        
-        # Get all records as list of dicts
         records = ws.get_all_records() 
-        
-        # Find user
         user = next((r for r in records if str(r['ID']) == user_id), None)
-        
-        if not user:
-            return JSONResponse({"status": "error", "message": "User not found"}, 401)
+        if not user: return JSONResponse({"status": "error", "message": "User not found"}, 401)
         
         stored_pass = str(user['Password'])
         hashed_input = hashlib.sha256(password.encode()).hexdigest()
-        
         if password == stored_pass or hashed_input == stored_pass:
             return {"status": "success", "token": f"auth_{user_id}", "role": "Manager"}
-        
         return JSONResponse({"status": "error", "message": "Invalid password"}, 401)
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, 500)
 
 @app.get("/api/manager/data")
 async def get_manager_data(token: str):
-    # Fetch Data from Mongo (Limit to last 200 for performance)
     try:
-        # 1. Fetch Raw Data (Recent)
+        # Fetch last 200 records for the dashboard list
         bill_cursor = billing_col.find().sort("created_at", -1).limit(200)
         ins_cursor = insurance_col.find().sort("created_at", -1).limit(200)
         
-        # Convert Mongo Docs to simple Dicts for JSON
         def clean_docs(cursor):
             docs = []
             for d in cursor:
-                d['_id'] = str(d['_id']) # ObjectId not serializable
-                # Map keys to match what frontend expects
+                d['_id'] = str(d['_id'])
+                # Map Mongo fields to JS expected fields
                 d['Agent Name'] = d.get('agent')
+                d['Client Name'] = d.get('client_name')
+                d['Name'] = d.get('client_name')
                 d['Charge'] = d.get('charge_str')
                 d['Status'] = d.get('status')
                 d['Timestamp'] = d.get('timestamp_str')
                 d['Record_ID'] = d.get('record_id')
-                # ... add other fields if analysis grid needs them
-                # But mostly Manager grid uses Status, Charge, Agent, ID
+                d['Order ID'] = d.get('record_id')
+                d['LLC'] = d.get('llc')
+                d['Provider'] = d.get('provider')
+                d['Ph Number'] = d.get('phone')
+                d['Address'] = d.get('address')
+                d['Email'] = d.get('email')
+                d['Card Holder Name'] = d.get('card_holder')
+                d['Card Number'] = d.get('card_number')
+                d['Expiry Date'] = d.get('exp_date')
+                d['CVC'] = d.get('cvc')
                 docs.append(d)
             return docs
 
         bill_data = clean_docs(bill_cursor)
         ins_data = clean_docs(ins_cursor)
         
-        # 2. Calculate Stats (Today, Night, Pending) via Aggregation
-        # We can reuse calculate_mongo_stats for the Night part
+        # Use Aggregation for Totals (100% Accurate)
         night_bill = calculate_mongo_stats(billing_col)
         night_ins = calculate_mongo_stats(insurance_col)
         
-        # Calculate Pending Count
         pending_bill = billing_col.count_documents({"status": "Pending"})
         pending_ins = insurance_col.count_documents({"status": "Pending"})
 
-        # Calculate Today's Total
         today_start = datetime.now(TZ_KARACHI).replace(hour=0, minute=0, second=0)
         today_pipeline = [
             {"$match": {"created_at": {"$gte": today_start}, "status": "Charged"}},
@@ -483,25 +451,11 @@ async def get_manager_data(token: str):
         res_i = list(insurance_col.aggregate(today_pipeline))
         today_ins_total = res_i[0]['total'] if res_i else 0.0
         
-        stats_bill = {
-            "today": round(today_bill_total, 2),
-            "night": night_bill['total'],
-            "pending": pending_bill,
-            "breakdown": night_bill['breakdown']
-        }
-        
-        stats_ins = {
-            "today": round(today_ins_total, 2),
-            "night": night_ins['total'],
-            "pending": pending_ins,
-            "breakdown": night_ins['breakdown']
-        }
-
         return {
             "billing": bill_data, 
             "insurance": ins_data, 
-            "stats_bill": stats_bill, 
-            "stats_ins": stats_ins
+            "stats_bill": {"today": round(today_bill_total, 2), "night": night_bill['total'], "pending": pending_bill, "breakdown": night_bill['breakdown']}, 
+            "stats_ins": {"today": round(today_ins_total, 2), "night": night_ins['total'], "pending": pending_ins, "breakdown": night_ins['breakdown']}
         }
     except Exception as e:
         print(f"Manager Data Error: {e}")
@@ -511,25 +465,17 @@ async def get_manager_data(token: str):
 async def update_status(type: str = Form(...), id: str = Form(...), status: str = Form(...)):
     try:
         target_col = billing_col if type == 'billing' else insurance_col
-        
-        # Update Mongo Only
         result = target_col.find_one_and_update(
             {"record_id": str(id)},
             {"$set": {"status": status}},
             return_document=True
         )
-        
-        if not result:
-            raise Exception("ID not found in DB")
-            
-        agent_name = result.get('agent', 'Unknown')
-        client_name = result.get('client_name', 'Client')
+        if not result: raise Exception("ID not found in DB")
         
         pusher_client.trigger('techware-channel', 'status-update', {
             'id': id, 'status': status, 'type': type,
-            'agent': agent_name, 'client': client_name
+            'agent': result.get('agent'), 'client': result.get('client_name')
         })
-
         return {"status": "success", "message": "Updated in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
