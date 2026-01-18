@@ -2,6 +2,7 @@ fastapi
 uvicorn
 gspread
 pymongo
+dnspython
 pydantic
 python-multipart
 requests
