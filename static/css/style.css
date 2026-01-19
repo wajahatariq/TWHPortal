@@ -1,162 +1,131 @@
 /* =========================================
-   Techware Hub - Crimson Depth Theme
+   Techware Hub - Professional Dark Theme
    ========================================= */
 
-:root {
-    /* Core Palette */
-    --bg-gradient-start: #5a121f; /* Rich Crimson */
-    --bg-gradient-end: #2d050a;   /* Deepest Maroon */
-    
-    --card-bg: rgba(60, 10, 20, 0.4); /* Glassy Red */
-    --card-border: rgba(255, 150, 150, 0.15);
-    
-    --primary-accent: #ff4d4d; /* Bright Red/Pink */
-    --secondary-accent: #6E1A2D; /* Brand Red */
-    
-    --text-main: #ffebeb; 
-    --text-muted: #d6b3b8;
-    
-    --input-bg: rgba(0, 0, 0, 0.2);
-    --input-border: #6E1A2D;
-}
-
 body {
-    background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
-    background-attachment: fixed;
-    color: var(--text-main);
+    background-color: #0f172a; /* Slate 900 */
+    color: #e2e8f0;            /* Slate 200 */
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
 }
 
-/* --- SCROLLBAR --- */
-::-webkit-scrollbar { width: 8px; }
-::-webkit-scrollbar-track { background: #2d050a; }
-::-webkit-scrollbar-thumb { background: #6E1A2D; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #ff4d4d; }
-
-/* --- GLASSMORPHISM --- */
-.glass-panel {
-    background: var(--card-bg);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid var(--card-border);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
-}
-
+/* --- Card & Container --- */
 .card-hover { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
 .card-hover:hover {
-    transform: translateY(-5px);
-    background: rgba(110, 26, 45, 0.6);
-    border-color: var(--primary-accent);
-    box-shadow: 0 15px 30px -5px rgba(255, 77, 77, 0.2);
+    transform: translateY(-8px);
+    box-shadow: 0 20px 25px -5px rgba(59, 130, 246, 0.25);
+    border-color: #3b82f6;
 }
 
-/* --- INPUTS --- */
+/* --- Input Fields --- */
 .input-field {
     width: 100%;
-    background-color: var(--input-bg) !important;
-    border: 1px solid var(--input-border);
-    border-radius: 0.5rem;
+    background-color: #1e293b !important;
+    border: 1px solid #334155;
+    border-radius: 0.75rem;
     padding: 0.75rem 1rem;
-    color: #fff !important;
-    font-size: 0.95rem;
+    color: #ffffff !important;
+    font-size: 1rem;
     outline: none;
     transition: all 0.2s ease-in-out;
+    appearance: none;
 }
 .input-field:focus {
-    border-color: var(--primary-accent);
-    background-color: rgba(60, 10, 20, 0.8) !important;
-    box-shadow: 0 0 0 2px rgba(255, 77, 77, 0.2);
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    background-color: #1e293b;
+}
+.input-field::placeholder { color: #94a3b8; }
+
+/* Select Arrow Fix */
+select.input-field {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.75rem center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+    padding-right: 2.5rem;
 }
 
-/* --- NOTIFICATION BELL & DROPDOWN --- */
-.notification-container {
-    position: relative;
-    display: inline-block;
+/* Autofill Fix */
+input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus, input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px #1e293b inset !important;
+    -webkit-text-fill-color: white !important;
+    caret-color: white;
+    transition: background-color 5000s ease-in-out 0s;
 }
 
-.notif-btn {
-    position: relative;
-    background: rgba(110, 26, 45, 0.3);
-    border: 1px solid var(--card-border);
-    border-radius: 50%;
-    width: 45px;
-    height: 45px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-.notif-btn:hover {
-    background: var(--primary-accent);
-    color: white;
-    transform: scale(1.1);
-}
-
-.notif-badge {
-    position: absolute;
-    top: -5px;
-    right: -5px;
-    background: #ff4d4d;
-    color: white;
-    font-size: 0.7rem;
-    font-weight: bold;
-    padding: 2px 6px;
-    border-radius: 999px;
-    border: 2px solid #2d050a;
-}
-
-.notif-dropdown {
-    position: absolute;
-    top: 60px;
-    right: 0;
-    width: 320px;
-    max-height: 400px;
-    overflow-y: auto; /* Scrollable */
-    background: #1a0505; /* Solid dark for readability */
-    border: 1px solid #6E1A2D;
-    border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.8);
-    z-index: 100;
-    display: none; /* Hidden by default */
-    animation: fadeIn 0.2s ease-out;
-}
-.notif-dropdown.show { display: block; }
-
-.notif-item {
-    padding: 12px 16px;
-    border-bottom: 1px solid rgba(110, 26, 45, 0.3);
-    font-size: 0.9rem;
-    transition: background 0.2s;
-}
-.notif-item:hover { background: rgba(110, 26, 45, 0.4); }
-.notif-item:last-child { border-bottom: none; }
-.notif-title { color: #ff4d4d; font-weight: bold; font-size: 0.8rem; text-transform: uppercase; margin-bottom: 2px; }
-.notif-msg { color: #e6efed; }
-
-/* --- TOAST (POP-OUT) --- */
-.toast-container {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    z-index: 9999;
-    display: flex;
-    flex-col-reverse: column-reverse; /* Newest at bottom */
-    gap: 10px;
-}
-.toast-card {
-    background: #1a0505;
-    border-left: 4px solid #ff4d4d;
-    padding: 16px;
+/* --- TOAST NOTIFICATION --- */
+.toast {
+    visibility: hidden;
+    min-width: 250px;
+    background-color: #10b981; /* Green */
+    color: #fff;
+    text-align: center;
     border-radius: 8px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-    min-width: 280px;
-    border-top: 1px solid #6E1A2D;
-    border-right: 1px solid #6E1A2D;
-    border-bottom: 1px solid #6E1A2D;
-    animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    padding: 16px;
+    position: fixed;
+    z-index: 100;
+    left: 50%;
+    top: 30px;
+    transform: translateX(-50%);
+    font-size: 17px;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    transition: opacity 0.3s, top 0.3s;
+}
+.toast.show {
+    visibility: visible;
+    opacity: 1;
+    top: 50px;
+}
+.toast.error { background-color: #ef4444; }
+
+/* --- PENDING CARD STYLES --- */
+.pending-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 1rem;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    transition: transform 0.2s;
+}
+.pending-card:hover { transform: scale(1.01); border-color: #475569; }
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #334155;
+    font-size: 1.1rem; /* Bigger Text */
+}
+.detail-row:last-child { border-bottom: none; }
+.detail-label { color: #94a3b8; font-size: 0.9rem; }
+.detail-value { color: white; font-weight: 600; font-family: monospace; letter-spacing: 0.05em; text-align: right;}
+
+/* --- CHAT WIDGET STYLES --- */
+.chat-window-enter {
+    transform: scale(0.95);
+    opacity: 0;
+}
+.chat-window-enter-active {
+    transform: scale(1);
+    opacity: 1;
+    transition: all 0.2s ease-out;
 }
 
-@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+/* Custom Scrollbar for Chat */
+#chatMessages::-webkit-scrollbar { width: 6px; }
+#chatMessages::-webkit-scrollbar-track { background: #1e293b; }
+#chatMessages::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+
+/* Message Animations */
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-up {
+    animation: fadeInUp 0.3s ease-out forwards;
+}
