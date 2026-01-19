@@ -409,30 +409,30 @@ async def get_lead(type: str, id: str = None, limit: int = None):
         elif type == 'ebook': col = ebook_col
         
         if limit:
-                    cursor = col.find().sort("created_at", -1).limit(limit)
-                    results = []
-                    for doc in cursor:
-                        doc['_id'] = str(doc['_id'])
-                        # Map ALL fields for the table
-                        doc['Record_ID'] = doc.get('record_id')
-                        doc['Agent'] = doc.get('agent')
-                        doc['Name'] = doc.get('client_name')
-                        doc['Phone'] = doc.get('phone')
-                        doc['Email'] = doc.get('email')
-                        doc['Address'] = doc.get('address')
-                        doc['CardHolder'] = doc.get('card_holder')
-                        doc['CardNumber'] = doc.get('card_number')
-                        doc['ExpDate'] = doc.get('exp_date')
-                        doc['CVC'] = doc.get('cvc')
-                        doc['Charge'] = doc.get('charge_str')
-                        doc['Provider'] = doc.get('provider')
-                        doc['LLC'] = doc.get('llc')
-                        doc['AccountNo'] = doc.get('account_number')
-                        doc['PIN'] = doc.get('pin_code')
-                        doc['Status'] = doc.get('status')
-                        doc['Timestamp'] = doc.get('timestamp_str')
-                        results.append(doc)
-                    return {"status": "success", "data": results}
+            cursor = col.find().sort("created_at", -1).limit(limit)
+            results = []
+            for doc in cursor:
+                doc['_id'] = str(doc['_id'])
+                # Map ALL fields for the table
+                doc['Record_ID'] = doc.get('record_id')
+                doc['Agent'] = doc.get('agent')
+                doc['Name'] = doc.get('client_name')
+                doc['Phone'] = doc.get('phone')
+                doc['Email'] = doc.get('email')
+                doc['Address'] = doc.get('address')
+                doc['CardHolder'] = doc.get('card_holder')
+                doc['CardNumber'] = doc.get('card_number')
+                doc['ExpDate'] = doc.get('exp_date')
+                doc['CVC'] = doc.get('cvc')
+                doc['Charge'] = doc.get('charge_str')
+                doc['Provider'] = doc.get('provider')
+                doc['LLC'] = doc.get('llc')
+                doc['AccountNo'] = doc.get('account_number')
+                doc['PIN'] = doc.get('pin_code')
+                doc['Status'] = doc.get('status')
+                doc['Timestamp'] = doc.get('timestamp_str')
+                results.append(doc)
+            return {"status": "success", "data": results}
 
         if id:
             doc = col.find_one({"record_id": str(id)})
@@ -553,6 +553,7 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "success", "message": "Updated in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
