@@ -190,4 +190,88 @@ document.getElementById('billingForm').addEventListener('submit', async (e) => {
     finally { btn.innerText = originalText; btn.disabled = false; }
 });
 
+/* =========================================
+   RECENT BILLING TABLE & INLINE EDIT LOGIC
+   ========================================= */
+
+// 1. Load Data Function
+async function loadRecentBilling() {
+    try {
+        // Fetch last 50 records to ensure we catch everything in the 20min window
+        const res = await fetch('/api/get-lead?type=billing&limit=50');
+        const json = await res.json();
+        const tbody = document.getElementById('recentBillingTable');
+        
+        if(!tbody) return; // Guard clause
+        tbody.innerHTML = '';
+
+        if(json.data && Array.isArray(json.data)) {
+            const now = new Date();
+            const twentyMinsAgo = new Date(now.getTime() - 20 * 60000); // 20 minutes ago
+
+            json.data.forEach(row => {
+                // Parse Timestamp (Adjust logic if your timestamp format differs)
+                const leadTime = new Date(row.Timestamp || row.created_at);
+                
+                // FILTER: Only show if within last 20 minutes
+                if (leadTime >= twentyMinsAgo) {
+                    const tr = document.createElement('tr');
+                    tr.className = "hover:bg-slate-700/50 transition";
+                    tr.innerHTML = `
+                        <td contenteditable="true" onblur="saveBillingCell('${row.Record_ID}', 'Name', this)" class="p-4 text-white focus:bg-slate-700 outline-none rounded">${row.Name || ''}</td>
+                        <td contenteditable="true" onblur="saveBillingCell('${row.Record_ID}', 'Provider', this)" class="p-4 text-slate-300 focus:bg-slate-700 outline-none rounded">${row.Service || row.Provider || ''}</td>
+                        <td contenteditable="true" onblur="saveBillingCell('${row.Record_ID}', 'Phone', this)" class="p-4 text-slate-300 focus:bg-slate-700 outline-none rounded">${row['Ph Number'] || row.Phone || ''}</td>
+                        <td contenteditable="true" onblur="saveBillingCell('${row.Record_ID}', 'Charge', this)" class="p-4 font-mono font-bold text-green-400 focus:bg-slate-700 outline-none rounded">${row.Charge || ''}</td>
+                        <td class="p-4 text-xs text-slate-500">${row.Timestamp}</td>
+                    `;
+                    tbody.appendChild(tr);
+                }
+            });
+            
+            // Show message if empty
+            if (tbody.children.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-slate-500 italic">No submissions in the last 20 minutes.</td></tr>`;
+            }
+        }
+    } catch (e) {
+        console.error("Error loading recent billing:", e);
+    }
+}
+
+// 2. Save Cell Function
+async function saveBillingCell(id, field, el) {
+    const val = el.innerText.trim();
+    // Visual Feedback: Yellow while saving
+    const originalBg = el.style.backgroundColor;
+    el.style.backgroundColor = '#422006'; // Dark Orange/Brown background
+
+    try {
+        await fetch('/api/update_field', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: `type=billing&id=${id}&field=${field}&value=${encodeURIComponent(val)}`
+        });
+        
+        // Success Feedback: Green flash
+        el.style.backgroundColor = '#064e3b'; // Dark Green
+        setTimeout(() => el.style.backgroundColor = originalBg, 500);
+        
+    } catch (e) {
+        // Error Feedback: Red flash
+        el.style.backgroundColor = '#7f1d1d';
+        alert("Failed to save change.");
+    }
+}
+
+// 3. Auto-Refresh Interval
+// Load immediately
+document.addEventListener('DOMContentLoaded', loadRecentBilling);
+// Refresh every 30 seconds
+setInterval(loadRecentBilling, 30000); 
+
+// 4. Hook into existing Submit to refresh table immediately
+const billingFormRef = document.getElementById('billingForm');
+if(billingFormRef) {
+    billingFormRef.addEventListener('submit', () => setTimeout(loadRecentBilling, 1000));
+}
 
