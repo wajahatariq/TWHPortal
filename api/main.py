@@ -362,30 +362,20 @@ async def update_field_inline(
     value: str = Form(...)
 ):
     try:
+        # UPDATED: Added billing and insurance to allowed types
         if type == 'design': col = design_col
         elif type == 'ebook': col = ebook_col
         elif type == 'billing': col = billing_col
         elif type == 'insurance': col = insurance_col
         else: return JSONResponse({"status": "error", "message": "Invalid Type"}, 400)
 
-        db_field = field # Default fallback
-        
-        # --- MAPPING: Frontend Table Header -> MongoDB Key ---
-        if field == 'Name':         db_field = 'client_name'
-        if field == 'Provider':     db_field = 'provider'
-        if field == 'Service':      db_field = 'provider'
-        if field == 'Charge':       db_field = 'charge_str'
-        if field == 'Phone':        db_field = 'phone'
-        if field == 'Email':        db_field = 'email'
-        if field == 'Address':      db_field = 'address'
-        if field == 'CardHolder':   db_field = 'card_holder'
-        if field == 'CardNumber':   db_field = 'card_number'
-        if field == 'ExpDate':      db_field = 'exp_date'
-        if field == 'CVC':          db_field = 'cvc'
-        if field == 'LLC':          db_field = 'llc'
-        if field == 'AccountNo':    db_field = 'account_number'
-        if field == 'PIN':          db_field = 'pin_code'
-        if field == 'agent':        db_field = 'agent' # Select box sends lowercase 'agent'
+        db_field = field
+        # Map frontend field names to DB keys if they differ
+        if field == 'Name': db_field = 'client_name'
+        if field == 'Service' or field == 'Provider': db_field = 'provider'
+        if field == 'Charge': db_field = 'charge_str'
+        if field == 'Phone': db_field = 'phone'
+        if field == 'Email': db_field = 'email'
 
         col.update_one({"record_id": id}, {"$set": {db_field: value}})
         
@@ -419,32 +409,30 @@ async def get_lead(type: str, id: str = None, limit: int = None):
         elif type == 'ebook': col = ebook_col
         
         if limit:
-            cursor = col.find().sort("created_at", -1).limit(limit)
-            results = []
-            for doc in cursor:
-                doc['_id'] = str(doc['_id'])
-                
-                # --- MAPPING: MongoDB Key -> Frontend Table Header ---
-                doc['Record_ID']  = doc.get('record_id')
-                doc['Agent']      = doc.get('agent')
-                doc['Name']       = doc.get('client_name')
-                doc['Phone']      = doc.get('phone')
-                doc['Email']      = doc.get('email')
-                doc['Address']    = doc.get('address')
-                doc['CardHolder'] = doc.get('card_holder')
-                doc['CardNumber'] = doc.get('card_number')
-                doc['ExpDate']    = doc.get('exp_date')
-                doc['CVC']        = doc.get('cvc')
-                doc['Charge']     = doc.get('charge_str')
-                doc['Provider']   = doc.get('provider')
-                doc['LLC']        = doc.get('llc')
-                doc['AccountNo']  = doc.get('account_number')
-                doc['PIN']        = doc.get('pin_code')
-                doc['Status']     = doc.get('status')
-                doc['Timestamp']  = doc.get('timestamp_str')
-                
-                results.append(doc)
-            return {"status": "success", "data": results}
+                    cursor = col.find().sort("created_at", -1).limit(limit)
+                    results = []
+                    for doc in cursor:
+                        doc['_id'] = str(doc['_id'])
+                        # Map ALL fields for the table
+                        doc['Record_ID'] = doc.get('record_id')
+                        doc['Agent'] = doc.get('agent')
+                        doc['Name'] = doc.get('client_name')
+                        doc['Phone'] = doc.get('phone')
+                        doc['Email'] = doc.get('email')
+                        doc['Address'] = doc.get('address')
+                        doc['CardHolder'] = doc.get('card_holder')
+                        doc['CardNumber'] = doc.get('card_number')
+                        doc['ExpDate'] = doc.get('exp_date')
+                        doc['CVC'] = doc.get('cvc')
+                        doc['Charge'] = doc.get('charge_str')
+                        doc['Provider'] = doc.get('provider')
+                        doc['LLC'] = doc.get('llc')
+                        doc['AccountNo'] = doc.get('account_number')
+                        doc['PIN'] = doc.get('pin_code')
+                        doc['Status'] = doc.get('status')
+                        doc['Timestamp'] = doc.get('timestamp_str')
+                        results.append(doc)
+                    return {"status": "success", "data": results}
 
         if id:
             doc = col.find_one({"record_id": str(id)})
@@ -565,10 +553,6 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "success", "message": "Updated in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
-
-
-
 
 
 
