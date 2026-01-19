@@ -35,15 +35,15 @@ pusher_client = pusher.Pusher(
   ssl=True
 )
 
-# --- MONGODB SETUP (The New "Brain") ---
+# --- MONGODB SETUP ---
 try:
-    # Connect to MongoDB Atlas
     mongo_client = MongoClient(MONGO_URI)
     db = mongo_client["twh_portal"]
     
-    # Define the collections
     billing_col = db["billing"]
     insurance_col = db["insurance"]
+    design_col = db["design"]
+    ebook_col = db["ebook"]
     
     print("Connected to MongoDB successfully.")
 except Exception as e:
@@ -65,9 +65,10 @@ templates = Jinja2Templates(directory=TEMPLATES_DIR)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 TZ_KARACHI = pytz.timezone("Asia/Karachi")
 
-# --- SHEETS SETUP (Backup / Write-Only) ---
+# --- SHEETS SETUP ---
 gc = None
-SHEET_NAME = "Company_Transactions"
+SHEET_MAIN = "Company_Transactions"
+SHEET_NEW = "E-Books and Design from Portal"
 
 def get_gc():
     global gc
@@ -89,12 +90,21 @@ def get_worksheet(sheet_type):
     if not gc: return None
     
     try:
-        sh = gc.open(SHEET_NAME)
-        if sheet_type == 'billing': return sh.get_worksheet(0)
-        if sheet_type == 'insurance': return sh.get_worksheet(1)
-        if sheet_type == 'auth': return sh.get_worksheet(2)
+        # Billing & Insurance (Original Sheet)
+        if sheet_type in ['billing', 'insurance', 'auth']:
+            sh = gc.open(SHEET_MAIN)
+            if sheet_type == 'billing': return sh.get_worksheet(0)
+            if sheet_type == 'insurance': return sh.get_worksheet(1)
+            if sheet_type == 'auth': return sh.get_worksheet(2)
+            
+        # Design & Ebooks (New Sheet)
+        if sheet_type in ['design', 'ebook']:
+            sh = gc.open(SHEET_NEW)
+            if sheet_type == 'design': return sh.worksheet("Design")
+            if sheet_type == 'ebook': return sh.worksheet("Ebook")
+            
     except Exception as e:
-        print(f"Sheet Access Error: {e}")
+        print(f"Sheet Access Error ({sheet_type}): {e}")
         gc = None 
         return None
     return None
@@ -102,6 +112,9 @@ def get_worksheet(sheet_type):
 # --- CONSTANTS ---
 AGENTS_BILLING = ["Arham Kaleem", "Arham Ali", "Haziq", "Anus", "Hasnain"]
 AGENTS_INSURANCE = ["Saad"]
+AGENTS_DESIGN = ["Designer 1", "Designer 2"] # Example agents
+AGENTS_EBOOK = ["Writer 1", "Writer 2"]      # Example agents
+
 PROVIDERS = ["Spectrum", "Insurance", "Xfinity", "Frontier", "Optimum"]
 LLC_SPEC = ["Secure Claim Solutions", "Visionary Pathways"]
 LLC_INS = ["LMI"]
@@ -121,52 +134,31 @@ def get_timestamp():
     return now.strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d %H:%M:%S"), now
 
 def get_night_shift_window():
-    """Calculates the start and end datetime for the current 'Night Shift'."""
     now = datetime.now(TZ_KARACHI)
-    
-    # Shift Definition: 7 PM (19:00) to 9 AM (09:00) next day
     if now.hour < 9:
         start_time = (now - timedelta(days=1)).replace(hour=19, minute=0, second=0, microsecond=0)
     elif now.hour >= 19:
         start_time = now.replace(hour=19, minute=0, second=0, microsecond=0)
     else:
-        # Day time - assume shift starts tonight
         start_time = now.replace(hour=19, minute=0, second=0, microsecond=0)
-
     end_time = start_time + timedelta(hours=14)
     return start_time, end_time
 
 def calculate_mongo_stats(collection):
-    """Asks MongoDB to calculate the totals. Zero CPU usage on Python."""
     try:
         start_dt, end_dt = get_night_shift_window()
-        
         pipeline = [
-            {
-                "$match": {
-                    "created_at": {"$gte": start_dt, "$lte": end_dt},
-                    "status": "Charged"
-                }
-            },
-            {
-                "$group": {
-                    "_id": "$agent",
-                    "total_amount": {"$sum": "$charge_amount"}
-                }
-            }
+            {"$match": {"created_at": {"$gte": start_dt, "$lte": end_dt}, "status": "Charged"}},
+            {"$group": {"_id": "$agent", "total_amount": {"$sum": "$charge_amount"}}}
         ]
-        
         results = list(collection.aggregate(pipeline))
-        
         breakdown = {}
         total = 0.0
-        
         for r in results:
             agent = r["_id"]
             amt = r["total_amount"]
             breakdown[agent] = amt
             total += amt
-            
         return {"total": round(total, 2), "breakdown": breakdown}
     except Exception as e:
         print(f"Mongo Stats Error: {e}")
@@ -191,6 +183,18 @@ async def view_insurance(request: Request):
         "pusher_key": PUSHER_KEY, "pusher_cluster": PUSHER_CLUSTER
     })
 
+@app.get("/design", response_class=HTMLResponse)
+async def view_design(request: Request):
+    return templates.TemplateResponse("design.html", {
+        "request": request, "agents": AGENTS_DESIGN, "pusher_key": PUSHER_KEY, "pusher_cluster": PUSHER_CLUSTER
+    })
+
+@app.get("/ebook", response_class=HTMLResponse)
+async def view_ebook(request: Request):
+    return templates.TemplateResponse("ebook.html", {
+        "request": request, "agents": AGENTS_EBOOK, "pusher_key": PUSHER_KEY, "pusher_cluster": PUSHER_CLUSTER
+    })
+
 @app.get("/manager", response_class=HTMLResponse)
 async def view_manager(request: Request):
     return templates.TemplateResponse("manager.html", {
@@ -199,12 +203,11 @@ async def view_manager(request: Request):
 
 @app.get("/api/public/night-stats")
 async def get_public_stats():
-    # Direct Mongo Query - No Pandas
-    bill_stats = calculate_mongo_stats(billing_col)
-    ins_stats = calculate_mongo_stats(insurance_col)
     return {
-        "billing": bill_stats,
-        "insurance": ins_stats
+        "billing": calculate_mongo_stats(billing_col),
+        "insurance": calculate_mongo_stats(insurance_col),
+        "design": calculate_mongo_stats(design_col),
+        "ebook": calculate_mongo_stats(ebook_col)
     }
 
 # --- CHAT ENDPOINTS ---
@@ -239,26 +242,26 @@ async def save_lead(
     is_edit: str = Form("false"),
     agent: str = Form(...),
     client_name: str = Form(...),
-    phone: str = Form(...),
-    address: str = Form(...),
-    email: str = Form(...),
-    card_holder: str = Form(...),
-    card_number: str = Form(...),
-    exp_date: str = Form(...),
-    cvc: str = Form(...),
     charge_amt: str = Form(...),
-    llc: str = Form(...),
+    # Optional fields for Design/Ebook or Billing/Insurance
+    phone: Optional[str] = Form(""),
+    address: Optional[str] = Form(""),
+    email: Optional[str] = Form(""),
+    card_holder: Optional[str] = Form(""),
+    card_number: Optional[str] = Form(""),
+    exp_date: Optional[str] = Form(""),
+    cvc: Optional[str] = Form(""),
+    llc: Optional[str] = Form(""),
     status: Optional[str] = Form("Pending"),
     order_id: Optional[str] = Form(None),
     record_id: Optional[str] = Form(None),
-    provider: Optional[str] = Form(None),
+    provider: Optional[str] = Form(""), # This maps to 'Service' for Design/Ebook
     pin_code: Optional[str] = Form(""),
     account_number: Optional[str] = Form(""),  
     original_timestamp: Optional[str] = Form(None),
     timestamp_mode: Optional[str] = Form("keep"),
     row_index: Optional[int] = Form(None)
 ):
-    # 1. PREPARE DATA
     try:
         clean_charge = float(str(charge_amt).replace('$', '').replace(',', '').strip())
         final_charge_str = f"${clean_charge:.2f}"
@@ -277,9 +280,14 @@ async def save_lead(
     else:
         date_str, timestamp_str, ts_obj = get_timestamp()
 
+    # Determine ID and Collection
     unique_id = str(order_id).strip() if type == 'billing' else str(record_id).strip()
-    
-    # 2. MONGO DOCUMENT
+    if type == 'billing': target_col = billing_col
+    elif type == 'insurance': target_col = insurance_col
+    elif type == 'design': target_col = design_col
+    elif type == 'ebook': target_col = ebook_col
+    else: return JSONResponse({"status": "error", "message": "Invalid Type"}, 400)
+
     mongo_doc = {
         "record_id": unique_id,
         "agent": agent,
@@ -294,7 +302,7 @@ async def save_lead(
         "charge_amount": clean_charge,
         "charge_str": final_charge_str,
         "llc": llc,
-        "provider": provider,
+        "provider": provider, # Service for Design/Ebook
         "pin_code": pin_code,
         "account_number": account_number,
         "status": status if is_edit == 'true' else "Pending",
@@ -305,40 +313,72 @@ async def save_lead(
     }
 
     try:
-        # A. WRITE TO MONGODB (Primary)
-        target_col = billing_col if type == 'billing' else insurance_col
+        # A. WRITE TO MONGODB
         target_col.update_one({"record_id": unique_id}, {"$set": mongo_doc}, upsert=True)
 
-        # B. WRITE TO SHEETS (Backup - Append Only)
+        # B. WRITE TO SHEETS (Append Only)
+        # Note: Inline edits in Design/Ebook will update Mongo but NOT edit old sheet rows to avoid complexity/timeouts
         if is_edit != 'true':
             ws = get_worksheet(type)
             if ws:
-                row_data = [unique_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge_str, llc, provider, date_str, "Pending", timestamp_str]
-                # Adjust for Insurance (shorter row)
-                if type == 'insurance':
+                if type == 'billing':
+                    row_data = [unique_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge_str, llc, provider, date_str, "Pending", timestamp_str, pin_code or account_number]
+                elif type == 'insurance':
                    row_data = [unique_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge_str, llc, date_str, "Pending", timestamp_str]
-                else:
-                   row_data.append(pin_code or account_number)
+                elif type in ['design', 'ebook']:
+                    # Columns: Name, Service, Charge, Date, Timestamp
+                    row_data = [client_name, provider, final_charge_str, date_str, timestamp_str]
                 
                 ws.append_row(row_data)
 
         # C. NOTIFY
+        # Always trigger pusher. Frontend filters what sound to play.
         if is_edit == 'true':
-            pusher_client.trigger('techware-channel', 'lead-edited', {'agent': agent, 'id': unique_id, 'client': client_name, 'message': f"Edited by {agent}"})
+            pusher_client.trigger('techware-channel', 'lead-edited', {'agent': agent, 'id': unique_id, 'client': client_name, 'type': type, 'message': f"Edited by {agent}"})
             return {"status": "success", "message": "Lead Updated (Database)"}
         else:
-            pusher_client.trigger('techware-channel', 'new-lead', {'agent': agent, 'amount': final_charge_str, 'type': type, 'message': f"New Lead: {final_charge_str}"})
+            pusher_client.trigger('techware-channel', 'new-lead', {'agent': agent, 'amount': final_charge_str, 'type': type, 'message': f"New {type.title()} Lead: {final_charge_str}"})
             send_pushbullet(f"New {type} Lead", f"{agent} - {final_charge_str}")
             return {"status": "success", "message": "Lead Saved Successfully"}
 
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, 500)
 
+@app.post("/api/update_field")
+async def update_field_inline(
+    type: str = Form(...),
+    id: str = Form(...),
+    field: str = Form(...),
+    value: str = Form(...)
+):
+    try:
+        if type == 'design': col = design_col
+        elif type == 'ebook': col = ebook_col
+        else: return JSONResponse({"status": "error", "message": "Invalid Type for inline edit"}, 400)
+
+        # Map frontend field names to DB keys if necessary
+        db_field = field
+        if field == 'Name': db_field = 'client_name'
+        if field == 'Service': db_field = 'provider'
+        if field == 'Charge': db_field = 'charge_str'
+
+        col.update_one({"record_id": id}, {"$set": {db_field: value}})
+        
+        pusher_client.trigger('techware-channel', 'lead-edited', {'agent': 'Inline', 'id': id, 'client': 'Record', 'type': type, 'message': "Inline Edit"})
+        return {"status": "success"}
+    except Exception as e:
+        return JSONResponse({"status": "error", "message": str(e)}, 500)
+
 @app.post("/api/delete-lead")
 async def delete_lead(type: str = Form(...), id: str = Form(...)):
     try:
-        target_col = billing_col if type == 'billing' else insurance_col
-        result = target_col.delete_one({"record_id": str(id)})
+        if type == 'billing': col = billing_col
+        elif type == 'insurance': col = insurance_col
+        elif type == 'design': col = design_col
+        elif type == 'ebook': col = ebook_col
+        else: return {"status": "error"}
+        
+        result = col.delete_one({"record_id": str(id)})
         if result.deleted_count > 0:
             return {"status": "success", "message": "Deleted from Database"}
         return {"status": "error", "message": "ID not found in Database"}
@@ -346,37 +386,75 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
         return {"status": "error", "message": str(e)}
 
 @app.get("/api/get-lead")
-async def get_lead(type: str, id: str):
+async def get_lead(type: str, id: str = None, row_index: int = None, limit: int = None):
     try:
-        target_col = billing_col if type == 'billing' else insurance_col
-        doc = target_col.find_one({"record_id": str(id)})
-        if not doc:
-            return JSONResponse({"status": "error", "message": "Not Found"}, 404)
+        if type == 'billing': col = billing_col
+        elif type == 'insurance': col = insurance_col
+        elif type == 'design': col = design_col
+        elif type == 'ebook': col = ebook_col
         
-        # Format for Frontend (JS expects specific keys)
-        data = {
-            "Agent Name": doc.get("agent"),
-            "Name": doc.get("client_name"),
-            "Client Name": doc.get("client_name"),
-            "Ph Number": doc.get("phone"),
-            "Address": doc.get("address"),
-            "Email": doc.get("email"),
-            "Card Holder Name": doc.get("card_holder"),
-            "Card Number": doc.get("card_number"),
-            "Expiry Date": doc.get("exp_date"),
-            "CVC": doc.get("cvc"),
-            "Charge Amount": doc.get("charge_str"),
-            "Charge": doc.get("charge_str"),
-            "LLC": doc.get("llc"),
-            "Provider": doc.get("provider"),
-            "Timestamp": doc.get("timestamp_str"),
-            "Status": doc.get("status"),
-            "Record_ID": doc.get("record_id"),
-            "Order ID": doc.get("record_id"),
-            "PIN Code": doc.get("pin_code"),
-            "Account Number": doc.get("account_number")
-        }
-        return {"status": "success", "data": data}
+        # New Feature: Fetch recent for table
+        if limit:
+            cursor = col.find().sort("created_at", -1).limit(limit)
+            results = []
+            for doc in cursor:
+                doc['_id'] = str(doc['_id'])
+                # Standardize keys for frontend
+                doc['Name'] = doc.get('client_name')
+                doc['Service'] = doc.get('provider')
+                doc['Charge'] = doc.get('charge_str')
+                doc['Timestamp'] = doc.get('timestamp_str')
+                doc['Record_ID'] = doc.get('record_id')
+                results.append(doc)
+            return {"status": "success", "data": results}
+
+        # Search Logic
+        if id:
+             # Fuzzy search for Name if ID is not numeric/uuid style, or direct ID match
+            doc = col.find_one({"record_id": str(id)})
+            if not doc:
+                # Try Name Search (Case Insensitive)
+                candidates = list(col.find({"client_name": {"$regex": id, "$options": "i"}}))
+                if len(candidates) > 1:
+                    clean_cands = []
+                    for c in candidates:
+                         clean_cands.append({
+                             "name": c.get('client_name'),
+                             "charge": c.get('charge_str'),
+                             "timestamp": c.get('timestamp_str'),
+                             "record_id": c.get('record_id')
+                         })
+                    return {"status": "multiple", "candidates": clean_cands}
+                elif len(candidates) == 1:
+                    doc = candidates[0]
+            
+            if not doc: return JSONResponse({"status": "error", "message": "Not Found"}, 404)
+            
+            # Format single doc
+            data = {
+                "Agent Name": doc.get("agent"),
+                "Name": doc.get("client_name"),
+                "Client Name": doc.get("client_name"),
+                "Ph Number": doc.get("phone"),
+                "Address": doc.get("address"),
+                "Email": doc.get("email"),
+                "Card Holder Name": doc.get("card_holder"),
+                "Card Number": doc.get("card_number"),
+                "Expiry Date": doc.get("exp_date"),
+                "CVC": doc.get("cvc"),
+                "Charge Amount": doc.get("charge_str"),
+                "Charge": doc.get("charge_str"),
+                "LLC": doc.get("llc"),
+                "Provider": doc.get("provider"),
+                "Timestamp": doc.get("timestamp_str"),
+                "Status": doc.get("status"),
+                "Record_ID": doc.get("record_id"),
+                "Order ID": doc.get("record_id"),
+                "PIN Code": doc.get("pin_code"),
+                "Account Number": doc.get("account_number")
+            }
+            return {"status": "success", "data": data}
+
     except Exception as e: 
         return JSONResponse({"status": "error", "message": str(e)}, 500)
 
@@ -400,15 +478,10 @@ async def manager_login(user_id: str = Form(...), password: str = Form(...)):
 @app.get("/api/manager/data")
 async def get_manager_data(token: str):
     try:
-        # Fetch last 200 records for the dashboard list
-        bill_cursor = billing_col.find().sort("created_at", -1).limit(200)
-        ins_cursor = insurance_col.find().sort("created_at", -1).limit(200)
-        
         def clean_docs(cursor):
             docs = []
             for d in cursor:
                 d['_id'] = str(d['_id'])
-                # Map Mongo fields to JS expected fields
                 d['Agent Name'] = d.get('agent')
                 d['Client Name'] = d.get('client_name')
                 d['Name'] = d.get('client_name')
@@ -416,46 +489,37 @@ async def get_manager_data(token: str):
                 d['Status'] = d.get('status')
                 d['Timestamp'] = d.get('timestamp_str')
                 d['Record_ID'] = d.get('record_id')
-                d['Order ID'] = d.get('record_id')
                 d['LLC'] = d.get('llc')
                 d['Provider'] = d.get('provider')
-                d['Ph Number'] = d.get('phone')
-                d['Address'] = d.get('address')
-                d['Email'] = d.get('email')
-                d['Card Holder Name'] = d.get('card_holder')
-                d['Card Number'] = d.get('card_number')
-                d['Expiry Date'] = d.get('exp_date')
-                d['CVC'] = d.get('cvc')
                 docs.append(d)
             return docs
 
-        bill_data = clean_docs(bill_cursor)
-        ins_data = clean_docs(ins_cursor)
+        bill_data = clean_docs(billing_col.find().sort("created_at", -1).limit(200))
+        ins_data = clean_docs(insurance_col.find().sort("created_at", -1).limit(200))
+        design_data = clean_docs(design_col.find().sort("created_at", -1).limit(200))
+        ebook_data = clean_docs(ebook_col.find().sort("created_at", -1).limit(200))
         
-        # Use Aggregation for Totals (100% Accurate)
-        night_bill = calculate_mongo_stats(billing_col)
-        night_ins = calculate_mongo_stats(insurance_col)
+        # Stats
+        stats_bill = calculate_mongo_stats(billing_col)
+        stats_ins = calculate_mongo_stats(insurance_col)
+        stats_design = calculate_mongo_stats(design_col)
+        stats_ebook = calculate_mongo_stats(ebook_col)
         
-        pending_bill = billing_col.count_documents({"status": "Pending"})
-        pending_ins = insurance_col.count_documents({"status": "Pending"})
+        # Count Pending
+        p_bill = billing_col.count_documents({"status": "Pending"})
+        p_ins = insurance_col.count_documents({"status": "Pending"})
+        p_design = design_col.count_documents({"status": "Pending"})
+        p_ebook = ebook_col.count_documents({"status": "Pending"})
 
-        today_start = datetime.now(TZ_KARACHI).replace(hour=0, minute=0, second=0)
-        today_pipeline = [
-            {"$match": {"created_at": {"$gte": today_start}, "status": "Charged"}},
-            {"$group": {"_id": None, "total": {"$sum": "$charge_amount"}}}
-        ]
-        
-        res_b = list(billing_col.aggregate(today_pipeline))
-        today_bill_total = res_b[0]['total'] if res_b else 0.0
-        
-        res_i = list(insurance_col.aggregate(today_pipeline))
-        today_ins_total = res_i[0]['total'] if res_i else 0.0
-        
         return {
             "billing": bill_data, 
-            "insurance": ins_data, 
-            "stats_bill": {"today": round(today_bill_total, 2), "night": night_bill['total'], "pending": pending_bill, "breakdown": night_bill['breakdown']}, 
-            "stats_ins": {"today": round(today_ins_total, 2), "night": night_ins['total'], "pending": pending_ins, "breakdown": night_ins['breakdown']}
+            "insurance": ins_data,
+            "design": design_data,
+            "ebook": ebook_data,
+            "stats_bill": {**stats_bill, "pending": p_bill}, 
+            "stats_ins": {**stats_ins, "pending": p_ins},
+            "stats_design": {**stats_design, "pending": p_design},
+            "stats_ebook": {**stats_ebook, "pending": p_ebook}
         }
     except Exception as e:
         print(f"Manager Data Error: {e}")
@@ -464,8 +528,12 @@ async def get_manager_data(token: str):
 @app.post("/api/manager/update_status")
 async def update_status(type: str = Form(...), id: str = Form(...), status: str = Form(...)):
     try:
-        target_col = billing_col if type == 'billing' else insurance_col
-        result = target_col.find_one_and_update(
+        if type == 'billing': col = billing_col
+        elif type == 'insurance': col = insurance_col
+        elif type == 'design': col = design_col
+        elif type == 'ebook': col = ebook_col
+        
+        result = col.find_one_and_update(
             {"record_id": str(id)},
             {"$set": {"status": status}},
             return_document=True
