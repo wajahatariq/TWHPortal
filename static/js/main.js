@@ -7,7 +7,7 @@ document.addEventListener("DOMContentLoaded", function() {
     const PAGE_TYPE = document.body.dataset.pageType || 'unknown'; 
     const showChat = ['billing', 'insurance', 'manager'].includes(PAGE_TYPE);
 
-    // --- 1. Request Windows Permission (Restored) ---
+    // --- 1. Request Windows Permission ---
     if ("Notification" in window && Notification.permission !== "granted") {
         Notification.requestPermission();
     }
@@ -25,7 +25,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const now = audioCtx.currentTime;
 
         if (type === 'money') { 
-            // SUCCESS: Major Arpeggio (C-E-G)
+            // SUCCESS
             osc.type = 'sine';
             osc.frequency.setValueAtTime(523.25, now);       
             osc.frequency.setValueAtTime(659.25, now + 0.1); 
@@ -36,7 +36,7 @@ document.addEventListener("DOMContentLoaded", function() {
             osc.stop(now + 0.6);
         } 
         else if (type === 'error') {
-            // ERROR: Low buzz
+            // ERROR
             osc.type = 'sawtooth';
             osc.frequency.setValueAtTime(150, now);
             gain.gain.setValueAtTime(0.2, now);
@@ -45,7 +45,7 @@ document.addEventListener("DOMContentLoaded", function() {
             osc.stop(now + 0.4);
         }
         else if (type === 'edit') {
-            // EDIT: Soft 'pop'
+            // EDIT
             osc.type = 'triangle';
             osc.frequency.setValueAtTime(400, now);
             gain.gain.setValueAtTime(0.1, now);
@@ -54,7 +54,7 @@ document.addEventListener("DOMContentLoaded", function() {
             osc.stop(now + 0.2);
         }
         else {
-            // MESSAGE: High ping
+            // MESSAGE
             osc.type = 'sine';
             osc.frequency.setValueAtTime(800, now);
             gain.gain.setValueAtTime(0.05, now);
@@ -77,6 +77,9 @@ document.addEventListener("DOMContentLoaded", function() {
         if(type === 'success') icon = '✅';
         if(type === 'error') icon = '⚠️';
 
+        // Use pre-line style to support \n line breaks
+        toast.style.whiteSpace = 'pre-line'; 
+
         toast.innerHTML = `
             <div class="text-2xl">${icon}</div>
             <div class="toast-content">
@@ -88,14 +91,13 @@ document.addEventListener("DOMContentLoaded", function() {
 
         toastContainer.appendChild(toast);
 
-        // Auto remove after 5 seconds
         setTimeout(() => {
             toast.style.animation = 'toastSlideOut 0.3s forwards';
             setTimeout(() => toast.remove(), 300);
         }, 5000);
     }
 
-    // --- 4. Chat UI Logic (Standard) ---
+    // --- 4. Chat UI Logic ---
     let identityHTML = '';
     if (showChat && window.PAGE_AGENTS && Array.isArray(window.PAGE_AGENTS)) {
         const options = window.PAGE_AGENTS.map(a => `<option value="${a}">${a}</option>`).join('');
@@ -149,27 +151,23 @@ document.addEventListener("DOMContentLoaded", function() {
     let isOpen = false;
     let unread = 0;
 
-    // --- 5. Unified Trigger Function (Toast + Banner) ---
+    // --- 5. Unified Trigger Function ---
     function triggerAlert(title, body, type = 'message') {
         if (PAGE_TYPE === 'design' || PAGE_TYPE === 'ebook') return; 
 
-        // A. Play Dynamic Sound
         playTone(type);
 
-        // B. Show Professional Toast (In-App)
         let toastType = 'info';
         if(type === 'money') toastType = 'success';
         if(type === 'error') toastType = 'error';
         showToast(title, body, toastType);
 
-        // C. Show Windows Banner (Background) - RESTORED
         if ("Notification" in window && Notification.permission === "granted") {
-            // Only show banner if window is hidden OR it's a critical alert (Money/Error)
             if (document.visibilityState === 'hidden' || type === 'money' || type === 'error') {
-                new Notification("Techware Hub: " + title, {
+                new Notification(title, { // Title passed directly
                     body: body,
                     icon: '/static/img/Logo Black.png',
-                    silent: true // We already played the custom sound
+                    silent: true 
                 });
             }
         }
@@ -246,6 +244,7 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
+    // --- 6. PUSHER LISTENERS (CUSTOMIZED) ---
     if (window.PUSHER_KEY) {
         const pusher = new Pusher(window.PUSHER_KEY, { cluster: window.PUSHER_CLUSTER });
         const channel = pusher.subscribe('techware-channel');
@@ -262,17 +261,29 @@ document.addEventListener("DOMContentLoaded", function() {
         }
 
         channel.bind('new-lead', function(data) {
+            // Format: Haziq submitted a new lead \n <Name> \n <Charge>
+            const title = `${data.agent} submitted a new lead`;
+            const body = `${data.client}\n${data.amount}`;
+            
             if (PAGE_TYPE === 'manager') {
-                triggerAlert('New Lead', data.message, 'money');
-                if (window.updateDashboardStats) window.updateDashboardStats();
+                triggerAlert(title, body, 'money');
+                if (window.fetchData) window.fetchData();
             }
-            if(showChat) appendMessage({ sender: 'System', message: data.message, role: 'success' });
+            // For chat, simpler message is usually better, but we can match
+            if(showChat) appendMessage({ sender: 'System', message: `${title}\n${body}`, role: 'success' });
         });
 
         channel.bind('status-update', function(data) {
             const status = data.status.toLowerCase();
             const isApproved = status === 'charged' || status === 'approved';
-            const msg = `${data.type.toUpperCase()} Lead #${data.id} is ${data.status.toUpperCase()}`;
+            
+            // Format: Congrats/Sorry [Agent] [Client] got [Status]
+            let msg = '';
+            if(isApproved) {
+                msg = `Congrats ${data.agent} ${data.client} got approved`;
+            } else {
+                msg = `Sorry ${data.agent} ${data.client} got declined`;
+            }
             
             let shouldRing = false;
             if (PAGE_TYPE === 'manager') shouldRing = true;
@@ -282,11 +293,14 @@ document.addEventListener("DOMContentLoaded", function() {
             if (shouldRing) triggerAlert('Update', msg, isApproved ? 'money' : 'error');
             
             if(showChat) appendMessage({ sender: 'System', message: msg, role: isApproved ? 'success' : 'error' });
-            if (PAGE_TYPE === 'manager' && window.updateDashboardStats) window.updateDashboardStats();
+            
+            if (PAGE_TYPE === 'manager' && window.fetchData) window.fetchData();
         });
 
         channel.bind('lead-edited', function(data) {
-            const msg = `${data.type} Lead Edited by ${data.agent}`;
+            // Format: [Agent] edited [Client]
+            const msg = `${data.agent} edited ${data.client}`;
+            
             let shouldRing = false;
             if (PAGE_TYPE === 'manager') shouldRing = true;
             if (PAGE_TYPE === 'billing' && data.type === 'billing') shouldRing = true;
@@ -294,7 +308,8 @@ document.addEventListener("DOMContentLoaded", function() {
             if (shouldRing) triggerAlert('Edited', msg, 'edit');
             
             if(showChat) appendMessage({ sender: 'System', message: msg, role: 'warning' });
-            if (PAGE_TYPE === 'manager' && window.updateDashboardStats) window.updateDashboardStats();
+            
+            if (PAGE_TYPE === 'manager' && window.fetchData) window.fetchData();
         });
     }
 });
