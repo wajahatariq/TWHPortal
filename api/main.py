@@ -110,12 +110,12 @@ def get_worksheet(sheet_type):
 # --- CONSTANTS ---
 AGENTS_BILLING = ["Arham Kaleem", "Arham Ali", "Haziq", "Anus", "Hasnain"]
 AGENTS_INSURANCE = ["Saad"]
-AGENTS_DESIGN = ["Taha"]
-AGENTS_EBOOK = ["Huzaifa", "Haseeb"]
+AGENTS_DESIGN = ["Designer 1", "Designer 2"]
+AGENTS_EBOOK = ["Writer 1", "Writer 2"]
 
 PROVIDERS = ["Spectrum", "Insurance", "Xfinity", "Frontier", "Optimum"]
 LLC_SPEC = ["Secure Claim Solutions", "Visionary Pathways"]
-LLC_INS = ["Secure Claim Solutions"]
+LLC_INS = ["LMI"]
 
 # --- UTILS ---
 def send_pushbullet(title, body):
@@ -132,42 +132,29 @@ def get_timestamp():
     return now.strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d %H:%M:%S"), now
 
 def get_shift_start_time():
-    """
-    Returns the start datetime of the current 'business cycle' (9 PM).
-    If currently 3 PM, the cycle started Yesterday at 9 PM.
-    If currently 10 PM, the cycle started Today at 9 PM.
-    """
     now = datetime.now(TZ_KARACHI)
     if now.hour < 21:
-        # Before 9 PM -> Cycle started yesterday
         start = (now - timedelta(days=1)).replace(hour=21, minute=0, second=0, microsecond=0)
     else:
-        # After 9 PM -> Cycle started today
         start = now.replace(hour=21, minute=0, second=0, microsecond=0)
     return start
 
-# --- UPDATED STATS CALCULATION (Custom Windows) ---
 def calculate_mongo_stats(collection, dept_type):
     try:
-        # 1. Determine Window based on Dept
         start_time = get_shift_start_time()
         
         if dept_type in ['billing', 'insurance']:
-            # Window: 9 PM to 7 AM (Next Day) -> 10 Hours
             end_time = start_time + timedelta(hours=10)
             status_filter = {"status": "Charged"}
         else:
-            # Window: 9 PM to 8:59 PM (Next Day) -> 24 Hours
             end_time = start_time + timedelta(hours=23, minutes=59, seconds=59)
-            status_filter = {} # No status filter for Design/Ebook (Count All)
+            status_filter = {} 
 
-        # 2. Build Query
         match_query = {
             "created_at": {"$gte": start_time, "$lte": end_time},
             **status_filter
         }
 
-        # 3. Aggregate
         pipeline = [
             {"$match": match_query},
             {"$group": {"_id": "$agent", "total": {"$sum": "$charge_amount"}}}
@@ -180,7 +167,6 @@ def calculate_mongo_stats(collection, dept_type):
         return {
             "total": round(total, 2),
             "breakdown": breakdown,
-            # Legacy keys for compatibility
             "today": round(total, 2), 
             "night": round(total, 2)
         }
@@ -237,8 +223,7 @@ async def get_public_stats():
 
 # --- CHAT ENDPOINTS ---
 @app.get("/api/chat/history")
-async def get_chat_history():
-    return CHAT_HISTORY
+async def get_chat_history(): return CHAT_HISTORY
 
 @app.post("/api/chat/send")
 async def send_chat(sender: str = Form(...), message: str = Form(...), role: str = Form(...)):
@@ -305,6 +290,7 @@ async def save_lead(
         date_str, timestamp_str, ts_obj = get_timestamp()
 
     unique_id = str(order_id).strip() if type == 'billing' else str(record_id).strip()
+    
     if type == 'billing': target_col = billing_col
     elif type == 'insurance': target_col = insurance_col
     elif type == 'design': target_col = design_col
@@ -352,11 +338,18 @@ async def save_lead(
 
         if is_edit == 'true':
             pusher_client.trigger('techware-channel', 'lead-edited', {'agent': agent, 'id': unique_id, 'client': client_name, 'type': type, 'message': f"Edited by {agent}"})
-            return {"status": "success", "message": "Lead Updated (Database)"}
+            return {"status": "success", "message": "Lead Updated"}
         else:
-            pusher_client.trigger('techware-channel', 'new-lead', {'agent': agent, 'amount': final_charge_str, 'type': type, 'message': f"New {type.title()} Lead: {final_charge_str}"})
+            # UPDATED: Included 'client' in the payload
+            pusher_client.trigger('techware-channel', 'new-lead', {
+                'agent': agent, 
+                'amount': final_charge_str, 
+                'client': client_name, 
+                'type': type, 
+                'message': f"New {type.title()} Lead"
+            })
             send_pushbullet(f"New {type} Lead", f"{agent} - {final_charge_str}")
-            return {"status": "success", "message": "Lead Saved Successfully"}
+            return {"status": "success", "message": "Lead Saved"}
 
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, 500)
@@ -371,7 +364,7 @@ async def update_field_inline(
     try:
         if type == 'design': col = design_col
         elif type == 'ebook': col = ebook_col
-        else: return JSONResponse({"status": "error", "message": "Invalid Type for inline edit"}, 400)
+        else: return JSONResponse({"status": "error", "message": "Invalid Type"}, 400)
 
         db_field = field
         if field == 'Name': db_field = 'client_name'
@@ -402,7 +395,7 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
         return {"status": "error", "message": str(e)}
 
 @app.get("/api/get-lead")
-async def get_lead(type: str, id: str = None, row_index: int = None, limit: int = None):
+async def get_lead(type: str, id: str = None, limit: int = None):
     try:
         if type == 'billing': col = billing_col
         elif type == 'insurance': col = insurance_col
@@ -425,21 +418,7 @@ async def get_lead(type: str, id: str = None, row_index: int = None, limit: int 
         if id:
             doc = col.find_one({"record_id": str(id)})
             if not doc:
-                candidates = list(col.find({"client_name": {"$regex": id, "$options": "i"}}))
-                if len(candidates) > 1:
-                    clean_cands = []
-                    for c in candidates:
-                         clean_cands.append({
-                             "name": c.get('client_name'),
-                             "charge": c.get('charge_str'),
-                             "timestamp": c.get('timestamp_str'),
-                             "record_id": c.get('record_id')
-                         })
-                    return {"status": "multiple", "candidates": clean_cands}
-                elif len(candidates) == 1:
-                    doc = candidates[0]
-            
-            if not doc: return JSONResponse({"status": "error", "message": "Not Found"}, 404)
+                return JSONResponse({"status": "error", "message": "Not Found"}, 404)
             
             data = {
                 "Agent Name": doc.get("agent"),
@@ -509,7 +488,6 @@ async def get_manager_data(token: str):
         design_data = clean_docs(design_col.find().sort("created_at", -1).limit(200))
         ebook_data = clean_docs(ebook_col.find().sort("created_at", -1).limit(200))
         
-        # Stats using NEW Logic
         stats_bill = calculate_mongo_stats(billing_col, 'billing')
         stats_ins = calculate_mongo_stats(insurance_col, 'insurance')
         stats_design = calculate_mongo_stats(design_col, 'design')
@@ -556,4 +534,3 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "success", "message": "Updated in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
