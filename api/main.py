@@ -362,14 +362,20 @@ async def update_field_inline(
     value: str = Form(...)
 ):
     try:
+        # UPDATED: Added billing and insurance to allowed types
         if type == 'design': col = design_col
         elif type == 'ebook': col = ebook_col
+        elif type == 'billing': col = billing_col
+        elif type == 'insurance': col = insurance_col
         else: return JSONResponse({"status": "error", "message": "Invalid Type"}, 400)
 
         db_field = field
+        # Map frontend field names to DB keys if they differ
         if field == 'Name': db_field = 'client_name'
-        if field == 'Service': db_field = 'provider'
+        if field == 'Service' or field == 'Provider': db_field = 'provider'
         if field == 'Charge': db_field = 'charge_str'
+        if field == 'Phone': db_field = 'phone'
+        if field == 'Email': db_field = 'email'
 
         col.update_one({"record_id": id}, {"$set": {db_field: value}})
         
@@ -377,7 +383,7 @@ async def update_field_inline(
         return {"status": "success"}
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, 500)
-
+      
 @app.post("/api/delete-lead")
 async def delete_lead(type: str = Form(...), id: str = Form(...)):
     try:
@@ -534,5 +540,6 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "success", "message": "Updated in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
