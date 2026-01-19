@@ -16,13 +16,13 @@
 </head>
 <body data-page-type="manager">
 
-    <div id="loginModal" class="fixed inset-0 bg-[#2A0A12] z-50 flex items-center justify-center">
-        <div class="bg-[#450a1f] p-8 rounded-2xl shadow-2xl border border-[#831843] w-96">
-            <h1 class="text-2xl font-bold text-center mb-6 text-rose-400">Manager Login</h1>
+    <div id="loginModal" class="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center">
+        <div class="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700 w-96">
+            <h1 class="text-2xl font-bold text-center mb-6 text-blue-400">Manager Login</h1>
             <form id="loginForm" class="space-y-4">
                 <input type="text" name="user_id" placeholder="ID" class="input-field w-full" required>
                 <input type="password" name="password" placeholder="Password" class="input-field w-full" required>
-                <button type="submit" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-2 rounded-lg transition">Login</button>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg transition">Login</button>
             </form>
             <div id="loginError" class="text-red-400 text-center mt-4 hidden text-sm font-bold">Invalid Credentials</div>
         </div>
@@ -30,7 +30,7 @@
 
     <div id="dashboard" class="hidden min-h-screen pb-20">
         
-        <nav class="bg-[#450a1f] border-b border-[#831843] sticky top-0 z-40 shadow-lg">
+        <nav class="bg-slate-800 border-b border-slate-700 sticky top-0 z-40 shadow-lg">
             <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col md:flex-row justify-between items-center gap-4">
                 <div class="flex items-center gap-3">
                     <img src="/static/img/Logo White.png" alt="Logo" class="h-8 w-auto">
@@ -38,19 +38,19 @@
                 </div>
                 
                 <div class="flex gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">
-                    <button id="navStats" onclick="switchMainTab('stats')" class="px-6 py-2 rounded-lg bg-rose-600 text-white font-bold transition whitespace-nowrap">
+                    <button id="navStats" onclick="switchMainTab('stats')" class="px-6 py-2 rounded-lg bg-blue-600 text-white font-bold transition whitespace-nowrap">
                         Dashboard
                     </button>
-                    <button id="navPending" onclick="switchMainTab('pending')" class="px-6 py-2 rounded-lg text-rose-300 hover:bg-rose-900/50 hover:text-white transition whitespace-nowrap">
+                    <button id="navPending" onclick="switchMainTab('pending')" class="px-6 py-2 rounded-lg text-slate-400 hover:bg-slate-700 hover:text-white transition whitespace-nowrap">
                         Pending
                     </button>
-                    <button id="navAnalysis" onclick="switchMainTab('analysis')" class="px-6 py-2 rounded-lg text-rose-300 hover:bg-rose-900/50 hover:text-white transition whitespace-nowrap">
+                    <button id="navAnalysis" onclick="switchMainTab('analysis')" class="px-6 py-2 rounded-lg text-slate-400 hover:bg-slate-700 hover:text-white transition whitespace-nowrap">
                         Analysis
                     </button>
-                    <button id="navEdit" onclick="switchMainTab('edit')" class="px-6 py-2 rounded-lg text-rose-300 hover:bg-rose-900/50 hover:text-white transition whitespace-nowrap">
+                    <button id="navEdit" onclick="switchMainTab('edit')" class="px-6 py-2 rounded-lg text-slate-400 hover:bg-slate-700 hover:text-white transition whitespace-nowrap">
                         Edit / Delete
                     </button>
-                    <button id="navDaily" onclick="switchMainTab('daily')" class="px-6 py-2 rounded-lg text-rose-300 hover:bg-rose-900/50 hover:text-white transition whitespace-nowrap">
+                    <button id="navDaily" onclick="switchMainTab('daily')" class="px-6 py-2 rounded-lg text-slate-400 hover:bg-slate-700 hover:text-white transition whitespace-nowrap">
                         Dept. Totals
                     </button>
                     
@@ -68,148 +68,147 @@
         <main class="max-w-7xl mx-auto p-6 md:p-10 space-y-10">
             
             <div id="viewStats" class="space-y-8 fade-in">
-                <div class="flex justify-between items-center border-b border-[#831843] pb-4">
-                    <h2 class="text-3xl font-bold text-rose-200">Live Overview</h2>
-                    <select id="statsSelector" onchange="updateDashboardStats()" class="bg-[#2A0A12] text-white border border-[#831843] rounded-lg px-4 py-2 outline-none font-bold">
+                <div class="flex justify-between items-center border-b border-slate-700 pb-4">
+                    <h2 class="text-3xl font-bold text-white">Live Overview</h2>
+                    <select id="statsSelector" onchange="updateDashboardStats()" class="bg-slate-800 text-white border border-slate-600 rounded-lg px-4 py-2 outline-none font-bold">
                         <option value="billing">Billing Dept</option>
                         <option value="insurance">Insurance Dept</option>
                     </select>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div class="bg-[#450a1f] p-6 rounded-2xl border border-[#831843] shadow-lg relative overflow-hidden group">
-                        <div class="absolute -right-6 -top-6 text-rose-900/20 group-hover:text-green-500/10 transition">
+                    <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg relative overflow-hidden group">
+                        <div class="absolute -right-6 -top-6 text-slate-700/20 group-hover:text-green-500/10 transition">
                             <svg class="w-32 h-32" fill="currentColor" viewBox="0 0 20 20"><path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z"></path><path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z"></path></svg>
                         </div>
-                        <div class="text-rose-300 text-sm font-bold uppercase tracking-wider mb-2">Today's Total</div>
+                        <div class="text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">Today's Total</div>
                         <div id="dispToday" class="text-4xl font-black text-green-400 relative z-10">$0.00</div>
                     </div>
-                    <div class="bg-[#450a1f] p-6 rounded-2xl border border-[#831843] shadow-lg relative overflow-hidden group">
-                        <div class="absolute -right-6 -top-6 text-rose-900/20 group-hover:text-blue-500/10 transition">
+                    <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg relative overflow-hidden group">
+                        <div class="absolute -right-6 -top-6 text-slate-700/20 group-hover:text-blue-500/10 transition">
                             <svg class="w-32 h-32" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
                         </div>
-                        <div class="text-rose-300 text-sm font-bold uppercase tracking-wider mb-2">Night Total</div>
+                        <div class="text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">Night Total</div>
                         <div id="dispNight" class="text-4xl font-black text-blue-400 relative z-10">$0.00</div>
                     </div>
-                    <div class="bg-[#450a1f] p-6 rounded-2xl border border-[#831843] shadow-lg relative overflow-hidden group">
-                        <div class="absolute -right-6 -top-6 text-rose-900/20 group-hover:text-yellow-500/10 transition">
+                    <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg relative overflow-hidden group">
+                        <div class="absolute -right-6 -top-6 text-slate-700/20 group-hover:text-yellow-500/10 transition">
                             <svg class="w-32 h-32" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
                         </div>
-                        <div class="text-rose-300 text-sm font-bold uppercase tracking-wider mb-2">Pending Orders</div>
+                        <div class="text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">Pending Orders</div>
                         <div id="dispPending" class="text-4xl font-black text-yellow-400 relative z-10">0</div>
                     </div>
                 </div>
 
-                <div class="bg-[#450a1f] p-8 rounded-2xl border border-[#831843] shadow-lg">
-                    <div class="flex items-center gap-3 mb-6 border-b border-[#831843] pb-4">
+                <div class="bg-slate-800 p-8 rounded-2xl border border-slate-700 shadow-lg">
+                    <div class="flex items-center gap-3 mb-6 border-b border-slate-700 pb-4">
                         <h3 class="text-xl font-bold text-white">Agent Performance (Night Window)</h3>
                     </div>
                     <div id="agentPerformanceList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        <div class="text-rose-300/50 italic">Loading...</div>
+                        <div class="text-slate-500 italic">Loading...</div>
                     </div>
                 </div>
             </div>
 
             <div id="viewPending" class="space-y-6 hidden fade-in">
-                <div class="flex items-center gap-6 border-b border-[#831843] pb-4">
-                    <h2 class="text-3xl font-bold text-rose-200">Pending Approvals</h2>
+                <div class="flex items-center gap-6 border-b border-slate-700 pb-4">
+                    <h2 class="text-3xl font-bold text-white">Pending Approvals</h2>
                     <div class="flex gap-4 ml-auto">
                         <button id="subBill" onclick="switchPendingSubTab('billing')" class="text-lg font-bold text-blue-400 border-b-2 border-blue-400 pb-1">Billing</button>
-                        <button id="subIns" onclick="switchPendingSubTab('insurance')" class="text-lg font-bold text-rose-300/50 hover:text-white pb-1">Insurance</button>
+                        <button id="subIns" onclick="switchPendingSubTab('insurance')" class="text-lg font-bold text-slate-500 hover:text-white pb-1">Insurance</button>
                     </div>
                 </div>
                 <div id="pendingContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
             </div>
 
             <div id="viewAnalysis" class="space-y-6 hidden fade-in">
-                <div class="flex flex-col xl:flex-row justify-between items-end xl:items-center gap-4 bg-[#450a1f] p-4 rounded-xl border border-[#831843] shadow-lg">
+                <div class="flex flex-col xl:flex-row justify-between items-end xl:items-center gap-4 bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
                     <div class="flex gap-4 w-full xl:w-auto flex-wrap">
                         <div class="flex flex-col gap-1">
-                            <label class="text-xs text-rose-300 font-bold uppercase">From</label>
+                            <label class="text-xs text-slate-400 font-bold uppercase">From</label>
                             <div class="flex gap-1">
-                                <input type="date" id="dateStart" onchange="renderAnalysis()" class="bg-[#2A0A12] border border-[#831843] rounded px-2 py-1 text-sm outline-none text-white">
-                                <input type="time" id="timeStart" onchange="renderAnalysis()" class="bg-[#2A0A12] border border-[#831843] rounded px-2 py-1 text-sm outline-none text-white">
+                                <input type="date" id="dateStart" onchange="renderAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none text-white">
+                                <input type="time" id="timeStart" onchange="renderAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none text-white">
                             </div>
                         </div>
                         <div class="flex flex-col gap-1">
-                            <label class="text-xs text-rose-300 font-bold uppercase">To</label>
+                            <label class="text-xs text-slate-400 font-bold uppercase">To</label>
                             <div class="flex gap-1">
-                                <input type="date" id="dateEnd" onchange="renderAnalysis()" class="bg-[#2A0A12] border border-[#831843] rounded px-2 py-1 text-sm outline-none text-white">
-                                <input type="time" id="timeEnd" onchange="renderAnalysis()" class="bg-[#2A0A12] border border-[#831843] rounded px-2 py-1 text-sm outline-none text-white">
+                                <input type="date" id="dateEnd" onchange="renderAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none text-white">
+                                <input type="time" id="timeEnd" onchange="renderAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none text-white">
                             </div>
                         </div>
                     </div>
 
                     <div class="flex gap-2 w-full xl:w-auto flex-wrap">
-                        <select id="analysisSheetSelector" onchange="updateAgentSelector(); renderAnalysis()" class="bg-[#2A0A12] text-white border border-[#831843] rounded px-3 py-2 text-sm outline-none font-bold">
+                        <select id="analysisSheetSelector" onchange="updateAgentSelector(); renderAnalysis()" class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 text-sm outline-none font-bold">
                             <option value="billing">Billing</option>
                             <option value="insurance">Insurance</option>
                             <option value="design">Design</option>
                             <option value="ebook">E-Book</option>
                         </select>
-                        <select id="analysisAgentSelector" onchange="renderAnalysis()" class="bg-[#2A0A12] text-white border border-[#831843] rounded px-3 py-2 text-sm outline-none"><option value="all">All Agents</option></select>
-                        <select id="analysisStatusSelector" onchange="renderAnalysis()" class="bg-[#2A0A12] text-white border border-[#831843] rounded px-3 py-2 text-sm outline-none font-bold text-yellow-400"><option value="all" class="text-white">All Statuses</option><option value="Charged" class="text-green-400">Charged</option><option value="Declined" class="text-red-400">Declined</option><option value="Pending" class="text-yellow-400">Pending</option></select>
-                        <input type="text" id="analysisSearch" onkeyup="renderAnalysis()" placeholder="Search..." class="bg-[#2A0A12] text-white border border-[#831843] rounded px-3 py-2 text-sm outline-none flex-grow">
+                        <select id="analysisAgentSelector" onchange="renderAnalysis()" class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 text-sm outline-none"><option value="all">All Agents</option></select>
+                        <select id="analysisStatusSelector" onchange="renderAnalysis()" class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 text-sm outline-none font-bold text-yellow-400"><option value="all" class="text-white">All Statuses</option><option value="Charged" class="text-green-400">Charged</option><option value="Declined" class="text-red-400">Declined</option><option value="Pending" class="text-yellow-400">Pending</option></select>
+                        <input type="text" id="analysisSearch" onkeyup="renderAnalysis()" placeholder="Search..." class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 text-sm outline-none flex-grow">
                     </div>
                 </div>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div class="bg-[#450a1f] p-4 rounded-xl border border-[#831843]"><div class="text-xs text-rose-300 uppercase font-bold">Total Charged</div><div id="anaTotal" class="text-2xl font-black text-green-400">$0.00</div></div>
-                    <div class="bg-[#450a1f] p-4 rounded-xl border border-[#831843]"><div class="text-xs text-rose-300 uppercase font-bold">Count</div><div id="anaCount" class="text-2xl font-bold text-white">0</div></div>
-                    <div class="bg-[#450a1f] p-4 rounded-xl border border-[#831843]"><div class="text-xs text-rose-300 uppercase font-bold">Avg Sale</div><div id="anaAvg" class="text-2xl font-bold text-blue-400">$0.00</div></div>
-                    <div class="bg-[#450a1f] p-4 rounded-xl border border-[#831843]"><div class="text-xs text-rose-300 uppercase font-bold">Peak Hour</div><div id="anaPeak" class="text-2xl font-bold text-purple-400">-</div></div>
+                    <div class="bg-slate-800 p-4 rounded-xl border border-slate-700"><div class="text-xs text-slate-400 uppercase font-bold">Total Charged</div><div id="anaTotal" class="text-2xl font-black text-green-400">$0.00</div></div>
+                    <div class="bg-slate-800 p-4 rounded-xl border border-slate-700"><div class="text-xs text-slate-400 uppercase font-bold">Count</div><div id="anaCount" class="text-2xl font-bold text-white">0</div></div>
+                    <div class="bg-slate-800 p-4 rounded-xl border border-slate-700"><div class="text-xs text-slate-400 uppercase font-bold">Avg Sale</div><div id="anaAvg" class="text-2xl font-bold text-blue-400">$0.00</div></div>
+                    <div class="bg-slate-800 p-4 rounded-xl border border-slate-700"><div class="text-xs text-slate-400 uppercase font-bold">Peak Hour</div><div id="anaPeak" class="text-2xl font-bold text-purple-400">-</div></div>
                 </div>
-                <div class="h-64 bg-[#450a1f] p-4 rounded-xl border border-[#831843] shadow-lg"><canvas id="analysisChart"></canvas></div>
-                <div class="overflow-x-auto bg-[#450a1f] rounded-xl border border-[#831843] shadow-lg"><table class="w-full"><thead class="bg-[#2A0A12]/50 border-b border-[#831843]"><tr id="analysisHeader"></tr></thead><tbody id="analysisBody"></tbody></table></div>
+                <div class="h-64 bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg"><canvas id="analysisChart"></canvas></div>
+                <div class="overflow-x-auto bg-slate-800 rounded-xl border border-slate-700 shadow-lg"><table class="w-full"><thead class="bg-slate-900/50 border-b border-slate-700"><tr id="analysisHeader"></tr></thead><tbody id="analysisBody"></tbody></table></div>
             </div>
 
             <div id="viewEdit" class="space-y-8 hidden fade-in max-w-2xl mx-auto mt-10">
-                <div class="bg-[#450a1f] p-8 rounded-2xl border border-[#831843] shadow-2xl">
+                <div class="bg-slate-800 p-8 rounded-2xl border border-slate-700 shadow-2xl">
                     <h2 class="text-2xl font-bold mb-6 text-red-400 border-b border-red-500/30 pb-4">Edit or Delete Record</h2>
                     <div class="flex gap-2 mb-6">
-                        <select id="editSheetType" class="bg-[#2A0A12] text-white border border-[#831843] rounded px-3 py-2 outline-none"><option value="billing">Billing</option><option value="insurance">Insurance</option></select>
-                        <input type="text" id="editSearchId" placeholder="Enter ID to find..." class="bg-[#2A0A12] text-white border border-[#831843] rounded px-3 py-2 w-full outline-none">
+                        <select id="editSheetType" class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 outline-none"><option value="billing">Billing</option><option value="insurance">Insurance</option></select>
+                        <input type="text" id="editSearchId" placeholder="Enter ID to find..." class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 w-full outline-none">
                         <button onclick="searchForEdit()" class="bg-blue-600 hover:bg-blue-500 px-6 rounded font-bold text-white shadow-lg shadow-blue-500/30">Search</button>
                     </div>
                     <form id="editForm" class="space-y-4 hidden fade-in">
                         <input type="hidden" name="type" id="e_type"><input type="hidden" name="order_id" id="e_order_id"><input type="hidden" name="record_id" id="e_record_id"><input type="hidden" name="agent" id="h_agent">
                         <div class="grid grid-cols-2 gap-4">
-                            <div><label class="block text-xs text-rose-300 mb-1">Agent</label><input type="text" id="e_agent" disabled class="input-field w-full opacity-50 cursor-not-allowed"></div>
-                            <div><label class="block text-xs text-rose-300 mb-1">Status</label><select name="status" id="e_status" class="input-field w-full"><option value="Pending">Pending</option><option value="Charged">Charged</option><option value="Declined">Declined</option></select></div>
-                            <div class="col-span-2"><label class="block text-xs text-rose-300 mb-1">Client Name</label><input type="text" name="client_name" id="e_client" required class="input-field w-full"></div>
-                            <div><label class="block text-xs text-rose-300 mb-1">Charge ($)</label><input type="text" name="charge_amt" id="e_charge" required class="input-field w-full"></div>
-                            <div><label class="block text-xs text-rose-300 mb-1">Phone</label><input type="text" name="phone" id="e_phone" required class="input-field w-full"></div>
-                            <div class="col-span-2"><label class="block text-xs text-rose-300 mb-1">Email</label><input type="text" name="email" id="e_email" required class="input-field w-full"></div>
+                            <div><label class="block text-xs text-slate-400 mb-1">Agent</label><input type="text" id="e_agent" disabled class="input-field w-full opacity-50 cursor-not-allowed"></div>
+                            <div><label class="block text-xs text-slate-400 mb-1">Status</label><select name="status" id="e_status" class="input-field w-full"><option value="Pending">Pending</option><option value="Charged">Charged</option><option value="Declined">Declined</option></select></div>
+                            <div class="col-span-2"><label class="block text-xs text-slate-400 mb-1">Client Name</label><input type="text" name="client_name" id="e_client" required class="input-field w-full"></div>
+                            <div><label class="block text-xs text-slate-400 mb-1">Charge ($)</label><input type="text" name="charge_amt" id="e_charge" required class="input-field w-full"></div>
+                            <div><label class="block text-xs text-slate-400 mb-1">Phone</label><input type="text" name="phone" id="e_phone" required class="input-field w-full"></div>
+                            <div class="col-span-2"><label class="block text-xs text-slate-400 mb-1">Email</label><input type="text" name="email" id="e_email" required class="input-field w-full"></div>
                         </div>
-                        <div class="flex gap-4 mt-6 pt-6 border-t border-[#831843]">
+                        <div class="flex gap-4 mt-6 pt-6 border-t border-slate-700">
                             <button type="submit" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-green-500/30 transition">Save Changes</button>
-                            <button type="button" onclick="deleteCurrentRecord()" class="bg-[#2A0A12] hover:bg-red-900/20 text-red-400 border border-red-900/50 font-bold px-6 rounded-lg transition">Delete</button>
+                            <button type="button" onclick="deleteCurrentRecord()" class="bg-slate-900 hover:bg-red-900/20 text-red-400 border border-red-900/50 font-bold px-6 rounded-lg transition">Delete</button>
                         </div>
                     </form>
                 </div>
             </div>
 
             <div id="viewDaily" class="space-y-8 hidden fade-in">
-                <h2 class="text-3xl font-bold text-rose-200">Department Totals (Night Shift)</h2>
-                
+                <h2 class="text-3xl font-bold text-white">Department Totals (Night Shift)</h2>
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <div class="bg-[#450a1f] p-6 rounded-2xl border border-[#831843] shadow-lg relative overflow-hidden group hover:border-blue-500/50 transition">
-                        <div class="absolute -right-4 -top-4 text-rose-900/20 text-9xl group-hover:scale-110 transition">💳</div>
-                        <div class="text-rose-300 text-sm font-bold uppercase tracking-wider mb-2">Billing Total</div>
+                    <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg relative overflow-hidden group hover:border-blue-500/50 transition">
+                        <div class="absolute -right-4 -top-4 text-slate-700/20 text-9xl group-hover:scale-110 transition">💳</div>
+                        <div class="text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">Billing Total</div>
                         <div id="totalBilling" class="text-4xl font-black text-white relative z-10">$0.00</div>
                     </div>
-                    <div class="bg-[#450a1f] p-6 rounded-2xl border border-[#831843] shadow-lg relative overflow-hidden group hover:border-green-500/50 transition">
-                        <div class="absolute -right-4 -top-4 text-rose-900/20 text-9xl group-hover:scale-110 transition">🛡️</div>
-                        <div class="text-rose-300 text-sm font-bold uppercase tracking-wider mb-2">Insurance Total</div>
+                    <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg relative overflow-hidden group hover:border-green-500/50 transition">
+                        <div class="absolute -right-4 -top-4 text-slate-700/20 text-9xl group-hover:scale-110 transition">🛡️</div>
+                        <div class="text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">Insurance Total</div>
                         <div id="totalInsurance" class="text-4xl font-black text-white relative z-10">$0.00</div>
                     </div>
-                    <div class="bg-[#450a1f] p-6 rounded-2xl border border-[#831843] shadow-lg relative overflow-hidden group hover:border-purple-500/50 transition">
-                        <div class="absolute -right-4 -top-4 text-rose-900/20 text-9xl group-hover:scale-110 transition">🎨</div>
-                        <div class="text-rose-300 text-sm font-bold uppercase tracking-wider mb-2">Design Total</div>
+                    <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg relative overflow-hidden group hover:border-purple-500/50 transition">
+                        <div class="absolute -right-4 -top-4 text-slate-700/20 text-9xl group-hover:scale-110 transition">🎨</div>
+                        <div class="text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">Design Total</div>
                         <div id="totalDesign" class="text-4xl font-black text-white relative z-10">$0.00</div>
                     </div>
-                    <div class="bg-[#450a1f] p-6 rounded-2xl border border-[#831843] shadow-lg relative overflow-hidden group hover:border-orange-500/50 transition">
-                        <div class="absolute -right-4 -top-4 text-rose-900/20 text-9xl group-hover:scale-110 transition">📚</div>
-                        <div class="text-rose-300 text-sm font-bold uppercase tracking-wider mb-2">E-Book Total</div>
+                    <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg relative overflow-hidden group hover:border-orange-500/50 transition">
+                        <div class="absolute -right-4 -top-4 text-slate-700/20 text-9xl group-hover:scale-110 transition">📚</div>
+                        <div class="text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">E-Book Total</div>
                         <div id="totalEbook" class="text-4xl font-black text-white relative z-10">$0.00</div>
                     </div>
                 </div>
