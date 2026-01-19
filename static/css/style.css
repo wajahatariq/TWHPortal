@@ -1,63 +1,131 @@
 /* =========================================
-   Techware Hub - New Color Scheme
+   Techware Hub - Professional Dark Theme
    ========================================= */
-:root {
-    --color-primary: #6EC1E4;    /* Light Blue */
-    --color-accent: #61CE70;     /* Green */
-    --color-text: #7A7A7A;       /* Grey */
-    --color-heading: #54595F;    /* Dark Grey */
-    --color-dark-red: #6E1A2D;   /* Dark Red */
-    --color-bg-dark: #292229;    /* Dark Background */
-    --color-bg-panel: #000000;   /* Black Panel */
-    --color-border: #54595F;     /* Border Color */
-}
 
 body {
-    background-color: var(--color-bg-dark);
-    color: #e2e8f0;
-    font-family: 'Inter', sans-serif;
+    background-color: #0f172a; /* Slate 900 */
+    color: #e2e8f0;            /* Slate 200 */
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
 }
 
-/* --- Notification Scroll Fix --- */
-#notification-container {
-    max-height: 300px;
-    overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: var(--color-primary) var(--color-bg-panel);
-    display: flex;
-    flex-direction: column-reverse; /* Newest at bottom visually, or handle via JS */
-}
-
-/* --- Card Styles --- */
-.dashboard-card {
-    background-color: var(--color-bg-panel);
-    border: 1px solid var(--color-border);
-    transition: all 0.3s ease;
-}
-.dashboard-card:hover {
-    border-color: var(--color-primary);
-    transform: translateY(-5px);
-    box-shadow: 0 10px 20px rgba(110, 193, 228, 0.1);
+/* --- Card & Container --- */
+.card-hover { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+.card-hover:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 20px 25px -5px rgba(59, 130, 246, 0.25);
+    border-color: #3b82f6;
 }
 
 /* --- Input Fields --- */
 .input-field {
-    background-color: #1a1a1a !important;
-    border: 1px solid var(--color-border);
-    color: white !important;
+    width: 100%;
+    background-color: #1e293b !important;
+    border: 1px solid #334155;
+    border-radius: 0.75rem;
+    padding: 0.75rem 1rem;
+    color: #ffffff !important;
+    font-size: 1rem;
+    outline: none;
+    transition: all 0.2s ease-in-out;
+    appearance: none;
 }
 .input-field:focus {
-    border-color: var(--color-primary);
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    background-color: #1e293b;
+}
+.input-field::placeholder { color: #94a3b8; }
+
+/* Select Arrow Fix */
+select.input-field {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.75rem center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+    padding-right: 2.5rem;
 }
 
-/* --- Tabs --- */
-.tab-active {
-    background-color: var(--color-primary) !important;
-    color: #000 !important;
+/* Autofill Fix */
+input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus, input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px #1e293b inset !important;
+    -webkit-text-fill-color: white !important;
+    caret-color: white;
+    transition: background-color 5000s ease-in-out 0s;
 }
 
-/* --- Custom Scrollbar --- */
-::-webkit-scrollbar { width: 8px; }
-::-webkit-scrollbar-track { background: var(--color-bg-panel); }
-::-webkit-scrollbar-thumb { background: var(--color-heading); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: var(--color-primary); }
+/* --- TOAST NOTIFICATION --- */
+.toast {
+    visibility: hidden;
+    min-width: 250px;
+    background-color: #10b981; /* Green */
+    color: #fff;
+    text-align: center;
+    border-radius: 8px;
+    padding: 16px;
+    position: fixed;
+    z-index: 100;
+    left: 50%;
+    top: 30px;
+    transform: translateX(-50%);
+    font-size: 17px;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    transition: opacity 0.3s, top 0.3s;
+}
+.toast.show {
+    visibility: visible;
+    opacity: 1;
+    top: 50px;
+}
+.toast.error { background-color: #ef4444; }
+
+/* --- PENDING CARD STYLES --- */
+.pending-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 1rem;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    transition: transform 0.2s;
+}
+.pending-card:hover { transform: scale(1.01); border-color: #475569; }
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #334155;
+    font-size: 1.1rem; /* Bigger Text */
+}
+.detail-row:last-child { border-bottom: none; }
+.detail-label { color: #94a3b8; font-size: 0.9rem; }
+.detail-value { color: white; font-weight: 600; font-family: monospace; letter-spacing: 0.05em; text-align: right;}
+
+/* --- CHAT WIDGET STYLES --- */
+.chat-window-enter {
+    transform: scale(0.95);
+    opacity: 0;
+}
+.chat-window-enter-active {
+    transform: scale(1);
+    opacity: 1;
+    transition: all 0.2s ease-out;
+}
+
+/* Custom Scrollbar for Chat */
+#chatMessages::-webkit-scrollbar { width: 6px; }
+#chatMessages::-webkit-scrollbar-track { background: #1e293b; }
+#chatMessages::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+
+/* Message Animations */
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-up {
+    animation: fadeInUp 0.3s ease-out forwards;
+}
