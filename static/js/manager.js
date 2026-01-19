@@ -81,14 +81,25 @@ function updateDashboardStats() {
     }
 }
 
+// ... [Previous code remains the same] ...
+
 function updateDepartmentTotals() {
-    // UPDATED: Now consistently uses .night (Shift Total) for all.
-    // Design/Ebook include all statuses, Bill/Ins include only Charged, handled by Python.
-    document.getElementById('totalBilling').innerText = '$' + (allData.stats_bill.night || 0).toFixed(2);
-    document.getElementById('totalInsurance').innerText = '$' + (allData.stats_ins.night || 0).toFixed(2);
-    document.getElementById('totalDesign').innerText = '$' + (allData.stats_design.night || 0).toFixed(2);
-    document.getElementById('totalEbook').innerText = '$' + (allData.stats_ebook.night || 0).toFixed(2);
+    // NOTE: 'stats_X.total' comes from calculate_mongo_stats in Python.
+    // It automatically handles the "Night Shift" time window logic.
+    // Billing/Insurance only count 'Charged'. Design/Ebook count EVERYTHING.
+    
+    const billTotal = allData.stats_bill?.total || 0;
+    const insTotal = allData.stats_ins?.total || 0;
+    const designTotal = allData.stats_design?.total || 0;
+    const ebookTotal = allData.stats_ebook?.total || 0;
+
+    document.getElementById('totalBilling').innerText = '$' + billTotal.toFixed(2);
+    document.getElementById('totalInsurance').innerText = '$' + insTotal.toFixed(2);
+    document.getElementById('totalDesign').innerText = '$' + designTotal.toFixed(2);
+    document.getElementById('totalEbook').innerText = '$' + ebookTotal.toFixed(2);
 }
+
+// ... [Rest of the file remains the same as previously provided] ...
 
 function switchMainTab(tab) {
     ['viewStats', 'viewPending', 'viewAnalysis', 'viewEdit', 'viewDaily'].forEach(id => document.getElementById(id).classList.add('hidden'));
@@ -321,3 +332,4 @@ async function manualRefresh() {
 }
 
 setInterval(() => { fetchData(); }, 120000);
+
