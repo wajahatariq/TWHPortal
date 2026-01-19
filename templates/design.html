@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Design Portal</title>
+    <link rel="icon" type="image/png" href="/static/img/Logo White.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="max-w-6xl mx-auto p-6">
+        <div class="flex justify-between items-center mb-8 bg-black p-4 rounded-xl border border-gray-800">
+            <div class="flex items-center gap-4">
+                <img src="/static/img/Logo White.png" class="h-10">
+                <h1 class="text-2xl font-bold text-white border-l-4 border-purple-500 pl-4">Design Portal</h1>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-1">
+                <div class="bg-black p-6 rounded-xl border border-gray-800 shadow-xl">
+                    <h2 class="text-xl font-bold text-purple-400 mb-6"><i class="fas fa-plus-circle mr-2"></i>New Lead</h2>
+                    <form id="submissionForm" class="space-y-4">
+                        <input type="hidden" name="type" value="design">
+                        <div><label class="text-xs text-gray-500 font-bold uppercase">Agent Name</label><input type="text" name="agent" required class="input-field w-full rounded p-3"></div>
+                        <div><label class="text-xs text-gray-500 font-bold uppercase">Client Name</label><input type="text" name="client_name" required class="input-field w-full rounded p-3"></div>
+                        <div>
+                            <label class="text-xs text-gray-500 font-bold uppercase">Service</label>
+                            <select name="service" class="input-field w-full rounded p-3">
+                                <option>Logo Design</option><option>Website</option><option>Branding</option><option>Social Media</option>
+                            </select>
+                        </div>
+                        <div><label class="text-xs text-gray-500 font-bold uppercase">Charge Amount</label><input type="number" step="0.01" name="charge_amt" required class="input-field w-full rounded p-3 text-green-400 font-bold text-lg"></div>
+                        <button type="submit" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded transition shadow-lg">Submit Lead</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="lg:col-span-2 space-y-4">
+                <div class="flex gap-2">
+                    <input type="text" id="searchInput" placeholder="Search Client Name to Edit..." class="input-field flex-1 rounded p-3">
+                    <button onclick="searchLeads()" class="bg-gray-800 hover:bg-gray-700 text-white px-6 rounded font-bold"><i class="fas fa-search"></i></button>
+                </div>
+
+                <div class="bg-black rounded-xl border border-gray-800 overflow-hidden min-h-[400px]">
+                    <table class="w-full text-left">
+                        <thead class="bg-gray-900 text-gray-500 text-xs uppercase">
+                            <tr><th class="p-4">Name (Edit)</th><th class="p-4">Service (Edit)</th><th class="p-4">Charge (Edit)</th><th class="p-4">Status</th></tr>
+                        </thead>
+                        <tbody id="tableBody">
+                            <tr><td colspan="4" class="p-8 text-center text-gray-600">Search to view or edit leads.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="dupModal" class="hidden fixed inset-0 bg-black/90 z-50 flex items-center justify-center">
+        <div class="bg-gray-900 p-6 rounded-xl w-96 border border-gray-700">
+            <h3 class="text-xl font-bold text-white mb-4">Select Lead</h3>
+            <div id="dupList" class="space-y-2 max-h-60 overflow-y-auto"></div>
+            <button onclick="document.getElementById('dupModal').classList.add('hidden')" class="mt-4 w-full bg-gray-700 text-white py-2 rounded">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        const PORTAL_TYPE = 'design';
+        
+        // Submission
+        document.getElementById('submissionForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button');
+            btn.innerText = "Saving..."; btn.disabled = true;
+            
+            try {
+                const fd = new FormData(e.target);
+                const res = await fetch('/api/save-lead', { method: 'POST', body: fd });
+                const d = await res.json();
+                if(d.status === 'success') { alert("Saved!"); e.target.reset(); }
+                else alert(d.message);
+            } catch(e) { alert("Error"); }
+            btn.innerText = "Submit Lead"; btn.disabled = false;
+        });
+
+        // Search
+        async function searchLeads() {
+            const q = document.getElementById('searchInput').value;
+            if(!q) return;
+            const res = await fetch(`/api/search-lead?type=${PORTAL_TYPE}&name=${q}`);
+            const json = await res.json();
+            
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            
+            if(json.data.length === 0) { tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center">No results.</td></tr>'; return; }
+
+            json.data.forEach(row => {
+                tbody.innerHTML += `
+                    <tr class="border-b border-gray-800 hover:bg-gray-900/50">
+                        <td class="p-4 text-white font-bold outline-none focus:text-purple-400 focus:bg-gray-800 rounded" contenteditable="true" onblur="saveInline('${row.record_id}', 'client_name', this)">${row.client_name}</td>
+                        <td class="p-4 text-gray-300 outline-none focus:text-purple-400 focus:bg-gray-800 rounded" contenteditable="true" onblur="saveInline('${row.record_id}', 'service', this)">${row.service}</td>
+                        <td class="p-4 text-green-400 font-mono outline-none focus:text-purple-400 focus:bg-gray-800 rounded" contenteditable="true" onblur="saveInline('${row.record_id}', 'charge_amt', this)">${row.charge_str}</td>
+                        <td class="p-4"><span class="px-2 py-1 rounded text-xs bg-gray-800 text-gray-400 border border-gray-700">${row.status}</span></td>
+                    </tr>
+                `;
+            });
+        }
+
+        // Inline Save
+        async function saveInline(id, field, el) {
+            const val = el.innerText.trim();
+            el.classList.add('text-yellow-400'); // saving visual
+            
+            // Reconstruct full data for safe save (simplified)
+            const row = el.closest('tr');
+            const name = row.children[0].innerText;
+            const charge = row.children[2].innerText;
+            
+            const fd = new FormData();
+            fd.append('type', PORTAL_TYPE);
+            fd.append('is_edit', 'true');
+            fd.append('record_id', id);
+            fd.append('agent', 'System'); // Placeholder
+            fd.append('client_name', name);
+            fd.append('charge_amt', charge);
+            // Specifically update the field logic handled by backend overwriting with this data
+
+            await fetch('/api/save-lead', { method: 'POST', body: fd });
+            el.classList.remove('text-yellow-400');
+            el.classList.add('text-green-500'); // success
+            setTimeout(() => el.classList.remove('text-green-500'), 1000);
+        }
+    </script>
+</body>
+</html>
