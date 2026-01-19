@@ -110,12 +110,12 @@ def get_worksheet(sheet_type):
 # --- CONSTANTS ---
 AGENTS_BILLING = ["Arham Kaleem", "Arham Ali", "Haziq", "Anus", "Hasnain"]
 AGENTS_INSURANCE = ["Saad"]
-AGENTS_DESIGN = ["Designer 1", "Designer 2"]
-AGENTS_EBOOK = ["Writer 1", "Writer 2"]
+AGENTS_DESIGN = ["Taha"]
+AGENTS_EBOOK = ["Huzaifa", "Haseeb"]
 
 PROVIDERS = ["Spectrum", "Insurance", "Xfinity", "Frontier", "Optimum"]
 LLC_SPEC = ["Secure Claim Solutions", "Visionary Pathways"]
-LLC_INS = ["LMI"]
+LLC_INS = ["Secure Claim Solutions"]
 
 # --- UTILS ---
 def send_pushbullet(title, body):
@@ -534,3 +534,4 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "success", "message": "Updated in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
