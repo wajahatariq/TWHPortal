@@ -13,7 +13,7 @@
     <div class="max-w-6xl mx-auto bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700">
         <div class="flex justify-between items-center mb-8">
             <h1 class="text-3xl font-bold text-purple-400 flex items-center gap-3">
-                Design Leads
+                <span>🎨</span> Design Submission
             </h1>
             <a href="/" class="text-sm text-slate-400 hover:text-white">← Back Home</a>
         </div>
@@ -23,8 +23,16 @@
             <input type="hidden" name="is_edit" value="false">
             <input type="hidden" name="record_id" id="recordId">
 
+            <div><label class="block text-sm font-bold mb-2">Agent Name</label>
+            <select name="agent" required class="input-field">
+                <option value="">Select Agent</option>
+                {% for agent in agents %}
+                <option value="{{ agent }}">{{ agent }}</option>
+                {% endfor %}
+            </select></div>
+            
             <div><label class="block text-sm font-bold mb-2">Client Name</label>
-            <input type="text" name="agent" required class="input-field" placeholder="Enter Client Name"></div>
+            <input type="text" name="client_name" required class="input-field"></div>
             
             <div><label class="block text-sm font-bold mb-2">Service (Provider)</label>
             <input type="text" name="provider" placeholder="e.g. Logo Design" required class="input-field"></div>
