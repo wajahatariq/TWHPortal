@@ -26,7 +26,7 @@ function updateNightWidget() {
 }
 fetchNightStats(); setInterval(fetchNightStats, 120000); 
 
-// --- CORRECTED TOGGLE FUNCTION ---
+// --- CORRECTED TOGGLE FUNCTION -
 function toggleProviderFields() {
     const provider = document.getElementById('providerSelect').value;
     const pinDiv = document.getElementById('pinContainer');
@@ -189,4 +189,5 @@ document.getElementById('billingForm').addEventListener('submit', async (e) => {
     } catch (err) { showToast('Submission Failed', true); } 
     finally { btn.innerText = originalText; btn.disabled = false; }
 });
+
 
