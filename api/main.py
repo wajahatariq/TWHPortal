@@ -362,20 +362,30 @@ async def update_field_inline(
     value: str = Form(...)
 ):
     try:
-        # UPDATED: Added billing and insurance to allowed types
         if type == 'design': col = design_col
         elif type == 'ebook': col = ebook_col
         elif type == 'billing': col = billing_col
         elif type == 'insurance': col = insurance_col
         else: return JSONResponse({"status": "error", "message": "Invalid Type"}, 400)
 
-        db_field = field
-        # Map frontend field names to DB keys if they differ
-        if field == 'Name': db_field = 'client_name'
-        if field == 'Service' or field == 'Provider': db_field = 'provider'
-        if field == 'Charge': db_field = 'charge_str'
-        if field == 'Phone': db_field = 'phone'
-        if field == 'Email': db_field = 'email'
+        db_field = field # Default fallback
+        
+        # --- MAPPING: Frontend Table Header -> MongoDB Key ---
+        if field == 'Name':         db_field = 'client_name'
+        if field == 'Provider':     db_field = 'provider'
+        if field == 'Service':      db_field = 'provider'
+        if field == 'Charge':       db_field = 'charge_str'
+        if field == 'Phone':        db_field = 'phone'
+        if field == 'Email':        db_field = 'email'
+        if field == 'Address':      db_field = 'address'
+        if field == 'CardHolder':   db_field = 'card_holder'
+        if field == 'CardNumber':   db_field = 'card_number'
+        if field == 'ExpDate':      db_field = 'exp_date'
+        if field == 'CVC':          db_field = 'cvc'
+        if field == 'LLC':          db_field = 'llc'
+        if field == 'AccountNo':    db_field = 'account_number'
+        if field == 'PIN':          db_field = 'pin_code'
+        if field == 'agent':        db_field = 'agent' # Select box sends lowercase 'agent'
 
         col.update_one({"record_id": id}, {"$set": {db_field: value}})
         
@@ -553,6 +563,7 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "success", "message": "Updated in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
