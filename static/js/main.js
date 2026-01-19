@@ -1,10 +1,20 @@
 /* =========================================
    GLOBAL TEAM CHAT & NOTIFICATION WIDGET
+   (Billing & Insurance Only)
    ========================================= */
 
 document.addEventListener("DOMContentLoaded", function() {
     
-    // --- 0. Prepare Agent Selector (If available on page) ---
+    // --- 0. SAFETY CHECK: No Chat on Design/Ebook Pages ---
+    const path = window.location.pathname.toLowerCase();
+    if (path.includes('design') || path.includes('ebook')) return;
+
+    // --- 1. DETERMINE DEPARTMENT ---
+    // Defaults to 'billing' if on index or unrecognized
+    const MY_DEPT = path.includes('insurance') ? 'insurance' : 'billing';
+    console.log("Chat initialized for Department:", MY_DEPT);
+
+    // --- 2. Prepare Agent Selector ---
     let identityHTML = '';
     if (window.PAGE_AGENTS && Array.isArray(window.PAGE_AGENTS)) {
         const options = window.PAGE_AGENTS.map(a => `<option value="${a}">${a}</option>`).join('');
@@ -18,7 +28,7 @@ document.addEventListener("DOMContentLoaded", function() {
         `;
     }
 
-    // --- 1. Inject Chat HTML ---
+    // --- 3. Inject Chat HTML ---
     if (!document.getElementById('chat-root')) {
         const chatHTML = `
             <button id="chatToggleBtn" onclick="toggleChat()" class="fixed bottom-5 left-5 bg-blue-600 hover:bg-blue-500 text-white p-4 rounded-full shadow-2xl z-50 transition-transform hover:scale-110 group border-2 border-white/10">
@@ -33,15 +43,9 @@ document.addEventListener("DOMContentLoaded", function() {
                 <div class="bg-slate-900/90 backdrop-blur p-4 border-b border-slate-700 flex justify-between items-center">
                     <div class="flex items-center gap-2">
                         <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                        <h3 class="font-bold text-white text-sm">Notifications & Chat</h3>
+                        <h3 class="font-bold text-white text-sm uppercase tracking-wide">${MY_DEPT} Chat</h3>
                     </div>
                     <div class="flex items-center gap-2">
-                        <button onclick="requestNotifyPermission()" title="Enable Desktop Notifications" class="text-slate-400 hover:text-yellow-400 transition relative group">
-                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
-                             </svg>
-                             <span id="notifyStatusDot" class="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border border-slate-900 hidden"></span>
-                        </button>
                         <button onclick="toggleChat()" class="text-slate-400 hover:text-white transition">✕</button>
                     </div>
                 </div>
@@ -50,15 +54,14 @@ document.addEventListener("DOMContentLoaded", function() {
                 
                 <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-3 h-80 bg-slate-800/50">
                     <div class="text-center text-xs text-slate-500 mt-4 mb-4 select-none opacity-50">
-                        -- History (Max 50) --<br>
-                        Rate Limit: 30 msgs/hour
+                        -- ${MY_DEPT.toUpperCase()} Room --<br>
                     </div>
                 </div>
 
                 <form id="chatForm" class="p-3 bg-slate-900 border-t border-slate-700 flex gap-2">
                     <input type="text" id="chatInput" class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-blue-500 transition-colors" placeholder="Message..." required autocomplete="off">
                     <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg font-bold text-sm transition shadow-lg shadow-blue-500/20">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>
+                        Send
                     </button>
                 </form>
             </div>
@@ -74,7 +77,7 @@ document.addEventListener("DOMContentLoaded", function() {
         document.body.appendChild(div);
     }
 
-    // --- 2. Variables ---
+    // --- 4. Variables ---
     const chatWindow = document.getElementById('chatWindow');
     const msgsDiv = document.getElementById('chatMessages');
     const badge = document.getElementById('chatUnreadBadge');
@@ -85,65 +88,15 @@ document.addEventListener("DOMContentLoaded", function() {
     let isOpen = false;
     let unread = 0;
 
-    // --- 3. Notification Logic ---
-    window.requestNotifyPermission = function() {
-        if (!("Notification" in window)) {
-            alert("This browser does not support system notifications");
-            return;
-        }
-        if (Notification.permission === "granted") {
-            new Notification("Notifications Enabled", { body: "You are all set!", icon: "/static/img/Logo Black.png" });
-        } else if (Notification.permission !== "denied") {
-            Notification.requestPermission().then(permission => {
-                if (permission === "granted") {
-                    new Notification("Notifications Enabled", { body: "You will now see popups for new leads.", icon: "/static/img/Logo Black.png" });
-                    updateNotifyDot();
-                }
-            });
-        }
-    };
-
-    function updateNotifyDot() {
-        const dot = document.getElementById('notifyStatusDot');
-        if (Notification.permission === 'granted') {
-             dot.classList.remove('hidden');
-             dot.classList.replace('bg-red-500', 'bg-green-500');
-        } else {
-             dot.classList.add('hidden');
-        }
-    }
-    if(Notification.permission === 'granted') updateNotifyDot();
-
-    function triggerAlert(title, body, type = 'message') {
-        // 1. Play Sound
+    function triggerSound(type) {
         try {
-            if (type === 'money') {
-                soundLead.currentTime = 0;
-                soundLead.play();
-            } else if (type === 'edit') {
-                soundEdit.currentTime = 0;
-                soundEdit.play();
-            } else {
-                soundMsg.currentTime = 0;
-                soundMsg.play();
-            }
+            if (type === 'money') { soundLead.currentTime = 0; soundLead.play(); } 
+            else if (type === 'edit') { soundEdit.currentTime = 0; soundEdit.play(); } 
+            else { soundMsg.currentTime = 0; soundMsg.play(); }
         } catch(e) { console.log("Audio autoplay restricted"); }
-
-        // 2. Browser Notification (PC Banner)
-        if (Notification.permission === "granted") {
-            // Check if page is hidden
-            if (document.visibilityState === 'hidden' || (type === 'message' && !isOpen) || type !== 'message') {
-                const n = new Notification(title, {
-                    body: body,
-                    icon: '/static/img/Logo Black.png',
-                    silent: true // We play sound manually
-                });
-                n.onclick = function() { window.focus(); };
-            }
-        }
     }
 
-    // --- 4. Chat UI Logic ---
+    // --- 5. Chat UI Logic ---
     window.toggleChat = function() {
         isOpen = !isOpen;
         if (isOpen) {
@@ -165,32 +118,29 @@ document.addEventListener("DOMContentLoaded", function() {
 
     function getSenderName() {
         if (identitySelect && identitySelect.value) return identitySelect.value;
-        const agent = document.getElementById('agent');
-        if (agent && agent.value && agent.value !== "") {
+        const agent = document.getElementById('agent'); // From billing/insurance form
+        if (agent && agent.value) {
             if (identitySelect) identitySelect.value = agent.value;
             return agent.value;
         }
-        const hAgent = document.getElementById('h_agent');
-        if (hAgent && hAgent.value) return hAgent.value;
-        if (window.location.href.includes('manager')) return "Manager";
-        return null;
+        return "Agent";
     }
 
-    const mainAgentSelect = document.getElementById('agent');
-    if(mainAgentSelect && identitySelect) {
-        mainAgentSelect.addEventListener('change', (e) => { identitySelect.value = e.target.value; });
-    }
-
-    // --- 5. Message Rendering ---
+    // --- 6. Message Rendering ---
     function appendMessage(data) {
         const myName = getSenderName();
         const isSelf = (data.sender === myName);
         
-        // Dynamic styling for different roles (Chat vs System Alerts)
+        // Filter: Don't show messages from other departments!
+        if (data.dept && data.dept !== MY_DEPT) return;
+
         let roleColor = 'text-cyan-400';
         let bgClass = isSelf ? 'bg-blue-600' : 'bg-slate-700';
         
-        if (data.role === 'manager') roleColor = 'text-red-400';
+        if (data.role === 'Manager') {
+            roleColor = 'text-red-400';
+            bgClass = 'border border-red-500/30 bg-red-900/20';
+        }
         if (data.sender === 'System') {
             roleColor = 'text-yellow-400';
             bgClass = 'bg-slate-800 border-yellow-500/30';
@@ -212,10 +162,9 @@ document.addEventListener("DOMContentLoaded", function() {
         scrollToBottom();
     }
 
-    // --- 6. Load History & Send ---
+    // --- 7. Load History & Send ---
     fetch('/api/chat/history').then(r=>r.json()).then(data => {
         if(Array.isArray(data)) {
-            msgsDiv.innerHTML = '<div class="text-center text-xs text-slate-500 mt-4 mb-4 select-none opacity-50">-- Chat History --<br>Limit: 30 msgs/hr</div>';
             data.forEach(msg => appendMessage(msg));
         }
     });
@@ -226,10 +175,8 @@ document.addEventListener("DOMContentLoaded", function() {
         const msg = input.value.trim();
         const sender = getSenderName();
 
-        if (!sender) {
+        if (sender === "Agent" || !sender) {
             alert("Please select your Name in the chat dropdown first!");
-            if(identitySelect) identitySelect.classList.add('border-red-500', 'animate-pulse');
-            setTimeout(() => identitySelect?.classList.remove('border-red-500', 'animate-pulse'), 1000);
             return;
         }
 
@@ -238,131 +185,83 @@ document.addEventListener("DOMContentLoaded", function() {
         const formData = new FormData();
         formData.append('sender', sender);
         formData.append('message', msg);
-        formData.append('role', window.location.href.includes('manager') ? 'manager' : 'agent');
+        formData.append('role', 'agent');
+        formData.append('dept', MY_DEPT); // IMPORTANT: Send current Dept
 
         try {
             await fetch('/api/chat/send', { method: 'POST', body: formData });
         } catch (e) { console.error(e); }
     });
 
-    // --- 7. PUSHER LISTENER (THE CORE LOGIC) ---
+    // --- 8. PUSHER LISTENER (STRICT RULES) ---
     if (window.PUSHER_KEY) {
         const pusher = new Pusher(window.PUSHER_KEY, { cluster: window.PUSHER_CLUSTER });
         const channel = pusher.subscribe('techware-channel');
         
         // A. CHAT MESSAGES
         channel.bind('new-chat', function(data) {
+            // Only accept if same dept
+            if (data.dept !== MY_DEPT) return;
+            
             appendMessage(data);
             const myName = getSenderName();
-            const isSelf = (data.sender === myName);
-            
-            if (!isSelf) {
-                if (!isOpen) {
-                    unread++;
-                    badge.classList.remove('hidden');
-                    badge.innerText = unread > 9 ? '9+' : unread;
-                }
-                triggerAlert(`New Message from ${data.sender}`, data.message, 'message');
+            if (data.sender !== myName) {
+                if (!isOpen) { unread++; badge.classList.remove('hidden'); badge.innerText = unread > 9 ? '9+' : unread; }
+                triggerSound('message');
             }
         });
 
-        // B. NEW LEAD (SUBMISSION)
+        // B. NEW LEAD
         channel.bind('new-lead', function(data) {
-            triggerAlert(
-                `New ${data.type} Lead!`, 
-                `Agent: ${data.agent}\nAmount: ${data.amount}`, 
-                'money'
-            );
-            
+            // STRICT RULE: Only Ring if same Dept
+            if (data.type !== MY_DEPT) return;
+
+            triggerSound('money');
             appendMessage({
                 sender: 'System',
                 message: `New ${data.type} Lead:\n${data.agent} — ${data.amount}`,
-                role: 'success'
+                role: 'success',
+                dept: MY_DEPT // Ensure it passes filter
             });
             
-            if (!isOpen) { unread++; badge.classList.remove('hidden'); badge.innerText = unread > 9 ? '9+' : unread; }
-            if (window.location.href.includes('manager') && window.updateDashboardStats) { window.updateDashboardStats(); }
+            if (!isOpen) { unread++; badge.classList.remove('hidden'); badge.innerText = unread; }
         });
 
-        // C. STATUS UPDATE (APPROVED/DECLINED)
+        // C. STATUS UPDATE (INSURANCE ONLY RULE)
         channel.bind('status-update', function(data) {
-            const status = data.status.toLowerCase();
-            const isApproved = status === 'charged' || status === 'approved';
+            // STRICT RULE: Only Ring if same Dept
+            if (data.type !== MY_DEPT) return;
+
+            const isApproved = (data.status === 'Charged');
+            const msg = `Lead Updated: ${data.client} is now ${data.status.toUpperCase()}`;
             
-            // --- CUSTOM MESSAGE LOGIC ---
-            const client = data.client || 'Client';
-            const agent = data.agent || 'Agent';
-            let title = `Lead #${data.id} Updated`;
-            let body = `Status: ${data.status.toUpperCase()}`;
+            triggerSound(isApproved ? 'money' : 'message');
 
-            // Specific text formatting
-            if (isApproved) {
-                title = "Approved! 🎉";
-                body = `Congrats ${agent} - ${client} got approved!`;
-                // Trigger Confetti
-                triggerCelebration();
-            } else if (status === 'declined') {
-                title = "Declined ⚠️";
-                body = `Sorry! ${agent} - ${client} got declined.`;
-            }
-
-            // 1. Alert
-            triggerAlert(title, body, isApproved ? 'money' : 'message');
-
-            // 2. Chat History
-            appendMessage({
-                sender: 'System',
-                message: body,
-                role: isApproved ? 'success' : 'error'
-            });
-
-            if (!isOpen) { unread++; badge.classList.remove('hidden'); badge.innerText = unread > 9 ? '9+' : unread; }
-            if (window.location.href.includes('manager') && window.updateDashboardStats) { window.updateDashboardStats(); }
-        });
-
-        // D. EDITED LEAD
-        channel.bind('lead-edited', function(data) {
-            const client = data.client || 'Client';
-            const msg = `${client} got edited by ${data.agent}`;
-
-            triggerAlert(`Lead #${data.id} Edited`, msg, 'edit');
-             
             appendMessage({
                 sender: 'System',
                 message: msg,
-                role: 'warning'
+                role: isApproved ? 'success' : 'error',
+                dept: MY_DEPT
+            });
+
+            if (!isOpen) { unread++; badge.classList.remove('hidden'); badge.innerText = unread; }
+        });
+
+        // D. EDITED LEAD (BILLING ONLY RULE)
+        channel.bind('lead-edited', function(data) {
+            // STRICT RULE: Only Ring if same Dept
+            if (data.type !== MY_DEPT) return;
+
+            triggerSound('edit');
+             
+            appendMessage({
+                sender: 'System',
+                message: `Lead Edited (ID: ${data.id})`,
+                role: 'warning',
+                dept: MY_DEPT
             });
             
             if (!isOpen) { unread++; badge.classList.remove('hidden'); badge.innerText = unread; }
         });
     }
 });
-
-// --- CONFETTI ANIMATION ---
-function triggerCelebration() {
-    // School Pride (Side Cannons)
-    const end = Date.now() + 3 * 1000;
-    const colors = ['#bb0000', '#ffffff', '#228B22'];
-
-    (function frame() {
-        confetti({
-            particleCount: 3,
-            angle: 60,
-            spread: 55,
-            origin: { x: 0 },
-            colors: colors
-        });
-        confetti({
-            particleCount: 3,
-            angle: 120,
-            spread: 55,
-            origin: { x: 1 },
-            colors: colors
-        });
-
-        if (Date.now() < end) {
-            requestAnimationFrame(frame);
-        }
-    }());
-}
-
