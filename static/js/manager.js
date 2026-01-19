@@ -60,9 +60,9 @@ async function fetchData() {
 function updateDashboardStats() {
     const dept = document.getElementById('statsSelector').value;
     const stats = dept === 'billing' ? allData.stats_bill : allData.stats_ins;
-    document.getElementById('dispToday').innerText = '$' + stats.today.toFixed(2);
-    document.getElementById('dispNight').innerText = '$' + stats.night.toFixed(2);
-    document.getElementById('dispPending').innerText = stats.pending;
+    document.getElementById('dispToday').innerText = '$' + (stats.today || 0).toFixed(2);
+    document.getElementById('dispNight').innerText = '$' + (stats.night || 0).toFixed(2);
+    document.getElementById('dispPending').innerText = stats.pending || 0;
 
     const breakdown = stats.breakdown || {};
     const sortedAgents = Object.entries(breakdown).sort((a, b) => b[1] - a[1]);
@@ -82,10 +82,12 @@ function updateDashboardStats() {
 }
 
 function updateDepartmentTotals() {
+    // UPDATED: Now consistently uses .night (Shift Total) for all.
+    // Design/Ebook include all statuses, Bill/Ins include only Charged, handled by Python.
     document.getElementById('totalBilling').innerText = '$' + (allData.stats_bill.night || 0).toFixed(2);
     document.getElementById('totalInsurance').innerText = '$' + (allData.stats_ins.night || 0).toFixed(2);
-    document.getElementById('totalDesign').innerText = '$' + (allData.stats_design.total || 0).toFixed(2);
-    document.getElementById('totalEbook').innerText = '$' + (allData.stats_ebook.total || 0).toFixed(2);
+    document.getElementById('totalDesign').innerText = '$' + (allData.stats_design.night || 0).toFixed(2);
+    document.getElementById('totalEbook').innerText = '$' + (allData.stats_ebook.night || 0).toFixed(2);
 }
 
 function switchMainTab(tab) {
