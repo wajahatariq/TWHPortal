@@ -38,6 +38,16 @@ if (form) {
 
         try {
             const formData = new FormData(this);
+
+            // --- CRITICAL FIX: GENERATE ID FOR NEW LEADS ---
+            let recordId = formData.get('record_id');
+            if (!recordId) {
+                // Generate unique ID: INS + Timestamp (e.g., INS-1724356789)
+                recordId = 'INS-' + Date.now();
+                formData.set('record_id', recordId);
+            }
+            // ------------------------------------------------
+
             const response = await fetch("/api/save-lead", {
                 method: "POST",
                 body: formData
@@ -55,7 +65,7 @@ if (form) {
             console.error(error);
             showNotification("Server Error. Check console.", "error");
         } finally {
-            // Restore Button State (Crucial Fix)
+            // Restore Button State
             btn.innerText = "Submit Insurance"; 
             btn.disabled = false;
         }
