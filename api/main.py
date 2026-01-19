@@ -90,14 +90,12 @@ def get_worksheet(sheet_type):
     if not gc: return None
     
     try:
-        # Billing & Insurance (Original Sheet)
         if sheet_type in ['billing', 'insurance', 'auth']:
             sh = gc.open(SHEET_MAIN)
             if sheet_type == 'billing': return sh.get_worksheet(0)
             if sheet_type == 'insurance': return sh.get_worksheet(1)
             if sheet_type == 'auth': return sh.get_worksheet(2)
             
-        # Design & Ebooks (New Sheet)
         if sheet_type in ['design', 'ebook']:
             sh = gc.open(SHEET_NEW)
             if sheet_type == 'design': return sh.worksheet("Design")
@@ -144,34 +142,51 @@ def get_night_shift_window():
     end_time = start_time + timedelta(hours=14)
     return start_time, end_time
 
-# --- UPDATED STATS CALCULATION ---
+# --- FIXED STATS CALCULATION ---
 def calculate_mongo_stats(collection, ignore_status=False):
     try:
-        start_dt, end_dt = get_night_shift_window()
+        # 1. Calculate Night Shift Window (Previous 7PM to Today 9AM)
+        start_shift, end_shift = get_night_shift_window()
+        match_shift = {"created_at": {"$gte": start_shift, "$lte": end_shift}}
         
-        # Base query: Always filter by Date (Night Shift)
-        match_query = {"created_at": {"$gte": start_dt, "$lte": end_dt}}
-        
-        # Only filter by "Charged" if ignore_status is FALSE (Billing/Insurance)
+        # 2. Calculate Calendar Today (00:00 to 23:59)
+        now = datetime.now(TZ_KARACHI)
+        start_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_today = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+        match_today = {"created_at": {"$gte": start_today, "$lte": end_today}}
+
+        # 3. Apply Status Filter (Skip for Design/Ebook)
         if not ignore_status:
-            match_query["status"] = "Charged"
-            
-        pipeline = [
-            {"$match": match_query},
-            {"$group": {"_id": "$agent", "total_amount": {"$sum": "$charge_amount"}}}
+            match_shift["status"] = "Charged"
+            match_today["status"] = "Charged"
+
+        # 4. Aggregate Shift Stats (Night)
+        pipeline_shift = [
+            {"$match": match_shift},
+            {"$group": {"_id": "$agent", "total": {"$sum": "$charge_amount"}}}
         ]
-        results = list(collection.aggregate(pipeline))
-        breakdown = {}
-        total = 0.0
-        for r in results:
-            agent = r["_id"]
-            amt = r["total_amount"]
-            breakdown[agent] = amt
-            total += amt
-        return {"total": round(total, 2), "breakdown": breakdown}
+        shift_res = list(collection.aggregate(pipeline_shift))
+        shift_total = sum(r["total"] for r in shift_res)
+        breakdown = {r["_id"]: r["total"] for r in shift_res}
+
+        # 5. Aggregate Calendar Stats (Today)
+        pipeline_today = [
+            {"$match": match_today},
+            {"$group": {"_id": None, "total": {"$sum": "$charge_amount"}}}
+        ]
+        today_res = list(collection.aggregate(pipeline_today))
+        today_total = today_res[0]["total"] if today_res else 0.0
+
+        return {
+            "today": round(today_total, 2),
+            "night": round(shift_total, 2),
+            "total": round(shift_total, 2), # Legacy fallback
+            "breakdown": breakdown
+        }
+
     except Exception as e:
         print(f"Mongo Stats Error: {e}")
-        return {"total": 0, "breakdown": {}}
+        return {"today": 0, "night": 0, "total": 0, "breakdown": {}}
 
 # --- ROUTES ---
 
@@ -330,7 +345,6 @@ async def save_lead(
                 elif type == 'insurance':
                    row_data = [unique_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge_str, llc, date_str, "Pending", timestamp_str]
                 elif type in ['design', 'ebook']:
-                    # Columns: Name, Service, Charge, Date, Timestamp
                     row_data = [client_name, provider, final_charge_str, date_str, timestamp_str]
                 
                 ws.append_row(row_data)
@@ -494,9 +508,9 @@ async def get_manager_data(token: str):
         design_data = clean_docs(design_col.find().sort("created_at", -1).limit(200))
         ebook_data = clean_docs(ebook_col.find().sort("created_at", -1).limit(200))
         
-        # Stats
-        stats_bill = calculate_mongo_stats(billing_col, ignore_status=False) # Strict
-        stats_ins = calculate_mongo_stats(insurance_col, ignore_status=False) # Strict
+        # Stats with Correct Flags
+        stats_bill = calculate_mongo_stats(billing_col, ignore_status=False) # Strict Charged
+        stats_ins = calculate_mongo_stats(insurance_col, ignore_status=False) # Strict Charged
         stats_design = calculate_mongo_stats(design_col, ignore_status=True) # All
         stats_ebook = calculate_mongo_stats(ebook_col, ignore_status=True)   # All
         
