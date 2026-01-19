@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="/static/css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 </head>
-<body class="bg-slate-900 text-slate-200 py-10">
+<body class="bg-slate-900 text-slate-200 py-10" data-page-type="insurance">
     
     <div class="fixed top-5 right-5 z-50 bg-gradient-to-br from-cyan-400 to-teal-500 rounded-xl p-4 shadow-2xl text-center min-w-[220px] border border-cyan-300/50 backdrop-blur-md">
         <div class="text-xs text-slate-900 font-extrabold uppercase tracking-wider mb-2">Night Charged Total</div>
@@ -145,7 +145,6 @@
 
     <script src="/static/js/insurance.js"></script>
     <script>
-        // Set today's date
         document.getElementById('displayDate').value = new Date().toISOString().split('T')[0].replace(/-/g, '/');
     </script>
     
@@ -154,7 +153,6 @@
         window.PUSHER_KEY = "{{ pusher_key }}";
         window.PUSHER_CLUSTER = "{{ pusher_cluster }}";
         
-        // Pass Agent List to Chat Widget
         window.PAGE_AGENTS = [
             {% for agent in agents %}
                 "{{ agent }}",
