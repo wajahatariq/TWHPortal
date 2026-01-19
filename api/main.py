@@ -1,11 +1,13 @@
 import os
 import json
 import gspread
+import pandas as pd
 import pytz
 import requests
 import hashlib
 import time as time_module
-from datetime import datetime, timedelta
+import tempfile
+from datetime import datetime, timedelta, time
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -13,19 +15,16 @@ from fastapi.templating import Jinja2Templates
 from typing import Optional
 from dotenv import load_dotenv
 import pusher
-from pymongo import MongoClient
-from bson import ObjectId
 
 load_dotenv()
 
 app = FastAPI()
 
-# --- SECURITY: LOAD SECRETS ---
+# --- SECURITY: LOAD SECRETS FROM ENV ---
 PUSHER_APP_ID = os.getenv("PUSHER_APP_ID")
 PUSHER_KEY = os.getenv("PUSHER_KEY")
 PUSHER_SECRET = os.getenv("PUSHER_SECRET")
 PUSHER_CLUSTER = os.getenv("PUSHER_CLUSTER")
-MONGO_URI = os.getenv("MONGO_URI")
 
 pusher_client = pusher.Pusher(
   app_id=PUSHER_APP_ID,
@@ -35,25 +34,88 @@ pusher_client = pusher.Pusher(
   ssl=True
 )
 
-# --- MONGODB SETUP ---
-try:
-    mongo_client = MongoClient(MONGO_URI)
-    db = mongo_client["twh_portal"]
-    
-    billing_col = db["billing"]
-    insurance_col = db["insurance"]
-    design_col = db["design"]
-    ebook_col = db["ebook"]
-    
-    print("✅ Connected to MongoDB successfully.")
-except Exception as e:
-    print(f"❌ MongoDB Connection Error: {e}")
-
-# --- CHAT SETUP (Global List) ---
+# --- CHAT SETUP ---
 CHAT_HISTORY = []
 CHAT_RATE_LIMIT = {"start": 0, "count": 0}
 
-# --- SETUP DIRECTORIES ---
+# --- FILE-BASED CACHE SETUP ---
+# stored in the system's temp folder to be shared across workers/processes
+CACHE_FILE = os.path.join(tempfile.gettempdir(), "twh_data_cache.json")
+CACHE_TTL = 10  # Seconds to keep data before refreshing
+
+def load_cache_from_disk():
+    """Reads the cache file if it exists."""
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Cache Read Error: {e}")
+            return None
+    return None
+
+def save_cache_to_disk(data):
+    """Writes data to the cache file."""
+    try:
+        with open(CACHE_FILE, 'w') as f:
+            json.dump(data, f)
+    except Exception as e:
+        print(f"Cache Write Error: {e}")
+
+def invalidate_cache():
+    """Forces the next request to fetch fresh data by expiring the timestamp."""
+    cache = load_cache_from_disk()
+    if cache:
+        cache["timestamp"] = 0 # Set to 0 to force refresh
+        save_cache_to_disk(cache)
+
+def get_data_throttled():
+    """
+    Returns data from File Cache if < 10 seconds old.
+    If old, fetches from Google.
+    If Google fails, returns File Cache (even if old) to prevent crash/sleeping.
+    """
+    current_time = time_module.time()
+    cached_data = load_cache_from_disk()
+
+    # 1. Return Cache if valid (less than 10 seconds old)
+    if cached_data:
+        age = current_time - cached_data.get("timestamp", 0)
+        if age < CACHE_TTL:
+            return cached_data["billing"], cached_data["insurance"]
+
+    # 2. Fetch Fresh Data (if cache expired or doesn't exist)
+    ws_bill = get_worksheet('billing')
+    ws_ins = get_worksheet('insurance')
+
+    if not ws_bill or not ws_ins:
+        # DB Connection Failed -> Return Stale Cache if available
+        if cached_data:
+            print("DB Conn Error: Serving stale cache")
+            return cached_data["billing"], cached_data["insurance"]
+        raise Exception("DB Connection Failed")
+
+    try:
+        bill_data = rows_to_dict(ws_bill.get_all_values())
+        ins_data = rows_to_dict(ws_ins.get_all_values())
+
+        # 3. Save to Disk
+        new_cache = {
+            "timestamp": current_time,
+            "billing": bill_data,
+            "insurance": ins_data
+        }
+        save_cache_to_disk(new_cache)
+        
+        return bill_data, ins_data
+    except Exception as e:
+        # API Error (Rate Limit etc) -> Return Stale Cache immediately (No Sleeping)
+        if cached_data:
+            print(f"API Error ({e}): Serving stale cache")
+            return cached_data["billing"], cached_data["insurance"]
+        raise e
+
+# --- SETUP ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if not os.path.exists(os.path.join(BASE_DIR, "templates")):
     BASE_DIR = os.getcwd()
@@ -67,8 +129,7 @@ TZ_KARACHI = pytz.timezone("Asia/Karachi")
 
 # --- SHEETS SETUP ---
 gc = None
-SHEET_MAIN = "Company_Transactions"
-SHEET_SECONDARY = "E-Books and Design from Portal"
+SHEET_NAME = "Company_Transactions"
 
 def get_gc():
     global gc
@@ -79,6 +140,8 @@ def get_gc():
             gc = gspread.service_account(filename=service_file)
         elif service_json:
             gc = gspread.service_account_from_dict(json.loads(service_json))
+        else:
+            print("WARNING: No Credentials found.")
     except Exception as e:
         print(f"Error loading credentials: {e}")
         gc = None
@@ -90,23 +153,22 @@ def get_worksheet(sheet_type):
     if not gc: return None
     
     try:
-        if sheet_type in ['billing', 'insurance', 'auth']:
-            sh = gc.open(SHEET_MAIN)
-            if sheet_type == 'billing': return sh.worksheet("Sheet1")
-            if sheet_type == 'insurance': return sh.worksheet("Sheet2")
-            if sheet_type == 'auth': return sh.get_worksheet(2)
-            
-        elif sheet_type in ['design', 'ebook']:
-            sh = gc.open(SHEET_SECONDARY)
-            # Tabs: "Design", "Ebook"
-            if sheet_type == 'design': return sh.worksheet("Design")
-            if sheet_type == 'ebook': return sh.worksheet("Ebook")
-            
+        sh = gc.open(SHEET_NAME)
+        if sheet_type == 'billing': return sh.get_worksheet(0)
+        if sheet_type == 'insurance': return sh.get_worksheet(1)
+        if sheet_type == 'auth': return sh.get_worksheet(2)
     except Exception as e:
-        print(f"Sheet Access Error ({sheet_type}): {e}")
+        print(f"Sheet Access Error (forcing reconnect): {e}")
         gc = None 
         return None
     return None
+
+# --- CONSTANTS ---
+AGENTS_BILLING = ["Arham Kaleem", "Arham Ali", "Haziq", "Anus", "Hasnain"]
+AGENTS_INSURANCE = ["Saad"]
+PROVIDERS = ["Spectrum", "Insurance", "Xfinity", "Frontier", "Optimum"]
+LLC_SPEC = ["Visionary Pathways"]
+LLC_INS = ["LMI"]
 
 # --- UTILS ---
 def send_pushbullet(title, body):
@@ -120,19 +182,111 @@ def send_pushbullet(title, body):
 
 def get_timestamp():
     now = datetime.now(TZ_KARACHI)
-    return now.strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d %H:%M:%S"), now
+    return now.strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d %H:%M:%S")
 
-def get_today_total(collection):
-    """Calculates total charged amount for TODAY (Midnight to Midnight)."""
+def rows_to_dict(rows):
+    if not rows or len(rows) < 2: return []
+    headers = [str(h).strip() for h in rows[0]]
+    data = []
+    for row in rows[1:]:
+        if len(row) < len(headers):
+            row += [''] * (len(headers) - len(row))
+        data.append(dict(zip(headers, row)))
+    return data
+
+def find_column(df, candidates):
+    cols = {c.lower().strip(): c for c in df.columns}
+    for cand in candidates:
+        key = cand.lower().strip()
+        if key in cols: return cols[key]
+    return None
+
+def calculate_stats(df):
+    if df.empty: return {"today": 0, "night": 0, "pending": 0, "breakdown": {}}
+    
+    col_charge = find_column(df, ['Charge', 'Charge Amount', 'Amount'])
+    col_status = find_column(df, ['Status', 'State'])
+    col_time = find_column(df, ['Timestamp', 'Date', 'Time'])
+    col_agent = find_column(df, ['Agent Name', 'Agent'])
+
+    if col_charge:
+        df['ChargeFloat'] = df[col_charge].astype(str).replace(r'[^0-9.]', '', regex=True)
+        df['ChargeFloat'] = pd.to_numeric(df['ChargeFloat'], errors='coerce').fillna(0.0)
+    else:
+        df['ChargeFloat'] = 0.0
+
+    if col_time:
+        df['dt'] = pd.to_datetime(df[col_time], format='mixed', errors='coerce')
+    else:
+        df['dt'] = pd.NaT
+
+    pending = 0
+    if col_status:
+        df['StatusClean'] = df[col_status].astype(str).str.strip().str.title()
+        pending = len(df[df['StatusClean'] == 'Pending'])
+    else:
+        df['StatusClean'] = "Unknown"
+
+    now = datetime.now(TZ_KARACHI)
+    today = now.date()
+    yesterday = today - timedelta(days=1)
+    tomorrow = today + timedelta(days=1)
+    
+    night_start = time(19, 0)
+    night_end = time(6, 0)
+    reset_time = time(9, 0)
+    
+    window_start = None
+    window_end = None
+
+    if now.time() >= night_start:
+        window_start = datetime.combine(today, night_start)
+        window_end = datetime.combine(tomorrow, night_end)
+    elif now.time() < night_end:
+        window_start = datetime.combine(yesterday, night_start)
+        window_end = datetime.combine(today, night_end)
+    else:
+        if now.time() < reset_time:
+            window_start = datetime.combine(yesterday, night_start)
+            window_end = datetime.combine(today, night_end)
+        else:
+            window_start = None
+
+    night_total = 0.0
+    breakdown = {}
+
+    if window_start and col_status and col_time:
+        night_mask = ((df['StatusClean'] == "Charged") & (df['dt'] >= window_start) & (df['dt'] <= window_end))
+        night_df = df.loc[night_mask]
+        night_total = night_df['ChargeFloat'].sum()
+        if col_agent: breakdown = night_df.groupby(col_agent)['ChargeFloat'].sum().to_dict()
+
+    today_total = 0.0
+    if col_status and col_time:
+        today_start = datetime.combine(today, time(0,0))
+        today_mask = (df['StatusClean'] == "Charged") & (df['dt'] >= today_start)
+        today_total = df.loc[today_mask, 'ChargeFloat'].sum()
+
+    return { "today": round(today_total, 2), "night": round(night_total, 2), "pending": pending, "breakdown": breakdown }
+
+# --- HELPER: RETRY LOGIC (SIMPLIFIED FOR NO SLEEP) ---
+def safe_db_op(operation_func):
+    """
+    Executes a DB operation. If it fails, it propagates the error
+    so the caller can decide to use stale cache or show error.
+    Does NOT sleep/retry to avoid delay.
+    """
+    global gc
     try:
-        today_start = datetime.now(TZ_KARACHI).replace(hour=0, minute=0, second=0, microsecond=0)
-        pipeline = [
-            {"$match": {"created_at": {"$gte": today_start}, "status": "Charged"}},
-            {"$group": {"_id": None, "total": {"$sum": "$charge_amount"}}}
-        ]
-        res = list(collection.aggregate(pipeline))
-        return round(res[0]['total'], 2) if res else 0.0
-    except: return 0.0
+        return operation_func()
+    except Exception as e:
+        # Try one quick reconnect
+        print(f"Op Error: {e} - Retrying once...")
+        gc = None
+        try:
+            return operation_func()
+        except Exception as e2:
+            raise e2
 
 # --- ROUTES ---
 
@@ -142,52 +296,87 @@ async def index(request: Request): return templates.TemplateResponse("index.html
 @app.get("/billing", response_class=HTMLResponse)
 async def view_billing(request: Request):
     return templates.TemplateResponse("billing.html", {
-        "request": request, "pusher_key": PUSHER_KEY, "pusher_cluster": PUSHER_CLUSTER
+        "request": request, 
+        "agents": AGENTS_BILLING, 
+        "providers": PROVIDERS, 
+        "llcs": LLC_SPEC,
+        "pusher_key": PUSHER_KEY,
+        "pusher_cluster": PUSHER_CLUSTER
     })
 
 @app.get("/insurance", response_class=HTMLResponse)
 async def view_insurance(request: Request):
     return templates.TemplateResponse("insurance.html", {
-        "request": request, "pusher_key": PUSHER_KEY, "pusher_cluster": PUSHER_CLUSTER
+        "request": request, 
+        "agents": AGENTS_INSURANCE, 
+        "llcs": LLC_INS,
+        "pusher_key": PUSHER_KEY,
+        "pusher_cluster": PUSHER_CLUSTER
     })
-
-@app.get("/design", response_class=HTMLResponse)
-async def view_design(request: Request):
-    return templates.TemplateResponse("design.html", {"request": request, "type": "design"})
-
-@app.get("/ebooks", response_class=HTMLResponse)
-async def view_ebooks(request: Request):
-    return templates.TemplateResponse("ebooks.html", {"request": request, "type": "ebook"})
 
 @app.get("/manager", response_class=HTMLResponse)
 async def view_manager(request: Request):
     return templates.TemplateResponse("manager.html", {
-        "request": request, "pusher_key": PUSHER_KEY, "pusher_cluster": PUSHER_CLUSTER
+        "request": request, 
+        "pusher_key": PUSHER_KEY, 
+        "pusher_cluster": PUSHER_CLUSTER
     })
 
-# --- API ENDPOINTS ---
-
-@app.get("/api/search-lead")
-async def search_lead_by_name(type: str, name: str):
-    try:
-        col = None
-        if type == 'design': col = design_col
-        elif type == 'ebook': col = ebook_col
-        else: return JSONResponse({"status": "error", "message": "Invalid Type"}, 400)
-
-        regex = {"$regex": f"^{name}", "$options": "i"} 
-        cursor = col.find({"client_name": regex}).sort("created_at", -1).limit(10)
+@app.get("/api/public/night-stats")
+async def get_public_stats():
+    # USES FILE CACHE TO SYNC ACROSS WORKERS
+    def fetch_op():
+        bill_data, ins_data = get_data_throttled()
         
-        results = []
-        for doc in cursor:
-            doc['_id'] = str(doc['_id'])
-            # Ensure charge is formatted
-            doc['charge_str'] = doc.get('charge_str') or f"${doc.get('charge_amount', 0)}"
-            results.append(doc)
-            
-        return {"status": "success", "data": results}
+        stats_bill = calculate_stats(pd.DataFrame(bill_data))
+        stats_ins = calculate_stats(pd.DataFrame(ins_data))
+        
+        return {
+            "billing": { "total": stats_bill['night'], "breakdown": stats_bill['breakdown'] },
+            "insurance": { "total": stats_ins['night'], "breakdown": stats_ins['breakdown'] }
+        }
+
+    try:
+        # safe_db_op is less critical here since get_data_throttled handles safety
+        new_data = fetch_op()
+        return new_data
     except Exception as e:
-        return JSONResponse({"status": "error", "message": str(e)}, 500)
+        print(f"Stats Error: {e}")
+        return {
+            "billing": { "total": 0, "breakdown": {} },
+            "insurance": { "total": 0, "breakdown": {} }
+        }
+
+# --- CHAT ENDPOINTS ---
+
+@app.get("/api/chat/history")
+async def get_chat_history():
+    return CHAT_HISTORY
+
+@app.post("/api/chat/send")
+async def send_chat(
+    sender: str = Form(...),
+    message: str = Form(...),
+    role: str = Form(...) 
+):
+    current_time = time_module.time()
+    if current_time - CHAT_RATE_LIMIT["start"] > 3600:
+        CHAT_RATE_LIMIT["start"] = current_time
+        CHAT_RATE_LIMIT["count"] = 0
+    if CHAT_RATE_LIMIT["count"] >= 30:
+        return JSONResponse({"status": "error", "message": "Global chat limit reached (30/hr)."}, 429)
+
+    CHAT_RATE_LIMIT["count"] += 1
+    t_str = datetime.now(TZ_KARACHI).strftime("%I:%M %p")
+    msg_data = {"sender": sender, "message": message, "role": role, "time": t_str}
+    
+    CHAT_HISTORY.append(msg_data)
+    if len(CHAT_HISTORY) > 50: CHAT_HISTORY.pop(0)
+
+    try: pusher_client.trigger('techware-channel', 'new-chat', msg_data)
+    except Exception as e: print(f"Pusher Chat Error: {e}")
+
+    return {"status": "success"}
 
 @app.post("/api/save-lead")
 async def save_lead(
@@ -196,209 +385,281 @@ async def save_lead(
     is_edit: str = Form("false"),
     agent: str = Form(...),
     client_name: str = Form(...),
+    phone: str = Form(...),
+    address: str = Form(...),
+    email: str = Form(...),
+    card_holder: str = Form(...),
+    card_number: str = Form(...),
+    exp_date: str = Form(...),
+    cvc: str = Form(...),
     charge_amt: str = Form(...),
-    # Optional fields
-    phone: Optional[str] = Form(""),
-    address: Optional[str] = Form(""),
-    email: Optional[str] = Form(""),
-    card_holder: Optional[str] = Form(""),
-    card_number: Optional[str] = Form(""),
-    exp_date: Optional[str] = Form(""),
-    cvc: Optional[str] = Form(""),
-    llc: Optional[str] = Form(""),
+    llc: str = Form(...),
     status: Optional[str] = Form("Pending"),
-    record_id: Optional[str] = Form(None),
-    service: Optional[str] = Form(""), 
+    order_id: Optional[str] = Form(None),
     provider: Optional[str] = Form(None),
     pin_code: Optional[str] = Form(""),
     account_number: Optional[str] = Form(""),  
+    record_id: Optional[str] = Form(None),
+    timestamp_mode: Optional[str] = Form("keep"),
     original_timestamp: Optional[str] = Form(None),
-    timestamp_mode: Optional[str] = Form("keep")
+    row_index: Optional[int] = Form(None)
 ):
+    # --- DATA PREP ---
     try:
-        clean_charge = float(str(charge_amt).replace('$', '').replace(',', '').strip() or 0)
-        final_charge_str = f"${clean_charge:.2f}"
+        clean_charge = float(str(charge_amt).replace('$', '').replace(',', '').strip())
+        final_charge = f"${clean_charge:.2f}"
+    except: final_charge = charge_amt 
 
-        if is_edit == 'true' and timestamp_mode == 'keep' and original_timestamp:
-            try:
-                ts_obj = datetime.strptime(original_timestamp, "%Y-%m-%d %H:%M:%S")
-                ts_obj = TZ_KARACHI.localize(ts_obj) if ts_obj.tzinfo is None else ts_obj
-                date_str = ts_obj.strftime("%Y-%m-%d")
-                timestamp_str = original_timestamp
-            except:
-                 date_str, timestamp_str, ts_obj = get_timestamp()
+    if is_edit == 'true' and timestamp_mode == 'keep' and original_timestamp:
+        try: date_str = original_timestamp.split(" ")[0]
+        except: d, t = get_timestamp(); date_str = d
+        timestamp_str = original_timestamp
+    else:
+        date_str, timestamp_str = get_timestamp()
+
+    raw_id = order_id if type == 'billing' else record_id
+    primary_id = int(raw_id) if raw_id and str(raw_id).isdigit() else raw_id
+    final_status = status if is_edit == 'true' else "Pending"
+    final_code = pin_code if pin_code else account_number if account_number else ""
+
+    if type == 'billing':
+        row_data = [primary_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge, llc, provider, date_str, final_status, timestamp_str, final_code]
+        range_end = f"Q{row_index}"
+    else:
+        row_data = [primary_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge, llc, date_str, final_status, timestamp_str]
+        range_end = f"O{row_index}"
+
+    # --- DB OPERATION ---
+    def db_save_op():
+        ws = get_worksheet(type)
+        if not ws: raise Exception("DB Connection Failed")
+        
+        if is_edit == 'true' and row_index:
+            range_start = f"A{row_index}"
+            ws.update(f"{range_start}:{range_end}", [row_data])
         else:
-            date_str, timestamp_str, ts_obj = get_timestamp()
+            ws.append_row(row_data)
 
-        # Generate ID if missing
-        if not record_id:
-             prefix = type[:1].upper()
-             record_id = f"{prefix}{int(time_module.time()*1000)}"
+    try:
+        safe_db_op(db_save_op)
         
-        target_col = None
-        if type == 'billing': target_col = billing_col
-        elif type == 'insurance': target_col = insurance_col
-        elif type == 'design': target_col = design_col
-        elif type == 'ebook': target_col = ebook_col
+        # --- INVALIDATE CACHE TO SHOW NEW DATA IMMEDIATELY ---
+        invalidate_cache()
         
-        mongo_doc = {
-            "record_id": record_id,
-            "agent": agent,
-            "client_name": client_name,
-            "charge_amount": clean_charge,
-            "charge_str": final_charge_str,
-            "status": status,
-            "created_at": ts_obj,
-            "timestamp_str": timestamp_str,
-            "date_str": date_str,
-            "type": type,
-            "phone": phone, "address": address, "email": email,
-            "card_holder": card_holder, "card_number": str(card_number),
-            "exp_date": str(exp_date), "cvc": str(cvc),
-            "llc": llc, "provider": provider, "pin_code": pin_code,
-            "account_number": account_number, "service": service
-        }
-
-        # A. UPDATE MONGODB
-        target_col.update_one({"record_id": record_id}, {"$set": mongo_doc}, upsert=True)
-
-        # B. UPDATE SHEETS (New Leads Only)
-        if is_edit != 'true':
-            ws = get_worksheet(type)
-            if ws:
-                if type in ['design', 'ebook']:
-                    row_data = [client_name, service, final_charge_str, date_str, timestamp_str]
-                    ws.append_row(row_data)
-                elif type == 'billing':
-                    row_data = [record_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge_str, llc, provider, date_str, "Pending", timestamp_str, pin_code, account_number]
-                    ws.append_row(row_data)
-                elif type == 'insurance':
-                    row_data = [record_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge_str, llc, date_str, "Pending", timestamp_str]
-                    ws.append_row(row_data)
-
-        # C. PUSHER LOGIC
-        
-        # 1. New Lead (ANY DEPT) -> Ring Manager & Update Stats
-        if is_edit != 'true':
-            pusher_client.trigger('techware-channel', 'new-lead', {
-                'agent': agent, 'amount': final_charge_str, 'type': type, 'message': f"New {type} Lead"
-            })
-            # Only send pushbullet for Bill/Ins per old logic, or enable all if desired.
-            if type in ['billing', 'insurance']:
-                send_pushbullet(f"New {type} Lead", f"{agent} - {final_charge_str}")
-
-        # 2. Edit Lead (Billing Only) -> Ring Billing Portal
-        if is_edit == 'true' and type == 'billing':
-            pusher_client.trigger('techware-channel', 'lead-edited', {
-                'id': record_id, 'type': 'billing', 'agent': agent
-            })
-
-        return {"status": "success", "message": "Saved Successfully"}
+        if is_edit == 'true':
+            try:
+                pusher_client.trigger('techware-channel', 'lead-edited', {
+                    'agent': agent,
+                    'id': primary_id,
+                    'type': type,
+                    'client': client_name, 
+                    'message': f"{type.title()} Lead #{primary_id} was edited by {agent}"
+                })
+            except Exception as e: print(f"Pusher Edit Error: {e}")
+            return {"status": "success", "message": "Lead Updated Successfully"}
+        else:
+            try:
+                pusher_client.trigger('techware-channel', 'new-lead', {
+                    'agent': agent,
+                    'amount': final_charge,
+                    'type': type,
+                    'message': f"New {type} lead from {agent}"
+                })
+            except Exception as e: print(f"Pusher Error: {e}")
+            send_pushbullet(f"New {type.title()} Lead", f"{agent} - {final_charge}")
+            return {"status": "success", "message": "Lead Submitted Successfully"}
 
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, 500)
 
-@app.post("/api/manager/update_status")
-async def update_status(type: str = Form(...), id: str = Form(...), status: str = Form(...)):
-    try:
-        col = None
-        if type == 'billing': col = billing_col
-        elif type == 'insurance': col = insurance_col
-        elif type == 'design': col = design_col
-        elif type == 'ebook': col = ebook_col
-        
-        result = col.find_one_and_update(
-            {"record_id": str(id)},
-            {"$set": {"status": status}},
-            return_document=True
-        )
-        if not result: raise Exception("ID not found")
-        
-        # Update Manager Stats via Pusher
-        pusher_client.trigger('techware-channel', 'status-update', {
-            'id': id, 'status': status, 'type': type,
-            'client': result.get('client_name')
-        })
-        
-        # Ring Billing on Edit
-        if type == 'billing':
-             pusher_client.trigger('techware-channel', 'lead-edited', {'id': id, 'type': 'billing'})
+@app.post("/api/delete-lead")
+async def delete_lead(type: str = Form(...), id: str = Form(...)):
+    def delete_op():
+        ws = get_worksheet(type)
+        if not ws: raise Exception("DB Error")
+        cell = ws.find(id, in_column=1)
+        if cell:
+            ws.delete_rows(cell.row)
+            return True
+        return False
 
-        return {"status": "success", "message": "Status Updated"}
+    try:
+        found = safe_db_op(delete_op)
+        if found:
+            invalidate_cache() # Ensure deletion is seen immediately
+            return {"status": "success", "message": "Deleted successfully"}
+        return {"status": "error", "message": "ID not found"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-@app.get("/api/manager/data")
-async def get_manager_data(token: str):
+@app.get("/api/get-lead")
+async def get_lead(type: str, id: str, row_index: Optional[int] = None):
+    # This Endpoint is used for individual lookups, so we can check cache first
+    # but strictly speaking, edits usually need fresh data.
+    # To be safe and fast, we hit DB directly but with the 'safe_db_op' wrapper
+    def fetch_lead_op():
+        ws = get_worksheet(type)
+        if not ws: raise Exception("DB Error")
+        
+        # 1. FETCH BY ROW INDEX
+        if row_index:
+            row_values = ws.row_values(row_index)
+            headers = ws.row_values(1)
+            data = dict(zip(headers, row_values))
+            data['row_index'] = row_index
+            if 'Record_ID' not in data and 'Order ID' in data: data['Record_ID'] = data['Order ID']
+            return {"status": "success", "data": data}
+        
+        # 2. SEARCH BY ID
+        cells = []
+        try: cells = ws.findall(id, in_column=1)
+        except: pass
+        if not cells and str(id).strip().isdigit():
+            try: cells = ws.findall(int(id), in_column=1)
+            except: pass
+
+        if not cells: return None # Signal Not Found
+        
+        # 3. HANDLE DUPLICATES
+        if len(cells) == 1:
+            row_values = ws.row_values(cells[0].row)
+            headers = ws.row_values(1)
+            data = dict(zip(headers, row_values))
+            data['row_index'] = cells[0].row
+            if 'Record_ID' not in data and 'Order ID' in data: data['Record_ID'] = data['Order ID']
+            return {"status": "success", "data": data}
+        else:
+            candidates = []
+            headers = ws.row_values(1)
+            for cell in cells:
+                r_vals = ws.row_values(cell.row)
+                d = dict(zip(headers, r_vals))
+                name = d.get('Client Name', d.get('Name', 'Unknown'))
+                charge = d.get('Charge', d.get('Charge Amount', '$0'))
+                time_val = d.get('Timestamp', 'No Time')
+                candidates.append({"row_index": cell.row, "name": name, "charge": charge, "timestamp": time_val})
+            candidates.sort(key=lambda x: x['row_index'], reverse=True)
+            return {"status": "multiple", "candidates": candidates}
+
     try:
-        def get_docs(col):
-            cursor = col.find().sort("created_at", -1).limit(100)
-            data = []
-            for d in cursor:
-                d['_id'] = str(d['_id'])
-                d['Name'] = d.get('client_name')
-                d['Charge'] = d.get('charge_str')
-                d['Service'] = d.get('service', '-')
-                d['Timestamp'] = d.get('timestamp_str')
-                d['Order ID'] = d.get('record_id')
-                data.append(d)
-            return data
-
-        # Get Daily Totals for the 4 Boxes
-        totals = {
-            "billing": get_today_total(billing_col),
-            "insurance": get_today_total(insurance_col),
-            "design": get_today_total(design_col),
-            "ebook": get_today_total(ebook_col)
-        }
-
-        return {
-            "billing": get_docs(billing_col), 
-            "insurance": get_docs(insurance_col),
-            "design": get_docs(design_col),
-            "ebook": get_docs(ebook_col),
-            "totals": totals
-        }
-    except Exception as e:
-        return JSONResponse({"status": "error", "message": "Data sync failed"}, 500)
-
-@app.post("/api/chat/send")
-async def send_chat(sender: str = Form(...), message: str = Form(...), role: str = Form(...), dept: str = Form(...)):
-    current_time = time_module.time()
-    if current_time - CHAT_RATE_LIMIT["start"] > 3600:
-        CHAT_RATE_LIMIT["start"] = current_time
-        CHAT_RATE_LIMIT["count"] = 0
-    if CHAT_RATE_LIMIT["count"] >= 50:
-        return JSONResponse({"status": "error", "message": "Chat limit reached."}, 429)
-
-    CHAT_RATE_LIMIT["count"] += 1
-    t_str = datetime.now(TZ_KARACHI).strftime("%I:%M %p")
-    msg_data = {"sender": sender, "message": message, "role": role, "dept": dept, "time": t_str}
-    
-    CHAT_HISTORY.append(msg_data)
-    if len(CHAT_HISTORY) > 50: CHAT_HISTORY.pop(0)
-
-    try: pusher_client.trigger('techware-channel', 'new-chat', msg_data)
-    except: pass
-    return {"status": "success"}
-
-@app.get("/api/chat/history")
-async def get_chat_history():
-    return CHAT_HISTORY
+        result = safe_db_op(fetch_lead_op)
+        if result is None: return JSONResponse({"status": "error", "message": "Not Found"}, 404)
+        return result
+    except Exception as e: 
+        return JSONResponse({"status": "error", "message": str(e)}, 500)
 
 @app.post("/api/manager/login")
 async def manager_login(user_id: str = Form(...), password: str = Form(...)):
-    try:
+    def login_op():
         ws = get_worksheet('auth')
         if not ws: raise Exception("Auth DB Error")
-        records = ws.get_all_records() 
-        user = next((r for r in records if str(r['ID']) == user_id), None)
-        if not user: return JSONResponse({"status": "error", "message": "User not found"}, 401)
-        
-        stored_pass = str(user['Password'])
-        hashed_input = hashlib.sha256(password.encode()).hexdigest()
-        if password == stored_pass or hashed_input == stored_pass:
+        records = ws.get_all_records()
+        df = pd.DataFrame(records)
+        return df
+    
+    try:
+        df = safe_db_op(login_op)
+        if 'ID' not in df.columns: return JSONResponse({"status": "error", "message": "Config Error"}, 500)
+        user = df[df['ID'].astype(str) == user_id]
+        if user.empty: return JSONResponse({"status": "error", "message": "User not found"}, 401)
+        stored = str(user.iloc[0]['Password'])
+        hashed = hashlib.sha256(password.encode()).hexdigest()
+        if password == stored or hashed == stored:
             return {"status": "success", "token": f"auth_{user_id}", "role": "Manager"}
         return JSONResponse({"status": "error", "message": "Invalid password"}, 401)
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, 500)
+
+@app.get("/api/manager/data")
+async def get_manager_data(token: str):
+    # USES FILE CACHE
+    def fetch_manager_data():
+        bill_data, ins_data = get_data_throttled()
+        
+        stats_bill = calculate_stats(pd.DataFrame(bill_data))
+        stats_ins = calculate_stats(pd.DataFrame(ins_data))
+        
+        return {
+            "billing": bill_data, 
+            "insurance": ins_data, 
+            "stats_bill": stats_bill, 
+            "stats_ins": stats_ins
+        }
+
+    try:
+        response_data = fetch_manager_data()
+        return response_data
+    except Exception as e:
+        print(f"Manager Data Error: {e}")
+        return JSONResponse({"status": "error", "message": "Data sync failed, please refresh"}, 500)
+
+@app.post("/api/manager/update_status")
+async def update_status(type: str = Form(...), id: str = Form(...), status: str = Form(...)):
+    def update_op():
+        ws = get_worksheet(type)
+        if not ws: raise Exception("DB Connection Failed")
+        
+        all_values = ws.get_all_values()
+        if not all_values: raise Exception("Empty Sheet")
+        
+        headers = [str(h).strip().lower() for h in all_values[0]]
+        status_col_idx = -1
+        possible_status = ["status", "state", "approval", "current status"]
+        for i, h in enumerate(headers):
+            if h in possible_status:
+                status_col_idx = i
+                break
+        if status_col_idx == -1:
+            status_col_idx = 14 if type == 'billing' else 13
+
+        target_id = str(id).strip()
+        candidates = []
+        
+        for row_num, row in enumerate(all_values):
+            if row_num == 0: continue
+            if len(row) > 0 and str(row[0]).strip() == target_id:
+                curr_status = str(row[status_col_idx]).strip().title() if len(row) > status_col_idx else ""
+                candidates.append({
+                    "row_index": row_num + 1,
+                    "status": curr_status,
+                    "data": row
+                })
+
+        if not candidates:
+            raise Exception(f"ID '{id}' not found.")
+
+        pending_matches = [c for c in candidates if c['status'] == 'Pending']
+        if pending_matches:
+            target_match = max(pending_matches, key=lambda x: x['row_index'])
+        else:
+            target_match = max(candidates, key=lambda x: x['row_index'])
+
+        target_row = target_match['row_index']
+        target_data = target_match['data']
+        
+        headers_map = dict(zip(all_values[0], target_data))
+        agent_name = headers_map.get('Agent Name', 'Unknown Agent')
+        client_name = headers_map.get('Client Name', headers_map.get('Name', 'Unknown Client'))
+
+        ws.update_cell(target_row, status_col_idx + 1, status)
+        return agent_name, client_name
+
+    try:
+        agent_name, client_name = safe_db_op(update_op)
+        
+        # --- INVALIDATE CACHE TO SHOW UPDATE IMMEDIATELY ---
+        invalidate_cache()
+        
+        try:
+            pusher_client.trigger('techware-channel', 'status-update', {
+                'id': id,
+                'status': status,
+                'type': type,
+                'agent': agent_name,
+                'client': client_name
+            })
+        except Exception as e: print(f"Pusher Error: {e}")
+
+        return {"status": "success", "message": "Updated"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
