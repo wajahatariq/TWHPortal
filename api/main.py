@@ -112,12 +112,12 @@ def get_worksheet(sheet_type):
 # --- CONSTANTS ---
 AGENTS_BILLING = ["Arham Kaleem", "Arham Ali", "Haziq", "Anus", "Hasnain"]
 AGENTS_INSURANCE = ["Saad"]
-AGENTS_DESIGN = ["Taha"] 
-AGENTS_EBOOK = ["Huzaifa", "Haseeb"]     
+AGENTS_DESIGN = ["Designer 1", "Designer 2"]
+AGENTS_EBOOK = ["Writer 1", "Writer 2"]
 
 PROVIDERS = ["Spectrum", "Insurance", "Xfinity", "Frontier", "Optimum"]
 LLC_SPEC = ["Secure Claim Solutions", "Visionary Pathways"]
-LLC_INS = ["Secure Claim Solutions"]
+LLC_INS = ["LMI"]
 
 # --- UTILS ---
 def send_pushbullet(title, body):
@@ -144,11 +144,20 @@ def get_night_shift_window():
     end_time = start_time + timedelta(hours=14)
     return start_time, end_time
 
-def calculate_mongo_stats(collection):
+# --- UPDATED STATS CALCULATION ---
+def calculate_mongo_stats(collection, ignore_status=False):
     try:
         start_dt, end_dt = get_night_shift_window()
+        
+        # Base query: Always filter by Date (Night Shift)
+        match_query = {"created_at": {"$gte": start_dt, "$lte": end_dt}}
+        
+        # Only filter by "Charged" if ignore_status is FALSE (Billing/Insurance)
+        if not ignore_status:
+            match_query["status"] = "Charged"
+            
         pipeline = [
-            {"$match": {"created_at": {"$gte": start_dt, "$lte": end_dt}, "status": "Charged"}},
+            {"$match": match_query},
             {"$group": {"_id": "$agent", "total_amount": {"$sum": "$charge_amount"}}}
         ]
         results = list(collection.aggregate(pipeline))
@@ -204,10 +213,10 @@ async def view_manager(request: Request):
 @app.get("/api/public/night-stats")
 async def get_public_stats():
     return {
-        "billing": calculate_mongo_stats(billing_col),
-        "insurance": calculate_mongo_stats(insurance_col),
-        "design": calculate_mongo_stats(design_col),
-        "ebook": calculate_mongo_stats(ebook_col)
+        "billing": calculate_mongo_stats(billing_col, ignore_status=False),
+        "insurance": calculate_mongo_stats(insurance_col, ignore_status=False),
+        "design": calculate_mongo_stats(design_col, ignore_status=True), # Count ALL
+        "ebook": calculate_mongo_stats(ebook_col, ignore_status=True)    # Count ALL
     }
 
 # --- CHAT ENDPOINTS ---
@@ -243,7 +252,6 @@ async def save_lead(
     agent: str = Form(...),
     client_name: str = Form(...),
     charge_amt: str = Form(...),
-    # Optional fields for Design/Ebook or Billing/Insurance
     phone: Optional[str] = Form(""),
     address: Optional[str] = Form(""),
     email: Optional[str] = Form(""),
@@ -255,7 +263,7 @@ async def save_lead(
     status: Optional[str] = Form("Pending"),
     order_id: Optional[str] = Form(None),
     record_id: Optional[str] = Form(None),
-    provider: Optional[str] = Form(""), # This maps to 'Service' for Design/Ebook
+    provider: Optional[str] = Form(""), 
     pin_code: Optional[str] = Form(""),
     account_number: Optional[str] = Form(""),  
     original_timestamp: Optional[str] = Form(None),
@@ -280,7 +288,6 @@ async def save_lead(
     else:
         date_str, timestamp_str, ts_obj = get_timestamp()
 
-    # Determine ID and Collection
     unique_id = str(order_id).strip() if type == 'billing' else str(record_id).strip()
     if type == 'billing': target_col = billing_col
     elif type == 'insurance': target_col = insurance_col
@@ -302,7 +309,7 @@ async def save_lead(
         "charge_amount": clean_charge,
         "charge_str": final_charge_str,
         "llc": llc,
-        "provider": provider, # Service for Design/Ebook
+        "provider": provider,
         "pin_code": pin_code,
         "account_number": account_number,
         "status": status if is_edit == 'true' else "Pending",
@@ -313,11 +320,8 @@ async def save_lead(
     }
 
     try:
-        # A. WRITE TO MONGODB
         target_col.update_one({"record_id": unique_id}, {"$set": mongo_doc}, upsert=True)
 
-        # B. WRITE TO SHEETS (Append Only)
-        # Note: Inline edits in Design/Ebook will update Mongo but NOT edit old sheet rows to avoid complexity/timeouts
         if is_edit != 'true':
             ws = get_worksheet(type)
             if ws:
@@ -331,8 +335,6 @@ async def save_lead(
                 
                 ws.append_row(row_data)
 
-        # C. NOTIFY
-        # Always trigger pusher. Frontend filters what sound to play.
         if is_edit == 'true':
             pusher_client.trigger('techware-channel', 'lead-edited', {'agent': agent, 'id': unique_id, 'client': client_name, 'type': type, 'message': f"Edited by {agent}"})
             return {"status": "success", "message": "Lead Updated (Database)"}
@@ -356,7 +358,6 @@ async def update_field_inline(
         elif type == 'ebook': col = ebook_col
         else: return JSONResponse({"status": "error", "message": "Invalid Type for inline edit"}, 400)
 
-        # Map frontend field names to DB keys if necessary
         db_field = field
         if field == 'Name': db_field = 'client_name'
         if field == 'Service': db_field = 'provider'
@@ -393,13 +394,11 @@ async def get_lead(type: str, id: str = None, row_index: int = None, limit: int 
         elif type == 'design': col = design_col
         elif type == 'ebook': col = ebook_col
         
-        # New Feature: Fetch recent for table
         if limit:
             cursor = col.find().sort("created_at", -1).limit(limit)
             results = []
             for doc in cursor:
                 doc['_id'] = str(doc['_id'])
-                # Standardize keys for frontend
                 doc['Name'] = doc.get('client_name')
                 doc['Service'] = doc.get('provider')
                 doc['Charge'] = doc.get('charge_str')
@@ -408,12 +407,9 @@ async def get_lead(type: str, id: str = None, row_index: int = None, limit: int 
                 results.append(doc)
             return {"status": "success", "data": results}
 
-        # Search Logic
         if id:
-             # Fuzzy search for Name if ID is not numeric/uuid style, or direct ID match
             doc = col.find_one({"record_id": str(id)})
             if not doc:
-                # Try Name Search (Case Insensitive)
                 candidates = list(col.find({"client_name": {"$regex": id, "$options": "i"}}))
                 if len(candidates) > 1:
                     clean_cands = []
@@ -430,7 +426,6 @@ async def get_lead(type: str, id: str = None, row_index: int = None, limit: int 
             
             if not doc: return JSONResponse({"status": "error", "message": "Not Found"}, 404)
             
-            # Format single doc
             data = {
                 "Agent Name": doc.get("agent"),
                 "Name": doc.get("client_name"),
@@ -500,12 +495,11 @@ async def get_manager_data(token: str):
         ebook_data = clean_docs(ebook_col.find().sort("created_at", -1).limit(200))
         
         # Stats
-        stats_bill = calculate_mongo_stats(billing_col)
-        stats_ins = calculate_mongo_stats(insurance_col)
-        stats_design = calculate_mongo_stats(design_col)
-        stats_ebook = calculate_mongo_stats(ebook_col)
+        stats_bill = calculate_mongo_stats(billing_col, ignore_status=False) # Strict
+        stats_ins = calculate_mongo_stats(insurance_col, ignore_status=False) # Strict
+        stats_design = calculate_mongo_stats(design_col, ignore_status=True) # All
+        stats_ebook = calculate_mongo_stats(ebook_col, ignore_status=True)   # All
         
-        # Count Pending
         p_bill = billing_col.count_documents({"status": "Pending"})
         p_ins = insurance_col.count_documents({"status": "Pending"})
         p_design = design_col.count_documents({"status": "Pending"})
@@ -547,4 +541,3 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "success", "message": "Updated in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
