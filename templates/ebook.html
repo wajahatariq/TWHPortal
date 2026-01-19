@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-Book Portal</title>
+    <link rel="icon" type="image/png" href="/static/img/Logo White.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script>
+        window.PAGE_TYPE = 'ebook'; // For Pusher Logic
+    </script>
+</head>
+<body class="bg-black text-slate-200 py-10">
+    <div class="max-w-4xl mx-auto bg-[#1a0505] p-8 rounded-2xl shadow-2xl border border-[#6E1A2D]">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold text-[#6E1A2D]">E-Book Submission</h1>
+            <a href="/" class="text-sm text-slate-400 hover:text-white">← Back Home</a>
+        </div>
+
+        <form id="ebookForm" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+            <input type="hidden" name="type" value="ebook">
+            <input type="hidden" name="is_edit" id="isEdit" value="false">
+            <input type="hidden" name="record_id" id="recordId">
+            <input type="hidden" name="original_timestamp" id="original_timestamp">
+
+            <div><label class="block text-sm font-medium mb-2">Client Name</label><input type="text" name="client_name" id="client_name" required class="input-field"></div>
+            <div><label class="block text-sm font-medium mb-2">Service</label><input type="text" name="service" id="service" required class="input-field"></div>
+            <div><label class="block text-sm font-medium mb-2">Charge</label><input type="text" name="charge_amt" id="charge_amt" required class="input-field"></div>
+            <div><label class="block text-sm font-medium mb-2">Date</label><input type="text" id="displayDate" class="input-field opacity-50 cursor-not-allowed" readonly></div>
+            
+            <div class="col-span-full">
+                <button type="submit" id="submitBtn" class="w-full bg-[#6E1A2D] hover:bg-[#8B2339] text-white font-bold py-3 rounded-xl transition shadow-lg shadow-red-900/30">Submit E-Book</button>
+            </div>
+        </form>
+
+        <hr class="border-[#6E1A2D]/30 mb-8">
+
+        <div class="flex gap-4 mb-6">
+            <input type="text" id="searchName" placeholder="Search by Client Name..." class="input-field flex-grow">
+            <button onclick="searchLead()" class="bg-slate-700 hover:bg-slate-600 px-6 rounded-lg font-bold text-white">Find</button>
+        </div>
+
+        <div class="overflow-x-auto bg-[#292229] rounded-xl border border-[#6E1A2D]/50">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-[#6E1A2D] text-white">
+                        <th class="p-3">Name</th>
+                        <th class="p-3">Service</th>
+                        <th class="p-3">Charge</th>
+                        <th class="p-3">Date</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="duplicateModal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+        <div class="bg-[#1a0505] p-6 rounded-2xl border border-[#6E1A2D] w-96 shadow-2xl">
+            <h3 class="text-xl font-bold text-white mb-4">Select Client</h3>
+            <div id="duplicateList" class="space-y-2 max-h-60 overflow-y-auto"></div>
+            <button onclick="document.getElementById('duplicateModal').classList.add('hidden')" class="mt-4 w-full bg-slate-700 py-2 rounded-lg text-white">Cancel</button>
+        </div>
+    </div>
+
+    <script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
+    <script>
+        window.PUSHER_KEY = "{{ pusher_key }}";
+        window.PUSHER_CLUSTER = "{{ pusher_cluster }}";
+        document.getElementById('displayDate').value = new Date().toISOString().split('T')[0];
+
+        document.getElementById('ebookForm').addEventListener('submit', async(e)=>{
+            e.preventDefault();
+            const btn = document.getElementById('submitBtn');
+            btn.innerText = "Processing...";
+            const fd = new FormData(e.target);
+            const res = await fetch('/api/save-lead', {method:'POST', body:fd});
+            const d = await res.json();
+            if(d.status==='success') { 
+                alert('Saved'); 
+                e.target.reset(); 
+                document.getElementById('displayDate').value = new Date().toISOString().split('T')[0];
+                document.getElementById('isEdit').value = 'false';
+                btn.innerText = "Submit E-Book";
+            } else alert(d.message);
+        });
+
+        async function searchLead() {
+            const name = document.getElementById('searchName').value;
+            const res = await fetch(`/api/get-lead?type=ebook&name=${name}`);
+            const json = await res.json();
+            
+            if(json.status === 'multiple') {
+                const list = document.getElementById('duplicateList');
+                list.innerHTML = '';
+                json.candidates.forEach(c => {
+                    list.innerHTML += `<div onclick="loadIntoTable('${c.record_id}', '${c.name}', '${c.service}', '${c.charge}', '${c.timestamp}')" class="p-3 bg-slate-800 border border-slate-700 rounded hover:bg-[#6E1A2D] cursor-pointer mb-2 flex justify-between text-white"><span>${c.name}</span> <span class="text-green-400">${c.charge}</span></div>`;
+                });
+                document.getElementById('duplicateModal').classList.remove('hidden');
+            } else if(json.status === 'success') {
+                const d = json.data;
+                loadIntoTable(d.record_id, d.client_name, d.service, d.charge_str, d.timestamp_str);
+            } else { alert("Not Found"); }
+        }
+
+        function loadIntoTable(id, name, service, charge, date) {
+            document.getElementById('duplicateModal').classList.add('hidden');
+            const tbody = document.getElementById('resultsBody');
+            tbody.innerHTML = `
+                <tr class="border-b border-slate-700 hover:bg-slate-800">
+                    <td class="p-3"><div contenteditable="true" onblur="inlineEdit('${id}', 'Name', this.innerText)" class="p-1 hover:bg-white/5 rounded border border-transparent hover:border-white/10 transition">${name}</div></td>
+                    <td class="p-3"><div contenteditable="true" onblur="inlineEdit('${id}', 'Service', this.innerText)" class="p-1 hover:bg-white/5 rounded border border-transparent hover:border-white/10 transition">${service}</div></td>
+                    <td class="p-3"><div contenteditable="true" onblur="inlineEdit('${id}', 'Charge', this.innerText)" class="text-green-400 font-mono p-1 hover:bg-white/5 rounded border border-transparent hover:border-white/10 transition">${charge}</div></td>
+                    <td class="p-3 text-slate-400 text-sm">${date}</td>
+                </tr>
+            `;
+        }
+
+        async function inlineEdit(id, field, value) {
+            const fd = new FormData();
+            fd.append('type', 'ebook'); fd.append('id', id); fd.append('field', field); fd.append('value', value);
+            await fetch('/api/inline-edit', {method:'POST', body:fd});
+        }
+    </script>
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
