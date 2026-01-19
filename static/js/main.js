@@ -7,7 +7,12 @@ document.addEventListener("DOMContentLoaded", function() {
     const PAGE_TYPE = document.body.dataset.pageType || 'unknown'; 
     const showChat = ['billing', 'insurance', 'manager'].includes(PAGE_TYPE);
 
-    // --- 1. Synthesized Audio System (No MP3s required) ---
+    // --- 1. Request Windows Permission (Restored) ---
+    if ("Notification" in window && Notification.permission !== "granted") {
+        Notification.requestPermission();
+    }
+
+    // --- 2. Synthesized Audio System ---
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     
     function playTone(type) {
@@ -22,9 +27,9 @@ document.addEventListener("DOMContentLoaded", function() {
         if (type === 'money') { 
             // SUCCESS: Major Arpeggio (C-E-G)
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(523.25, now);       // C5
-            osc.frequency.setValueAtTime(659.25, now + 0.1); // E5
-            osc.frequency.setValueAtTime(783.99, now + 0.2); // G5
+            osc.frequency.setValueAtTime(523.25, now);       
+            osc.frequency.setValueAtTime(659.25, now + 0.1); 
+            osc.frequency.setValueAtTime(783.99, now + 0.2); 
             gain.gain.setValueAtTime(0.3, now);
             gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
             osc.start(now);
@@ -59,8 +64,7 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 
-    // --- 2. Custom Professional Toast System ---
-    // Create Container
+    // --- 3. Custom Professional Toast System ---
     const toastContainer = document.createElement('div');
     toastContainer.id = 'toast-container';
     document.body.appendChild(toastContainer);
@@ -91,7 +95,7 @@ document.addEventListener("DOMContentLoaded", function() {
         }, 5000);
     }
 
-    // --- 3. Chat Logic ---
+    // --- 4. Chat UI Logic (Standard) ---
     let identityHTML = '';
     if (showChat && window.PAGE_AGENTS && Array.isArray(window.PAGE_AGENTS)) {
         const options = window.PAGE_AGENTS.map(a => `<option value="${a}">${a}</option>`).join('');
@@ -145,19 +149,30 @@ document.addEventListener("DOMContentLoaded", function() {
     let isOpen = false;
     let unread = 0;
 
-    // --- 4. Unified Trigger Function ---
+    // --- 5. Unified Trigger Function (Toast + Banner) ---
     function triggerAlert(title, body, type = 'message') {
         if (PAGE_TYPE === 'design' || PAGE_TYPE === 'ebook') return; 
 
-        // Play Dynamic Sound
+        // A. Play Dynamic Sound
         playTone(type);
 
-        // Show Professional Toast
+        // B. Show Professional Toast (In-App)
         let toastType = 'info';
         if(type === 'money') toastType = 'success';
         if(type === 'error') toastType = 'error';
-        
         showToast(title, body, toastType);
+
+        // C. Show Windows Banner (Background) - RESTORED
+        if ("Notification" in window && Notification.permission === "granted") {
+            // Only show banner if window is hidden OR it's a critical alert (Money/Error)
+            if (document.visibilityState === 'hidden' || type === 'money' || type === 'error') {
+                new Notification("Techware Hub: " + title, {
+                    body: body,
+                    icon: '/static/img/Logo Black.png',
+                    silent: true // We already played the custom sound
+                });
+            }
+        }
     }
 
     window.toggleChat = function() {
