@@ -195,7 +195,16 @@ function renderAnalysis() {
     filtered.forEach(r => {
         const raw = String(r['Charge']).replace(/[^0-9.]/g, '');
         const val = parseFloat(raw) || 0;
-        if(r['Status'] === 'Charged') {
+        
+        let shouldCount = false;
+        
+        // --- UPDATED LOGIC HERE ---
+        // Design/Ebook: Count everything regardless of status
+        if(type === 'design' || type === 'ebook') shouldCount = true;
+        // Billing/Insurance: Only count 'Charged'
+        else if(r['Status'] === 'Charged') shouldCount = true;
+
+        if(shouldCount) {
             total += val;
             const hour = r['Timestamp'].substring(11, 13) + ":00";
             hours[hour] = (hours[hour] || 0) + val;
