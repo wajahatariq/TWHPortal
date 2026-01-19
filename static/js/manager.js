@@ -81,13 +81,7 @@ function updateDashboardStats() {
     }
 }
 
-// ... [Previous code remains the same] ...
-
 function updateDepartmentTotals() {
-    // NOTE: 'stats_X.total' comes from calculate_mongo_stats in Python.
-    // It automatically handles the "Night Shift" time window logic.
-    // Billing/Insurance only count 'Charged'. Design/Ebook count EVERYTHING.
-    
     const billTotal = allData.stats_bill?.total || 0;
     const insTotal = allData.stats_ins?.total || 0;
     const designTotal = allData.stats_design?.total || 0;
@@ -98,8 +92,6 @@ function updateDepartmentTotals() {
     document.getElementById('totalDesign').innerText = '$' + designTotal.toFixed(2);
     document.getElementById('totalEbook').innerText = '$' + ebookTotal.toFixed(2);
 }
-
-// ... [Rest of the file remains the same as previously provided] ...
 
 function switchMainTab(tab) {
     ['viewStats', 'viewPending', 'viewAnalysis', 'viewEdit', 'viewDaily'].forEach(id => document.getElementById(id).classList.add('hidden'));
@@ -150,7 +142,6 @@ function renderPendingCards() {
         const cleanCard = String(row['card_number'] || '').replace(/\s+/g, ''); 
         const cleanExpiry = String(row['exp_date'] || '').replace(/[\/\\]/g, ''); 
         
-        // Define Address (Checking Capitalized, lowercase, and 'adress' as requested)
         const address = row['Address'] || row['address'] || row['adress'] || 'N/A';
 
         const card = document.createElement('div');
@@ -216,11 +207,7 @@ function renderAnalysis() {
         const val = parseFloat(raw) || 0;
         
         let shouldCount = false;
-        
-        // --- UPDATED LOGIC HERE ---
-        // Design/Ebook: Count everything regardless of status
         if(type === 'design' || type === 'ebook') shouldCount = true;
-        // Billing/Insurance: Only count 'Charged'
         else if(r['Status'] === 'Charged') shouldCount = true;
 
         if(shouldCount) {
@@ -243,19 +230,41 @@ function renderAnalysis() {
     if(myChart) myChart.destroy();
     myChart = new Chart(ctx, { type: 'line', data: { labels: sortedHours, datasets: [{ label: 'Hourly Charged', data: values, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', tension: 0.4, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#334155' } }, x: { grid: { display: false } } } } });
 
-    let columns = type === 'billing' ? ["Agent Name", "Name", "Charge", "Status", "Timestamp"] :
-                  type === 'insurance' ? ["Agent Name", "Name", "Charge", "Status", "Timestamp"] :
-                  ["Agent Name", "Name", "Service", "Charge", "Status", "Timestamp"];
+    // --- REPLACED: Enhanced Column Logic ---
+    let columns = [];
+    if (type === 'billing') {
+        columns = ["Record_ID", "Agent Name", "Name", "Phone", "Email", "Address", "Card Number", "Exp Date", "CVC", "Charge", "Status", "LLC", "Provider", "PIN/Acc", "Timestamp"];
+    } else if (type === 'insurance') {
+        columns = ["Record_ID", "Agent Name", "Name", "Phone", "Email", "Address", "Card Number", "Exp Date", "CVC", "Charge", "Status", "LLC", "Timestamp"];
+    } else {
+        columns = ["Record_ID", "Agent Name", "Name", "Service", "Charge", "Status", "Timestamp"];
+    }
 
     const tbody = document.getElementById('analysisBody');
     const thead = document.getElementById('analysisHeader');
-    thead.innerHTML = columns.map(c => `<th class="p-3 text-left text-xs font-bold text-slate-400 uppercase">${c}</th>`).join('');
+    thead.innerHTML = columns.map(c => `<th class="p-3 text-left text-xs font-bold text-slate-400 uppercase whitespace-nowrap">${c}</th>`).join('');
 
     if (filtered.length > 0) {
         tbody.innerHTML = filtered.map(row => {
             return `<tr class="border-b border-slate-800 hover:bg-slate-800 transition">
                 ${columns.map(col => {
-                    let val = row[col] || row['Client Name'] || row['Provider'] || '';
+                    // --- SMART VALUE LOOKUP ---
+                    let val = row[col];
+                    
+                    // Fallback 1: Try normalized key (e.g. "Card Number" -> "card_number")
+                    if (!val) {
+                        const key = col.toLowerCase().replace(/ /g, '_').replace(/\//g, '_').replace('.', '');
+                        val = row[key];
+                    }
+                    
+                    // Fallback 2: Specific field mappings
+                    if (!val && col === 'Name') val = row['Client Name'];
+                    if (!val && col === 'Service') val = row['Provider'] || row['provider'];
+                    if (!val && col === 'PIN/Acc') val = row['pin_code'] || row['account_number'];
+                    if (!val && col === 'Exp Date') val = row['exp_date'] || row['Expiry Date'];
+                    
+                    if (!val) val = ''; // Default empty
+
                     let color = 'text-slate-300';
                     if(col === 'Status') {
                         if(val === 'Charged') color = 'text-green-400 font-bold';
@@ -263,7 +272,8 @@ function renderAnalysis() {
                         else color = 'text-red-400';
                     }
                     if(col === 'Charge') color = 'text-green-400 font-mono font-bold';
-                    return `<td class="p-3 text-sm ${color}">${val}</td>`;
+                    
+                    return `<td class="p-3 text-sm ${color} whitespace-nowrap">${val}</td>`;
                 }).join('')}
             </tr>`;
         }).join('');
@@ -299,28 +309,18 @@ async function searchForEdit() {
             const d = json.data;
             document.getElementById('editForm').classList.remove('hidden');
             
-            // --- ROBUST DATA POPULATION (Fixes "undefined" errors) ---
-            
-            // Agent
             document.getElementById('e_agent').value = d['Agent Name'] || d['agent'] || '';
             document.getElementById('h_agent').value = d['Agent Name'] || d['agent'] || '';
-            
-            // Client Name
             document.getElementById('e_client').value = d['Name'] || d['Client Name'] || d['client_name'] || '';
-            
-            // Phone & Email
             document.getElementById('e_phone').value = d['Ph Number'] || d['Phone'] || d['phone'] || '';
             document.getElementById('e_email').value = d['Email'] || d['email'] || '';
             
-            // Charge (Handles various keys and cleans currency symbols)
             const rawCharge = d['Charge'] || d['Charge Amount'] || d['charge_str'] || d['charge_amt'] || '0';
             document.getElementById('e_charge').value = String(rawCharge).replace(/[^0-9.]/g, '');
             
-            // Status
             document.getElementById('e_status').value = d['Status'] || d['status'] || 'Pending';
             document.getElementById('e_type').value = type;
             
-            // Record ID / Order ID
             const recId = d['Record_ID'] || d['record_id'] || d['Order ID'] || d['order_id'] || id;
             if(type === 'billing') {
                 document.getElementById('e_order_id').value = recId;
@@ -368,7 +368,3 @@ async function manualRefresh() {
 }
 
 setInterval(() => { fetchData(); }, 120000);
-
-
-
-
