@@ -1,5 +1,5 @@
 /* =========================================
-   GLOBAL TEAM CHAT & NOTIFICATION WIDGET
+   GLOBAL TEAM CHAT, AUDIO & NOTIFICATION SYSTEM
    ========================================= */
 
 document.addEventListener("DOMContentLoaded", function() {
@@ -7,6 +7,91 @@ document.addEventListener("DOMContentLoaded", function() {
     const PAGE_TYPE = document.body.dataset.pageType || 'unknown'; 
     const showChat = ['billing', 'insurance', 'manager'].includes(PAGE_TYPE);
 
+    // --- 1. Synthesized Audio System (No MP3s required) ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    function playTone(type) {
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        const now = audioCtx.currentTime;
+
+        if (type === 'money') { 
+            // SUCCESS: Major Arpeggio (C-E-G)
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(523.25, now);       // C5
+            osc.frequency.setValueAtTime(659.25, now + 0.1); // E5
+            osc.frequency.setValueAtTime(783.99, now + 0.2); // G5
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+            osc.start(now);
+            osc.stop(now + 0.6);
+        } 
+        else if (type === 'error') {
+            // ERROR: Low buzz
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(150, now);
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.linearRampToValueAtTime(0.01, now + 0.4);
+            osc.start(now);
+            osc.stop(now + 0.4);
+        }
+        else if (type === 'edit') {
+            // EDIT: Soft 'pop'
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(400, now);
+            gain.gain.setValueAtTime(0.1, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+            osc.start(now);
+            osc.stop(now + 0.2);
+        }
+        else {
+            // MESSAGE: High ping
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(800, now);
+            gain.gain.setValueAtTime(0.05, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+            osc.start(now);
+            osc.stop(now + 0.2);
+        }
+    }
+
+    // --- 2. Custom Professional Toast System ---
+    // Create Container
+    const toastContainer = document.createElement('div');
+    toastContainer.id = 'toast-container';
+    document.body.appendChild(toastContainer);
+
+    function showToast(title, message, type = 'info') {
+        const toast = document.createElement('div');
+        toast.className = `toast-message toast-${type}`;
+        
+        let icon = 'ℹ️';
+        if(type === 'success') icon = '✅';
+        if(type === 'error') icon = '⚠️';
+
+        toast.innerHTML = `
+            <div class="text-2xl">${icon}</div>
+            <div class="toast-content">
+                <span class="toast-title">${title}</span>
+                <span class="toast-body">${message}</span>
+            </div>
+            <div class="toast-close" onclick="this.parentElement.remove()">✕</div>
+        `;
+
+        toastContainer.appendChild(toast);
+
+        // Auto remove after 5 seconds
+        setTimeout(() => {
+            toast.style.animation = 'toastSlideOut 0.3s forwards';
+            setTimeout(() => toast.remove(), 300);
+        }, 5000);
+    }
+
+    // --- 3. Chat Logic ---
     let identityHTML = '';
     if (showChat && window.PAGE_AGENTS && Array.isArray(window.PAGE_AGENTS)) {
         const options = window.PAGE_AGENTS.map(a => `<option value="${a}">${a}</option>`).join('');
@@ -46,10 +131,6 @@ document.addEventListener("DOMContentLoaded", function() {
                     <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg font-bold text-sm shadow-lg shadow-blue-500/20">Send</button>
                 </form>
             </div>
-            
-            <audio id="soundMessage" src="/static/sounds/messages.mp3"></audio>
-            <audio id="soundLead" src="/static/sounds/new_lead.mp3"></audio>
-            <audio id="soundEdit" src="/static/sounds/edited.mp3"></audio>
         `;
         const div = document.createElement('div');
         div.id = 'chat-root';
@@ -60,28 +141,23 @@ document.addEventListener("DOMContentLoaded", function() {
     const chatWindow = document.getElementById('chatWindow');
     const msgsDiv = document.getElementById('chatMessages');
     const badge = document.getElementById('chatUnreadBadge');
-    const soundMsg = document.getElementById('soundMessage');
-    const soundLead = document.getElementById('soundLead');
-    const soundEdit = document.getElementById('soundEdit');
     const identitySelect = document.getElementById('chatIdentity');
     let isOpen = false;
     let unread = 0;
 
+    // --- 4. Unified Trigger Function ---
     function triggerAlert(title, body, type = 'message') {
         if (PAGE_TYPE === 'design' || PAGE_TYPE === 'ebook') return; 
 
-        try {
-            if (type === 'money') {
-                if (PAGE_TYPE === 'manager' || PAGE_TYPE === 'insurance' || PAGE_TYPE === 'billing') {
-                     soundLead.currentTime = 0; soundLead.play();
-                }
-            } else if (type === 'edit') {
-                 if (PAGE_TYPE === 'manager') { soundEdit.currentTime = 0; soundEdit.play(); }
-                 if (PAGE_TYPE === 'billing' && title.includes('Billing')) { soundEdit.currentTime = 0; soundEdit.play(); }
-            } else {
-                 soundMsg.currentTime = 0; soundMsg.play();
-            }
-        } catch(e) {}
+        // Play Dynamic Sound
+        playTone(type);
+
+        // Show Professional Toast
+        let toastType = 'info';
+        if(type === 'money') toastType = 'success';
+        if(type === 'error') toastType = 'error';
+        
+        showToast(title, body, toastType);
     }
 
     window.toggleChat = function() {
@@ -188,7 +264,7 @@ document.addEventListener("DOMContentLoaded", function() {
             if (PAGE_TYPE === 'insurance' && data.type === 'insurance' && isApproved) shouldRing = true;
             if (PAGE_TYPE === 'billing' && data.type === 'billing') shouldRing = true;
             
-            if (shouldRing) triggerAlert('Update', msg, isApproved ? 'money' : 'edit');
+            if (shouldRing) triggerAlert('Update', msg, isApproved ? 'money' : 'error');
             
             if(showChat) appendMessage({ sender: 'System', message: msg, role: isApproved ? 'success' : 'error' });
             if (PAGE_TYPE === 'manager' && window.updateDashboardStats) window.updateDashboardStats();
@@ -199,7 +275,9 @@ document.addEventListener("DOMContentLoaded", function() {
             let shouldRing = false;
             if (PAGE_TYPE === 'manager') shouldRing = true;
             if (PAGE_TYPE === 'billing' && data.type === 'billing') shouldRing = true;
+            
             if (shouldRing) triggerAlert('Edited', msg, 'edit');
+            
             if(showChat) appendMessage({ sender: 'System', message: msg, role: 'warning' });
             if (PAGE_TYPE === 'manager' && window.updateDashboardStats) window.updateDashboardStats();
         });
