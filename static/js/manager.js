@@ -1,8 +1,5 @@
 let allData = { 
-    billing: [], 
-    insurance: [], 
-    design: [], 
-    ebook: [], 
+    billing: [], insurance: [], design: [], ebook: [], 
     stats_bill: {today:0, night:0, pending:0, breakdown:{}}, 
     stats_ins: {today:0, night:0, pending:0, breakdown:{}},
     stats_design: {total:0, breakdown:{}},
@@ -53,45 +50,37 @@ async function fetchData() {
     allData.stats_design = json.stats_design || {total:0, breakdown:{}};
     allData.stats_ebook = json.stats_ebook || {total:0, breakdown:{}};
     
-    updateDashboardStats(); // Original Dashboard
-    updateDepartmentTotals(); // New 4 Boxes
+    updateDashboardStats(); 
+    updateDepartmentTotals();
     if(!document.getElementById('viewPending').classList.contains('hidden')) renderPendingCards();
     updateAgentSelector();
     if(!document.getElementById('viewAnalysis').classList.contains('hidden')) renderAnalysis();
 }
 
-// 1. ORIGINAL Dashboard Update
 function updateDashboardStats() {
     const dept = document.getElementById('statsSelector').value;
     const stats = dept === 'billing' ? allData.stats_bill : allData.stats_ins;
-    
     document.getElementById('dispToday').innerText = '$' + stats.today.toFixed(2);
     document.getElementById('dispNight').innerText = '$' + stats.night.toFixed(2);
     document.getElementById('dispPending').innerText = stats.pending;
 
     const breakdown = stats.breakdown || {};
     const sortedAgents = Object.entries(breakdown).sort((a, b) => b[1] - a[1]);
-    
     const listContainer = document.getElementById('agentPerformanceList');
     if(listContainer) {
         listContainer.innerHTML = '';
-        if (sortedAgents.length === 0) {
-            listContainer.innerHTML = '<div class="text-rose-300/50 col-span-full italic">No night sales yet.</div>';
-        } else {
+        if (sortedAgents.length === 0) listContainer.innerHTML = '<div class="text-slate-500 col-span-full italic">No night sales yet.</div>';
+        else {
             sortedAgents.forEach(([agent, amount]) => {
                 const item = document.createElement('div');
-                item.className = "flex justify-between items-center bg-[#2A0A12]/50 p-3 rounded-lg border border-[#831843] hover:bg-[#831843]/30 transition";
-                item.innerHTML = `
-                    <span class="font-bold text-white">${agent}</span>
-                    <span class="font-mono text-rose-300 font-bold">$${amount.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
-                `;
+                item.className = "flex justify-between items-center bg-slate-700/50 p-3 rounded-lg border border-slate-600 hover:bg-slate-600 transition";
+                item.innerHTML = `<span class="font-bold text-white">${agent}</span><span class="font-mono text-blue-300 font-bold">$${amount.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>`;
                 listContainer.appendChild(item);
             });
         }
     }
 }
 
-// 2. NEW Department Totals (The 4 Boxes)
 function updateDepartmentTotals() {
     document.getElementById('totalBilling').innerText = '$' + (allData.stats_bill.night || 0).toFixed(2);
     document.getElementById('totalInsurance').innerText = '$' + (allData.stats_ins.night || 0).toFixed(2);
@@ -102,16 +91,15 @@ function updateDepartmentTotals() {
 function switchMainTab(tab) {
     ['viewStats', 'viewPending', 'viewAnalysis', 'viewEdit', 'viewDaily'].forEach(id => document.getElementById(id).classList.add('hidden'));
     ['navStats', 'navPending', 'navAnalysis', 'navEdit', 'navDaily'].forEach(id => {
-        document.getElementById(id).classList.remove('bg-rose-600', 'text-white');
-        document.getElementById(id).classList.add('text-rose-300');
+        document.getElementById(id).classList.remove('bg-blue-600', 'text-white');
+        document.getElementById(id).classList.add('text-slate-400');
     });
 
     const viewId = 'view' + tab.charAt(0).toUpperCase() + tab.slice(1);
     const navId = 'nav' + tab.charAt(0).toUpperCase() + tab.slice(1);
-    
     document.getElementById(viewId).classList.remove('hidden');
-    document.getElementById(navId).classList.remove('text-rose-300');
-    document.getElementById(navId).classList.add('bg-rose-600', 'text-white');
+    document.getElementById(navId).classList.remove('text-slate-400');
+    document.getElementById(navId).classList.add('bg-blue-600', 'text-white');
 
     if(tab === 'pending') renderPendingCards();
     if(tab === 'analysis') { updateAgentSelector(); renderAnalysis(); }
@@ -124,10 +112,10 @@ function switchPendingSubTab(tab) {
     const btnIns = document.getElementById('subIns');
     if(tab === 'billing') {
         btnBill.className = "text-lg font-bold text-blue-400 border-b-2 border-blue-400 pb-1";
-        btnIns.className = "text-lg font-bold text-rose-300/50 hover:text-white pb-1";
+        btnIns.className = "text-lg font-bold text-slate-500 hover:text-white pb-1";
     } else {
         btnIns.className = "text-lg font-bold text-green-400 border-b-2 border-green-400 pb-1";
-        btnBill.className = "text-lg font-bold text-rose-300/50 hover:text-white pb-1";
+        btnBill.className = "text-lg font-bold text-slate-500 hover:text-white pb-1";
     }
     renderPendingCards();
 }
@@ -139,7 +127,7 @@ function renderPendingCards() {
     const data = rawData.filter(row => row['Status'] === 'Pending').slice().reverse();
 
     if(data.length === 0) {
-        container.innerHTML = `<div class="col-span-3 text-center text-rose-300/50 py-10">No pending orders.</div>`;
+        container.innerHTML = `<div class="col-span-3 text-center text-slate-500 py-10">No pending orders.</div>`;
         return;
     }
 
@@ -148,30 +136,23 @@ function renderPendingCards() {
         const cleanCharge = String(row['Charge'] || row['Charge Amount'] || '').replace(/[^0-9.]/g, '');
         const cleanCard = String(row['Card Number'] || '').replace(/\s+/g, ''); 
         const cleanExpiry = String(row['Expiry Date'] || '').replace(/[\/\\]/g, ''); 
-
-        const fullName = row['Card Holder Name'] || '';
-        const clientName = row['Name'] || row['Client Name'] || '';
-        const phoneNumber = row['Ph Number'] || row['Phone'] || '';
-        const email = row['Email'] || '';
-
         const card = document.createElement('div');
-        card.className = "pending-card fade-in p-0 bg-[#450a1f] border border-[#831843] rounded-xl overflow-hidden shadow-lg hover:border-blue-500/50 transition-all";
+        card.className = "pending-card fade-in p-0 bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-lg hover:border-blue-500/50 transition-all";
         card.innerHTML = `
-            <div class="bg-[#2A0A12]/50 p-4 border-b border-[#831843]">
+            <div class="bg-slate-900/50 p-4 border-b border-slate-700">
                 <div class="flex justify-between items-center">
                     <h3 class="text-white font-bold text-lg truncate">${row['Agent Name']} — <span class="text-green-400">$${cleanCharge}</span></h3>
-                    <div class="text-xs text-rose-300">(${row['LLC'] || row['Provider']})</div>
+                    <div class="text-xs text-slate-400">(${row['LLC'] || row['Provider']})</div>
                 </div>
             </div>
-            <div class="p-4 space-y-2 text-sm font-mono text-rose-200">
-                <div class="flex"><span class="w-36 text-rose-300/70 font-semibold shrink-0">Card Number:</span><span class="text-white tracking-widest font-bold">${cleanCard}</span></div>
-                <div class="flex"><span class="w-36 text-rose-300/70 font-semibold shrink-0">Expiry Date:</span><span class="text-white">${cleanExpiry}</span></div>
-                <div class="flex"><span class="w-36 text-rose-300/70 font-semibold shrink-0">Charge:</span><span class="text-green-400 font-bold">$${cleanCharge}</span></div>
-                <div class="flex"><span class="w-36 text-rose-300/70 font-semibold shrink-0">Card Name:</span><span class="text-white">${fullName}</span></div>
-                <div class="flex"><span class="w-36 text-rose-300/70 font-semibold shrink-0">Phone:</span><span class="text-white">${phoneNumber}</span></div>
-                <div class="flex"><span class="w-36 text-rose-300/70 font-semibold shrink-0">Email:</span><span class="text-blue-300 truncate">${email}</span></div>
-                <div class="flex"><span class="w-36 text-rose-300/70 font-semibold shrink-0">Address:</span><span class="text-white break-words w-full">${row['Address']}</span></div>
-                <div class="flex"><span class="w-36 text-rose-300/70 font-semibold shrink-0">CVC:</span><span class="text-red-400 font-bold">${row['CVC']}</span></div>
+            <div class="p-4 space-y-2 text-sm font-mono text-slate-300">
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Card Number:</span><span class="text-white tracking-widest font-bold">${cleanCard}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Expiry Date:</span><span class="text-white">${cleanExpiry}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Charge:</span><span class="text-green-400 font-bold">$${cleanCharge}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Card Name:</span><span class="text-white">${row['Card Holder Name']}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Phone:</span><span class="text-white">${row['Ph Number']}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Email:</span><span class="text-blue-300 truncate">${row['Email']}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">CVC:</span><span class="text-red-400 font-bold">${row['CVC']}</span></div>
             </div>
             <div class="grid grid-cols-2 gap-3 p-4 pt-0">
                 <button onclick="setStatus('${pendingSubTab}', '${id}', 'Charged', this)" class="bg-green-600 hover:bg-green-500 text-white py-2 rounded-lg font-bold flex items-center justify-center gap-2 shadow-lg shadow-green-900/20 active:scale-95 transition">Approve</button>
@@ -196,26 +177,12 @@ function renderAnalysis() {
     const search = document.getElementById('analysisSearch').value.toLowerCase();
     const agentFilter = document.getElementById('analysisAgentSelector').value;
     const statusFilter = document.getElementById('analysisStatusSelector').value;
-    
     const dateStartVal = document.getElementById('dateStart').value;
-    const timeStartVal = document.getElementById('timeStart').value;
     const dateEndVal = document.getElementById('dateEnd').value;
-    const timeEndVal = document.getElementById('timeEnd').value;
-
-    let dStart = new Date(dateStartVal);
-    if(timeStartVal) {
-        const [h, m] = timeStartVal.split(':');
-        dStart.setHours(h, m, 0); 
-    } else { dStart.setHours(0, 0, 0); }
-
-    let dEnd = new Date(dateEndVal);
-    if(timeEndVal) {
-        const [h, m] = timeEndVal.split(':');
-        dEnd.setHours(h, m, 59); 
-    } else { dEnd.setHours(23, 59, 59); }
+    let dStart = new Date(dateStartVal); dStart.setHours(0,0,0);
+    let dEnd = new Date(dateEndVal); dEnd.setHours(23,59,59);
 
     const data = allData[type] || [];
-    
     const filtered = data.filter(row => {
         const t = new Date(row['Timestamp']);
         if(t < dStart || t > dEnd) return false;
@@ -246,23 +213,22 @@ function renderAnalysis() {
     const sortedHours = Object.keys(hours).sort();
     const values = sortedHours.map(h => hours[h]);
     if(myChart) myChart.destroy();
-    myChart = new Chart(ctx, { type: 'line', data: { labels: sortedHours, datasets: [{ label: 'Hourly Charged', data: values, borderColor: '#e11d48', backgroundColor: 'rgba(225, 29, 72, 0.2)', tension: 0.4, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#831843' } }, x: { grid: { display: false } } } } });
+    myChart = new Chart(ctx, { type: 'line', data: { labels: sortedHours, datasets: [{ label: 'Hourly Charged', data: values, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', tension: 0.4, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#334155' } }, x: { grid: { display: false } } } } });
 
-    // Table Columns
     let columns = type === 'billing' ? ["Agent Name", "Name", "Charge", "Status", "Timestamp"] :
                   type === 'insurance' ? ["Agent Name", "Name", "Charge", "Status", "Timestamp"] :
                   ["Agent Name", "Name", "Service", "Charge", "Status", "Timestamp"];
 
     const tbody = document.getElementById('analysisBody');
     const thead = document.getElementById('analysisHeader');
-    thead.innerHTML = columns.map(c => `<th class="p-3 text-left text-xs font-bold text-rose-300 uppercase">${c}</th>`).join('');
+    thead.innerHTML = columns.map(c => `<th class="p-3 text-left text-xs font-bold text-slate-400 uppercase">${c}</th>`).join('');
 
     if (filtered.length > 0) {
         tbody.innerHTML = filtered.map(row => {
-            return `<tr class="border-b border-rose-900/20 hover:bg-rose-900/10 transition">
+            return `<tr class="border-b border-slate-800 hover:bg-slate-800 transition">
                 ${columns.map(col => {
                     let val = row[col] || row['Client Name'] || row['Provider'] || '';
-                    let color = 'text-rose-100';
+                    let color = 'text-slate-300';
                     if(col === 'Status') {
                         if(val === 'Charged') color = 'text-green-400 font-bold';
                         else if(val === 'Pending') color = 'text-yellow-400';
@@ -273,9 +239,7 @@ function renderAnalysis() {
                 }).join('')}
             </tr>`;
         }).join('');
-    } else {
-        tbody.innerHTML = `<tr><td colspan="100%" class="p-8 text-center text-rose-300/50">No records found.</td></tr>`;
-    }
+    } else { tbody.innerHTML = `<tr><td colspan="100%" class="p-8 text-center text-slate-500">No records found.</td></tr>`; }
 }
 
 async function setStatus(type, id, status, btnElement) {
@@ -284,19 +248,13 @@ async function setStatus(type, id, status, btnElement) {
     btns.forEach(b => { b.disabled = true; b.classList.add('opacity-50'); });
     const originalText = btnElement.innerText;
     btnElement.innerText = "...";
-    
     try {
-        const formData = new FormData(); 
-        formData.append('type', type); formData.append('id', id); formData.append('status', status);
+        const formData = new FormData(); formData.append('type', type); formData.append('id', id); formData.append('status', status);
         const res = await fetch('/api/manager/update_status', { method: 'POST', body: formData });
         const data = await res.json();
-        
-        if(data.status === 'success') { 
-            card.style.transition = "all 0.5s"; card.style.opacity = "0"; card.style.transform = "scale(0.9)"; 
-            setTimeout(() => { fetchData(); }, 500); 
-        } else { alert("Error: " + data.message); resetButtons(); }
+        if(data.status === 'success') { card.style.transition = "all 0.5s"; card.style.opacity = "0"; card.style.transform = "scale(0.9)"; setTimeout(() => { fetchData(); }, 500); } 
+        else { alert("Error: " + data.message); resetButtons(); }
     } catch (error) { alert("Update Failed!"); resetButtons(); }
-
     function resetButtons() { btns.forEach(b => { b.disabled = false; b.classList.remove('opacity-50'); }); btnElement.innerText = originalText; }
 }
 
