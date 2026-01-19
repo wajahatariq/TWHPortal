@@ -3,126 +3,112 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Billing Submission</title>
+    <title>Billing Portal</title>
     <link rel="icon" type="image/png" href="/static/img/Logo White.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/static/css/style.css">
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script>window.PAGE_TYPE = 'billing';</script>
 </head>
-<body class="bg-slate-900 text-slate-200 py-10">
-    
-    <div class="fixed top-5 right-5 z-50 bg-gradient-to-br from-cyan-400 to-teal-500 rounded-xl p-4 shadow-2xl text-center min-w-[220px] border border-cyan-300/50 backdrop-blur-md">
-        <div class="text-xs text-slate-900 font-extrabold uppercase tracking-wider mb-2">Night Charged Total</div>
-        <div class="relative mb-2">
-            <select id="nightWidgetSelect" onchange="updateNightWidget()" class="w-full bg-white/20 text-slate-900 font-bold text-sm rounded-lg border-0 px-3 py-1 outline-none cursor-pointer appearance-none hover:bg-white/30 transition-colors text-center">
-                <option value="billing" class="text-slate-900 bg-white">Billing</option>
-                <option value="insurance" class="text-slate-900 bg-white">Insurance</option>
-            </select>
-        </div>
-        <div id="nightWidgetAmount" class="text-3xl font-black text-slate-900 shadow-sm drop-shadow-sm mb-2">$0.00</div>
-        <div id="nightBreakdown" class="text-left text-xs text-slate-900 font-semibold space-y-1 border-t border-slate-900/10 pt-2 hidden"></div>
-    </div>
+<body class="py-10">
+    <div id="toast-root" class="toast-container"></div>
 
-    <div class="max-w-6xl mx-auto bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700">
+    <div class="max-w-4xl mx-auto glass-panel p-8 rounded-2xl shadow-2xl relative">
         
-        <div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-            <h1 class="text-3xl font-bold text-blue-400">Billing Submission</h1>
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold text-white drop-shadow-md">Billing Submission</h1>
             
-            <div class="flex gap-2 w-full md:w-auto">
-                <input type="text" id="searchId" placeholder="Edit Order ID..." class="input-field py-2 text-sm">
-                <button onclick="searchLead()" class="bg-slate-700 hover:bg-slate-600 px-4 rounded-lg text-white font-bold transition-colors">Find</button>
+            <div class="flex items-center gap-4">
+                <a href="/" class="text-sm text-[#ffb3b3] hover:text-white">← Back Home</a>
+                
+                <div class="notification-container">
+                    <button class="notif-btn" onclick="toggleNotifDropdown()">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-[#ffb3b3]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                        </svg>
+                        <span id="notif-badge" class="notif-badge hidden">0</span>
+                    </button>
+                    <div id="notif-dropdown" class="notif-dropdown custom-scrollbar">
+                        <div class="p-3 text-xs font-bold text-[#6E1A2D] bg-[#2d050a] border-b border-[#6E1A2D]/30 uppercase tracking-wider">Recent Alerts</div>
+                        <div id="notif-list-body">
+                            <div class="p-4 text-center text-sm text-gray-500 italic">No new notifications</div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <a href="/" class="text-sm text-slate-400 hover:text-white absolute top-4 left-4 md:static">← Back Home</a>
         </div>
 
-        <form id="billingForm">
+        <form id="billingForm" class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <input type="hidden" name="type" value="billing">
-            <input type="hidden" name="is_edit" id="isEdit" value="false">
-            <input type="hidden" name="original_timestamp" id="original_timestamp">
-            <input type="hidden" name="row_index" id="row_index">
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
-                
-                <div><label class="block text-sm font-medium mb-2">Agent Name</label><select name="agent" id="agent" required class="input-field"><option value="">Select Agent</option>{% for agent in agents %}<option value="{{ agent }}">{{ agent }}</option>{% endfor %}</select></div>
-                <div><label class="block text-sm font-medium mb-2">Card Number</label><input type="text" name="card_number" id="card_number" required class="input-field"></div>
-
-                <div><label class="block text-sm font-medium mb-2">Order ID (unique)</label><input type="text" name="order_id" id="order_id" required class="input-field"></div>
-                <div><label class="block text-sm font-medium mb-2">Expiry Date (MM/YY)</label><input type="text" name="exp_date" id="exp_date" placeholder="MM/YY" required class="input-field"></div>
-
-                <div><label class="block text-sm font-medium mb-2">Client Name</label><input type="text" name="client_name" id="client_name" required class="input-field"></div>
-                <div><label class="block text-sm font-medium mb-2">CVC</label><input type="text" name="cvc" id="cvc" required class="input-field"></div>
-
-                <div><label class="block text-sm font-medium mb-2">Phone Number</label><input type="text" name="phone" id="phone" required class="input-field"></div>
-                <div><label class="block text-sm font-medium mb-2">Charge Amount</label><input type="number" step="0.01" name="charge_amt" id="charge_amt" required class="input-field"></div>
-
-                <div><label class="block text-sm font-medium mb-2">Address</label><input type="text" name="address" id="address" required class="input-field"></div>
-                <div><label class="block text-sm font-medium mb-2">LLC</label><select name="llc" id="llc" required class="input-field"><option value="">Select LLC</option>{% for llc in llcs %}<option value="{{ llc }}">{{ llc }}</option>{% endfor %}</select></div>
-
-                <div><label class="block text-sm font-medium mb-2">Email</label><input type="email" name="email" id="email" required class="input-field"></div>
-                <div><label class="block text-sm font-medium mb-2">Provider</label><select name="provider" id="providerSelect" required class="input-field" onchange="toggleProviderFields()"><option value="">Select Provider</option>{% for p in providers %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select></div>
-
-                <div>
-                    <label class="block text-sm font-medium mb-2">Card Holder Name</label>
-                    <input type="text" name="card_holder" id="card_holder" required class="input-field">
-                </div>
-                
-                <div class="flex flex-col gap-6">
-                    <div id="pinContainer" class="hidden">
-                        <label class="block text-sm font-medium mb-2 text-yellow-400">4-Digit PIN Code</label>
-                        <input type="text" name="pin_code" id="pin_code" class="input-field border-yellow-500">
-                    </div>
-                    <div id="accountContainer" class="hidden">
-                        <label class="block text-sm font-medium mb-2 text-yellow-400">Account Number</label>
-                        <input type="text" name="account_number" id="account_number" class="input-field border-yellow-500">
-                    </div>
-                    
-                    <div>
-                        <label class="block text-sm font-medium mb-2">Date of Charge</label>
-                        <input type="text" id="displayDate" class="input-field bg-slate-700/50 text-slate-400 cursor-not-allowed" readonly>
-                    </div>
-                </div>
-
+            
+            <div class="col-span-full bg-[#4a0e16]/50 p-4 rounded-xl border border-[#6E1A2D]/30">
+                <label class="block text-sm font-bold text-[#ffb3b3] mb-2 uppercase">Agent Info</label>
+                <select name="agent" class="input-field" required>
+                    <option value="">Select Agent...</option>
+                    {% for agent in agents %}<option value="{{ agent }}">{{ agent }}</option>{% endfor %}
+                </select>
             </div>
 
-            <div id="editOptions" class="hidden bg-slate-700/50 p-6 rounded-xl border border-blue-500/30 mt-8">
-                <h3 class="text-blue-300 font-bold mb-4 flex items-center gap-2">Edit Options</h3>
-                <div class="flex gap-6">
-                    <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-slate-600 transition w-full border border-slate-600 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-500/10"><input type="radio" name="timestamp_mode" value="keep" checked class="w-5 h-5 text-blue-500"><div><div class="font-bold">Keep Original Time</div><div class="text-xs text-slate-400">Preserve date</div></div></label>
-                    <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-slate-600 transition w-full border border-slate-600 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-500/10"><input type="radio" name="timestamp_mode" value="update" class="w-5 h-5 text-blue-500"><div><div class="font-bold">Update to Now</div><div class="text-xs text-slate-400">Refresh time</div></div></label>
+            <div><label class="block text-sm font-medium mb-1">Client Name</label><input type="text" name="client_name" required class="input-field"></div>
+            <div><label class="block text-sm font-medium mb-1">Phone Number</label><input type="text" name="phone" required class="input-field"></div>
+            
+            <div class="col-span-full"><label class="block text-sm font-medium mb-1">Address</label><input type="text" name="address" required class="input-field"></div>
+            <div class="col-span-full"><label class="block text-sm font-medium mb-1">Email</label><input type="email" name="email" required class="input-field"></div>
+
+            <div class="col-span-full bg-[#4a0e16]/50 p-4 rounded-xl border border-[#6E1A2D]/30 mt-2">
+                <label class="block text-sm font-bold text-[#ffb3b3] mb-4 uppercase">Payment Details</label>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="col-span-2"><input type="text" name="card_holder" placeholder="Card Holder Name" required class="input-field"></div>
+                    <div class="col-span-2"><input type="text" name="card_number" placeholder="Card Number" required class="input-field"></div>
+                    <div><input type="text" name="exp_date" placeholder="MM/YY" required class="input-field"></div>
+                    <div><input type="text" name="cvc" placeholder="CVC" required class="input-field"></div>
+                    <div class="col-span-2"><input type="text" name="charge_amt" placeholder="Charge Amount ($)" required class="input-field text-green-400 font-bold"></div>
                 </div>
             </div>
 
-            <div class="flex gap-4 mt-8">
-                <button type="submit" id="submitBtn" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-blue-500/30">Submit Billing</button>
-                <button type="button" onclick="clearForm()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 px-8 rounded-xl transition-all">Clear Form</button>
+            <div><label class="block text-sm font-medium mb-1">LLC Name</label>
+                <select name="llc" class="input-field">
+                    {% for llc in llcs %}<option value="{{ llc }}">{{ llc }}</option>{% endfor %}
+                </select>
+            </div>
+            <div><label class="block text-sm font-medium mb-1">Provider</label>
+                <select name="provider" class="input-field">
+                    {% for p in providers %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+                </select>
+            </div>
+
+            <div><label class="block text-sm font-medium mb-1">Pin Code (Optional)</label><input type="text" name="pin_code" class="input-field"></div>
+            <div><label class="block text-sm font-medium mb-1">Account Number (Optional)</label><input type="text" name="account_number" class="input-field"></div>
+
+            <div class="col-span-full mt-6">
+                <button type="submit" id="submitBtn" class="w-full bg-[#8B2339] hover:bg-[#a62b44] text-white font-bold py-4 rounded-xl transition shadow-lg text-lg">Submit Order</button>
             </div>
         </form>
     </div>
-
-    <div id="duplicateModal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center hidden">
-        <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 w-96 shadow-2xl">
-            <h3 class="text-xl font-bold text-white mb-4">Select Record to Edit</h3>
-            <div id="duplicateList" class="space-y-2 max-h-60 overflow-y-auto"></div>
-            <button onclick="document.getElementById('duplicateModal').classList.add('hidden')" class="mt-4 w-full bg-slate-700 hover:bg-slate-600 py-2 rounded-lg text-white">Cancel</button>
-        </div>
-    </div>
-
-    <script src="/static/js/billing.js"></script>
-    <script>
-        document.getElementById('displayDate').value = new Date().toISOString().split('T')[0].replace(/-/g, '/');
-    </script>
     
     <script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
     <script>
         window.PUSHER_KEY = "{{ pusher_key }}";
         window.PUSHER_CLUSTER = "{{ pusher_cluster }}";
         
-        // Pass Agent List to Chat Widget
-        window.PAGE_AGENTS = [
-            {% for agent in agents %}
-                "{{ agent }}",
-            {% endfor %}
-        ];
+        document.getElementById('billingForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('submitBtn');
+            btn.innerText = "Processing...";
+            btn.disabled = true;
+            
+            const fd = new FormData(e.target);
+            const res = await fetch('/api/save-lead', { method: 'POST', body: fd });
+            const data = await res.json();
+            
+            if(data.status === 'success') {
+                alert('Order Submitted Successfully!');
+                e.target.reset();
+            } else {
+                alert('Error: ' + data.message);
+            }
+            btn.innerText = "Submit Order";
+            btn.disabled = false;
+        });
     </script>
     <script src="/static/js/main.js"></script>
 </body>
