@@ -1,281 +1,128 @@
-/* =========================================
-   INSURANCE PORTAL LOGIC (Complete)
-   ========================================= */
+/* ========================
+   TAB SWITCHING LOGIC
+   ======================== */
+function switchTab(tabName) {
+    const viewNew = document.getElementById('viewNew');
+    const viewEdit = document.getElementById('viewEdit');
+    const btnNew = document.getElementById('tabNew');
+    const btnEdit = document.getElementById('tabEdit');
 
-// --- 1. GLOBAL VARIABLES & NIGHT STATS ---
-let nightStats = { billing: {total:0, breakdown:{}}, insurance: {total:0, breakdown:{}} };
+    if (tabName === 'new') {
+        viewNew.classList.remove('hidden');
+        viewEdit.classList.add('hidden');
+        
+        // Active Styles for 'New'
+        btnNew.classList.add('bg-green-600', 'text-white');
+        btnNew.classList.remove('text-slate-400');
+        
+        // Inactive Styles for 'Edit'
+        btnEdit.classList.remove('bg-green-600', 'text-white');
+        btnEdit.classList.add('text-slate-400');
+    } else {
+        viewNew.classList.add('hidden');
+        viewEdit.classList.remove('hidden');
+        
+        // Active Styles for 'Edit'
+        btnEdit.classList.add('bg-green-600', 'text-white');
+        btnEdit.classList.remove('text-slate-400');
 
-async function fetchNightStats() {
+        // Inactive Styles for 'New'
+        btnNew.classList.remove('bg-green-600', 'text-white');
+        btnNew.classList.add('text-slate-400');
+    }
+}
+
+/* ========================
+   SUBMIT NEW LEAD (Logic)
+   ======================== */
+document.getElementById("insuranceForm").addEventListener("submit", async function(e) {
+    e.preventDefault();
+    const btn = document.getElementById("submitBtn");
+    const originalText = btn.innerText;
+    
+    btn.innerText = "Submitting...";
+    btn.disabled = true;
+
     try {
-        const res = await fetch('/api/public/night-stats');
-        nightStats = await res.json();
-        updateNightWidget();
-    } catch(e) { console.error("Stats Error", e); }
-}
+        const formData = new FormData(this);
+        const response = await fetch("/api/save-lead", {
+            method: "POST",
+            body: formData
+        });
 
-function updateNightWidget() {
-    const selector = document.getElementById('nightWidgetSelect');
-    if(!selector) return;
-    
-    const type = selector.value;
-    const data = nightStats[type] || {total:0, breakdown:{}};
-    
-    const amountEl = document.getElementById('nightWidgetAmount');
-    if(amountEl) amountEl.innerText = '$' + data.total.toFixed(2);
-    
-    const listDiv = document.getElementById('nightBreakdown');
-    if(!listDiv) return;
-
-    listDiv.innerHTML = '';
-    if (data.breakdown && Object.keys(data.breakdown).length > 0) {
-        listDiv.classList.remove('hidden');
-        for (const [agent, amount] of Object.entries(data.breakdown)) {
-            const row = document.createElement('div');
-            row.className = "flex justify-between border-b border-slate-900/10 pb-1 last:border-0";
-            row.innerHTML = `<span class="truncate pr-2">${agent}</span> <span class="font-bold">$${amount.toFixed(2)}</span>`;
-            listDiv.appendChild(row);
+        const result = await response.json();
+        if (result.status === "success") {
+            showNotification("Lead Submitted Successfully!", "success");
+            this.reset();
+        } else {
+            showNotification("Error: " + result.message, "error");
         }
-    } else { listDiv.classList.add('hidden'); }
-}
-
-// --- 2. INITIALIZATION ---
-document.addEventListener("DOMContentLoaded", function() {
-    // A. Generate ID
-    generateRandomId();
-
-    // B. Set Date
-    const dateField = document.getElementById('displayDate');
-    if(dateField) {
-        dateField.value = new Date().toISOString().split('T')[0].replace(/-/g, '/');
+    } catch (error) {
+        showNotification("Server Error. Check console.", "error");
+        console.error(error);
     }
 
-    // C. Start Night Stats polling
-    fetchNightStats();
-    setInterval(fetchNightStats, 120000); // Refresh every 2 mins
+    btn.innerText = originalText;
+    btn.disabled = false;
 });
 
 /* ========================
-   CORE FUNCTIONS
+   EDIT LEAD LOGIC (Updated)
    ======================== */
 
-// Generate a Random Alphanumeric ID
-function generateRandomId() {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let result = '';
-    for (let i = 0; i < 6; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    
-    const idField = document.getElementById('recordId');
-    if(idField) {
-        idField.value = result;
-        console.log("New Record ID generated:", result);
-    }
-    
-    const searchInput = document.getElementById('searchId');
-    if(searchInput) searchInput.placeholder = "Enter Record ID to Edit...";
-}
+// 1. Search for the Lead
+async function searchLead() {
+    const id = document.getElementById('searchId').value.trim();
+    if (!id) return alert("Please enter a Record ID");
 
-// Helper to set dropdown values
-function setSelectValue(id, value) {
-    const select = document.getElementById(id);
-    if (!select || !value) return;
-    for (let i = 0; i < select.options.length; i++) {
-        if (select.options[i].value.toLowerCase() === value.toLowerCase()) {
-            select.selectedIndex = i;
-            break;
-        }
-    }
-}
+    const btn = document.querySelector('#viewEdit button'); // Search button
+    const originalText = btn.innerText;
+    btn.innerText = "...";
+    btn.disabled = true;
 
-// Notification System
-function showNotification(msg, type) {
-    let notif = document.getElementById("notification");
-    if (!notif) {
-        notif = document.createElement('div');
-        notif.id = "notification";
-        document.body.appendChild(notif);
-    }
-    notif.innerText = msg;
-    notif.className = `fixed bottom-5 right-5 px-6 py-3 rounded-lg shadow-xl transform transition-all duration-300 z-50 font-bold ${type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`;
-    notif.style.transform = "translateY(0)";
-    notif.style.opacity = "1";
-    setTimeout(() => {
-        notif.style.transform = "translateY(150%)";
-        notif.style.opacity = "0";
-    }, 3000);
-}
-
-/* ========================
-   FORM SUBMISSION
-   ======================== */
-const form = document.getElementById("insuranceForm");
-if (form) {
-    form.addEventListener("submit", async function(e) {
-        e.preventDefault();
-        const btn = document.getElementById("submitBtn");
-        const originalText = btn.innerText;
-        
-        btn.innerText = "Processing...";
-        btn.disabled = true;
-        btn.classList.add('opacity-50', 'cursor-not-allowed');
-
-        try {
-            const formData = new FormData(this);
-            
-            // ID Fallback
-            if (!formData.get('record_id')) {
-                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-                let newId = '';
-                for (let i = 0; i < 6; i++) newId += chars.charAt(Math.floor(Math.random() * chars.length));
-                formData.set('record_id', newId);
-            }
-
-            const response = await fetch("/api/save-lead", {
-                method: "POST",
-                body: formData
-            });
-
-            const result = await response.json();
-            
-            if (result.status === "success") {
-                showNotification(result.message || "Saved Successfully!", "success");
-                
-                // Update Stats Immediately
-                fetchNightStats(); 
-
-                // Generate NEW ID for next submission (Don't clear form)
-                const isEdit = document.getElementById('isEdit').value;
-                if (isEdit !== 'true') {
-                    generateRandomId(); 
-                }
-            } else {
-                showNotification("Error: " + result.message, "error");
-            }
-        } catch (error) {
-            console.error(error);
-            showNotification("Server Error. Check console.", "error");
-        }
-
-        btn.innerText = originalText;
-        btn.disabled = false;
-        btn.classList.remove('opacity-50', 'cursor-not-allowed');
-    });
-}
-
-/* ========================
-   CLEAR FORM LOGIC
-   ======================== */
-function clearForm() {
-    const form = document.getElementById('insuranceForm');
-    if (form) form.reset();
-
-    document.getElementById('isEdit').value = 'false';
-    document.getElementById('row_index').value = '';
-    document.getElementById('original_timestamp').value = '';
-    
-    const editOptions = document.getElementById('editOptions');
-    if(editOptions) editOptions.classList.add('hidden');
-
-    const submitBtn = document.getElementById('submitBtn');
-    if(submitBtn) {
-        submitBtn.innerText = "Submit Insurance";
-        submitBtn.classList.replace('bg-blue-600', 'bg-green-600');
-        submitBtn.classList.replace('hover:bg-blue-500', 'hover:bg-green-500');
-    }
-
-    generateRandomId();
-    
-    const dateField = document.getElementById('displayDate');
-    if(dateField) dateField.value = new Date().toISOString().split('T')[0].replace(/-/g, '/');
-
-    showNotification("Form Cleared");
-}
-
-/* ========================
-   SEARCH & EDIT LOGIC
-   ======================== */
-async function searchLead(rowIndex = null) {
-    const idInput = document.getElementById('searchId');
-    const id = idInput.value.trim();
-    if (!id) return showNotification("Please enter a Record ID", "error");
-
-    const btn = document.querySelector('button[onclick="searchLead()"]');
-    if(btn) btn.innerText = "...";
-
-    let url = `/api/get-lead?type=insurance&id=${id}`;
-    if (rowIndex) url += `&row_index=${rowIndex}`;
+    // Clear previous results
+    const existingList = document.getElementById('duplicateList');
+    if(existingList) existingList.remove();
+    document.getElementById('editFormContainer').classList.add('hidden');
 
     try {
-        const res = await fetch(url);
+        // NOTE: type=insurance here
+        const res = await fetch(`/api/get-lead?type=insurance&id=${id}`);
         const json = await res.json();
 
         if (json.status === 'success') {
-            populateMainForm(json.data);
-            document.getElementById('duplicateModal').classList.add('hidden');
+            // Found exactly one
+            populateEditForm(json.data);
+            document.getElementById('editFormContainer').classList.remove('hidden');
+        
         } else if (json.status === 'multiple') {
+            // Found duplicates - Ask User
             showDuplicateSelection(json.candidates);
+            
         } else {
-            showNotification(json.message || "Lead not found", "error");
+            alert(json.message || "Lead not found");
         }
     } catch (e) {
         console.error(e);
-        showNotification("Error searching for lead", "error");
+        alert("Error searching for lead");
     }
 
-    if(btn) btn.innerText = "Find";
+    btn.innerText = originalText;
+    btn.disabled = false;
 }
 
-function populateMainForm(data) {
-    document.getElementById('isEdit').value = 'true';
-    document.getElementById('editOptions').classList.remove('hidden');
-
-    const submitBtn = document.getElementById('submitBtn');
-    submitBtn.innerText = "Update Insurance";
-    submitBtn.classList.replace('bg-green-600', 'bg-blue-600');
-    submitBtn.classList.replace('hover:bg-green-500', 'hover:bg-blue-500');
-
-    document.getElementById('row_index').value = data.row_index || '';
-    document.getElementById('original_timestamp').value = data['Timestamp'] || '';
-    document.getElementById('recordId').value = data['Record_ID'] || data['Order ID'];
-
-    const fields = {
-        'agent': 'Agent Name',
-        'client_name': 'Name', 
-        'phone': 'Ph Number',
-        'email': 'Email',
-        'address': 'Address',
-        'card_holder': 'Card Holder Name',
-        'card_number': 'Card Number',
-        'exp_date': 'Expiry Date',
-        'cvc': 'CVC'
-    };
-
-    for (const [id, key] of Object.entries(fields)) {
-        if(document.getElementById(id)) {
-            let val = data[key];
-            if(!val && key === 'Name') val = data['Client Name'];
-            document.getElementById(id).value = val || '';
-        }
-    }
-
-    let charge = data['Charge'] || data['Charge Amount'] || '';
-    charge = charge.replace(/[^0-9.]/g, '');
-    if(document.getElementById('charge_amt')) document.getElementById('charge_amt').value = charge;
-
-    setSelectValue('llc', data['LLC']);
-    showNotification("Lead Loaded. You can now edit.", "success");
-}
-
+// Function to display the choice list
 function showDuplicateSelection(candidates) {
-    const container = document.getElementById('duplicateList');
-    if(!container) return;
-    container.innerHTML = ''; 
+    const container = document.createElement('div');
+    container.id = 'duplicateList';
+    container.className = "bg-slate-700 p-4 rounded-xl mt-4 space-y-2 border border-slate-600 animate-fade-in";
+    
+    container.innerHTML = `<h3 class="text-white font-bold mb-2">Multiple Records Found. Select one:</h3>`;
 
     candidates.forEach(c => {
         const btn = document.createElement('button');
-        btn.className = "w-full text-left bg-slate-700 hover:bg-slate-600 p-3 rounded-lg border border-slate-600 flex justify-between items-center transition group mb-2";
-        btn.onclick = () => searchLead(c.row_index);
+        btn.className = "w-full text-left bg-slate-800 hover:bg-slate-600 p-3 rounded-lg border border-slate-600 flex justify-between items-center transition group";
+        btn.onclick = () => fetchSpecificRow(c.row_index);
         
         btn.innerHTML = `
             <div>
@@ -287,5 +134,110 @@ function showDuplicateSelection(candidates) {
         container.appendChild(btn);
     });
 
-    document.getElementById('duplicateModal').classList.remove('hidden');
+    // Insert after the search box
+    document.querySelector('.bg-slate-800.p-6').appendChild(container);
+}
+
+// Function to fetch the specific row user clicked
+async function fetchSpecificRow(rowIndex) {
+    try {
+        const res = await fetch(`/api/get-lead?type=insurance&id=ignore&row_index=${rowIndex}`);
+        const json = await res.json();
+        
+        if (json.status === 'success') {
+            // Remove the selection list
+            const list = document.getElementById('duplicateList');
+            if(list) list.remove();
+            
+            // Show form
+            populateEditForm(json.data);
+            document.getElementById('editFormContainer').classList.remove('hidden');
+        }
+    } catch(e) { alert("Error loading record"); }
+}
+
+// 2. Populate the Edit Form
+function populateEditForm(data) {
+    // Hidden Fields
+    document.getElementById('edit_row_index').value = data.row_index;
+    document.getElementById('edit_timestamp').value = data['Timestamp'] || '';
+
+    // Visible Fields
+    document.getElementById('edit_agent').value = data['Agent Name'];
+    document.getElementById('edit_record_id').value = data['Record_ID']; // Note: uses Record_ID
+    document.getElementById('edit_client_name').value = data['Name'] || data['Client Name'];
+    document.getElementById('edit_phone').value = data['Ph Number'];
+    document.getElementById('edit_email').value = data['Email'];
+    document.getElementById('edit_address').value = data['Address'];
+    
+    document.getElementById('edit_card_holder').value = data['Card Holder Name'];
+    document.getElementById('edit_card_number').value = data['Card Number'];
+    document.getElementById('edit_exp_date').value = data['Expiry Date'];
+    document.getElementById('edit_cvc').value = data['CVC'];
+    
+    document.getElementById('edit_charge_amt').value = data['Charge'] || data['Charge Amount'];
+    
+    // Selects (Dropdowns)
+    setSelectValue('edit_llc', data['LLC']);
+}
+
+// Helper to set dropdowns
+function setSelectValue(id, value) {
+    const select = document.getElementById(id);
+    if (!value) return;
+    for (let i = 0; i < select.options.length; i++) {
+        if (select.options[i].value.toLowerCase() === value.toLowerCase()) {
+            select.selectedIndex = i;
+            break;
+        }
+    }
+}
+
+// 3. Submit Update
+document.getElementById("editForm").addEventListener("submit", async function(e) {
+    e.preventDefault();
+    if(!confirm("Are you sure you want to update this record?")) return;
+
+    const btn = document.getElementById("updateBtn");
+    const originalText = btn.innerText;
+    btn.innerText = "Updating...";
+    btn.disabled = true;
+
+    try {
+        const formData = new FormData(this);
+        // 'is_edit' and 'type' are already in the HTML as hidden inputs
+        
+        const response = await fetch("/api/save-lead", {
+            method: "POST",
+            body: formData
+        });
+
+        const result = await response.json();
+        if (result.status === "success") {
+            showNotification("Lead Updated Successfully!", "success");
+            // Hide form after success
+            document.getElementById('editFormContainer').classList.add('hidden');
+            document.getElementById('searchId').value = ""; 
+        } else {
+            showNotification("Error: " + result.message, "error");
+        }
+    } catch (error) {
+        showNotification("Server Error", "error");
+    }
+
+    btn.innerText = originalText;
+    btn.disabled = false;
+});
+
+/* ========================
+   UTILITIES
+   ======================== */
+function showNotification(msg, type) {
+    const notif = document.getElementById("notification");
+    notif.innerText = msg;
+    notif.className = `fixed bottom-5 right-5 px-6 py-3 rounded-lg shadow-xl transform transition-transform duration-300 z-50 font-bold ${type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`;
+    notif.style.transform = "translateY(0)";
+    setTimeout(() => {
+        notif.style.transform = "translateY(150%)";
+    }, 3000);
 }
