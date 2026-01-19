@@ -1,10 +1,10 @@
 /* =========================================
-   Techware Hub - Professional Dark Theme
+   Techware Hub - Burgundy Professional Theme
    ========================================= */
 
 body {
-    background-color: #0f172a; /* Slate 900 */
-    color: #e2e8f0;            /* Slate 200 */
+    background-color: #2A0A12; /* Deep Burgundy Background */
+    color: #fce7f3;            /* Light Pinkish White text */
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
 }
@@ -13,15 +13,15 @@ body {
 .card-hover { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
 .card-hover:hover {
     transform: translateY(-8px);
-    box-shadow: 0 20px 25px -5px rgba(59, 130, 246, 0.25);
-    border-color: #3b82f6;
+    box-shadow: 0 20px 25px -5px rgba(244, 63, 94, 0.25); /* Rose shadow */
+    border-color: #e11d48; /* Rose-600 */
 }
 
 /* --- Input Fields --- */
 .input-field {
     width: 100%;
-    background-color: #1e293b !important;
-    border: 1px solid #334155;
+    background-color: #450a1f !important; /* Lighter Burgundy */
+    border: 1px solid #831843; /* Rose-900 border */
     border-radius: 0.75rem;
     padding: 0.75rem 1rem;
     color: #ffffff !important;
@@ -31,15 +31,15 @@ body {
     appearance: none;
 }
 .input-field:focus {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-    background-color: #1e293b;
+    border-color: #fb7185; /* Rose-400 */
+    box-shadow: 0 0 0 3px rgba(251, 113, 133, 0.2);
+    background-color: #500724;
 }
-.input-field::placeholder { color: #94a3b8; }
+.input-field::placeholder { color: #fda4af; } /* Rose-300 */
 
 /* Select Arrow Fix */
 select.input-field {
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23fda4af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
     background-position: right 0.75rem center;
     background-repeat: no-repeat;
     background-size: 1.5em 1.5em;
@@ -48,7 +48,7 @@ select.input-field {
 
 /* Autofill Fix */
 input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus, input:-webkit-autofill:active {
-    -webkit-box-shadow: 0 0 0 30px #1e293b inset !important;
+    -webkit-box-shadow: 0 0 0 30px #450a1f inset !important;
     -webkit-text-fill-color: white !important;
     caret-color: white;
     transition: background-color 5000s ease-in-out 0s;
@@ -58,7 +58,7 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 .toast {
     visibility: hidden;
     min-width: 250px;
-    background-color: #10b981; /* Green */
+    background-color: #059669; /* Green-600 */
     color: #fff;
     text-align: center;
     border-radius: 8px;
@@ -73,17 +73,13 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
     opacity: 0;
     transition: opacity 0.3s, top 0.3s;
 }
-.toast.show {
-    visibility: visible;
-    opacity: 1;
-    top: 50px;
-}
-.toast.error { background-color: #ef4444; }
+.toast.show { visibility: visible; opacity: 1; top: 50px; }
+.toast.error { background-color: #dc2626; } /* Red-600 */
 
 /* --- PENDING CARD STYLES --- */
 .pending-card {
-    background: #1e293b;
-    border: 1px solid #334155;
+    background: #450a1f;
+    border: 1px solid #831843;
     border-radius: 1rem;
     padding: 1.5rem;
     display: flex;
@@ -91,41 +87,32 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
     gap: 1rem;
     transition: transform 0.2s;
 }
-.pending-card:hover { transform: scale(1.01); border-color: #475569; }
-
-.detail-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid #334155;
-    font-size: 1.1rem; /* Bigger Text */
-}
-.detail-row:last-child { border-bottom: none; }
-.detail-label { color: #94a3b8; font-size: 0.9rem; }
-.detail-value { color: white; font-weight: 600; font-family: monospace; letter-spacing: 0.05em; text-align: right;}
+.pending-card:hover { transform: scale(1.01); border-color: #fb7185; }
 
 /* --- CHAT WIDGET STYLES --- */
-.chat-window-enter {
-    transform: scale(0.95);
-    opacity: 0;
+#chatMessages {
+    overflow-y: auto;
+    max-height: 20rem;
+    scrollbar-width: thin;
+    scrollbar-color: #831843 #2A0A12;
 }
-.chat-window-enter-active {
-    transform: scale(1);
-    opacity: 1;
-    transition: all 0.2s ease-out;
-}
-
-/* Custom Scrollbar for Chat */
 #chatMessages::-webkit-scrollbar { width: 6px; }
-#chatMessages::-webkit-scrollbar-track { background: #1e293b; }
-#chatMessages::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+#chatMessages::-webkit-scrollbar-track { background: #2A0A12; }
+#chatMessages::-webkit-scrollbar-thumb { background: #831843; border-radius: 3px; }
 
-/* Message Animations */
+/* --- TABLE EDITABLE CELLS --- */
+td[contenteditable="true"]:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    cursor: text;
+    border-radius: 4px;
+}
+td[contenteditable="true"]:focus {
+    background-color: rgba(255, 255, 255, 0.2);
+    outline: 2px solid #fb7185;
+}
+
 @keyframes fadeInUp {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
 }
-.animate-fade-in-up {
-    animation: fadeInUp 0.3s ease-out forwards;
-}
+.animate-fade-in-up { animation: fadeInUp 0.3s ease-out forwards; }
