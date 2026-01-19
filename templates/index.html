@@ -8,34 +8,40 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
-<body class="bg-slate-900 text-white flex items-center justify-center min-h-screen">
-    <div class="max-w-6xl w-full px-6 text-center">
-        <h1 class="text-5xl font-extrabold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500 animate-pulse">
+<body class="flex items-center justify-center min-h-screen bg-black">
+    <div class="max-w-7xl w-full px-6 text-center">
+        <h1 class="text-5xl font-extrabold mb-4 text-[#6E1A2D] tracking-widest uppercase">
             Techware Hub
         </h1>
-        <p class="text-slate-400 mb-12 text-xl">Client Management System</p>
+        <p class="text-slate-500 mb-12 text-xl">Client Management System</p>
         
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <a href="/billing" class="card-hover bg-slate-800 p-10 rounded-3xl border border-slate-700 shadow-lg group">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <a href="/billing" class="card-hover bg-[#1a0505] p-10 rounded-3xl border border-[#6E1A2D] shadow-lg group relative overflow-hidden hover:bg-[#300003] transition-all">
                 <div class="text-6xl mb-6 group-hover:scale-110 transition-transform">💳</div>
-                <h2 class="text-3xl font-bold mb-3">Billing</h2>
-                <p class="text-slate-400">Billing Transactions</p>
+                <h2 class="text-2xl font-bold mb-3 text-white">Billing</h2>
             </a>
 
-            <a href="/insurance" class="card-hover bg-slate-800 p-10 rounded-3xl border border-slate-700 shadow-lg group">
+            <a href="/insurance" class="card-hover bg-[#1a0505] p-10 rounded-3xl border border-[#6E1A2D] shadow-lg group relative overflow-hidden hover:bg-[#300003] transition-all">
                 <div class="text-6xl mb-6 group-hover:scale-110 transition-transform">🛡️</div>
-                <h2 class="text-3xl font-bold mb-3">Insurance</h2>
-                <p class="text-slate-400">Insurance Transactions</p>
+                <h2 class="text-2xl font-bold mb-3 text-white">Insurance</h2>
             </a>
 
-            <a href="/manager" class="card-hover bg-gradient-to-br from-blue-600 to-blue-800 p-10 rounded-3xl shadow-xl group">
-                <div class="text-6xl mb-6 group-hover:scale-110 transition-transform">🔐</div>
-                <h2 class="text-3xl font-bold mb-3 text-white">Manager</h2>
-                <p class="text-blue-200">Admin Dashboard & Analytics</p>
+            <a href="/design" class="card-hover bg-[#1a0505] p-10 rounded-3xl border border-[#6E1A2D] shadow-lg group relative overflow-hidden hover:bg-[#300003] transition-all">
+                <div class="text-6xl mb-6 group-hover:scale-110 transition-transform">🎨</div>
+                <h2 class="text-2xl font-bold mb-3 text-white">Design</h2>
+            </a>
+
+            <a href="/ebook" class="card-hover bg-[#1a0505] p-10 rounded-3xl border border-[#6E1A2D] shadow-lg group relative overflow-hidden hover:bg-[#300003] transition-all">
+                <div class="text-6xl mb-6 group-hover:scale-110 transition-transform">📘</div>
+                <h2 class="text-2xl font-bold mb-3 text-white">E-Book</h2>
+            </a>
+        </div>
+
+        <div class="mt-12">
+            <a href="/manager" class="inline-block bg-[#6E1A2D] hover:bg-[#8B2339] text-white px-8 py-3 rounded-full font-bold shadow-xl transition-all border border-white/10">
+                Access Manager Portal
             </a>
         </div>
     </div>
 </body>
-
 </html>
-
