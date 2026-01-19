@@ -40,7 +40,6 @@ try:
     mongo_client = MongoClient(MONGO_URI)
     db = mongo_client["twh_portal"]
     
-    # DEFINED ALL 4 COLLECTIONS
     billing_col = db["billing"]
     insurance_col = db["insurance"]
     design_col = db["design"]
@@ -91,14 +90,12 @@ def get_worksheet(sheet_type):
     if not gc: return None
     
     try:
-        # Billing & Insurance
         if sheet_type in ['billing', 'insurance', 'auth']:
             sh = gc.open(SHEET_MAIN)
             if sheet_type == 'billing': return sh.get_worksheet(0)
             if sheet_type == 'insurance': return sh.get_worksheet(1)
             if sheet_type == 'auth': return sh.get_worksheet(2)
             
-        # Design & Ebooks
         if sheet_type in ['design', 'ebook']:
             sh = gc.open(SHEET_NEW)
             if sheet_type == 'design': return sh.worksheet("Design")
@@ -109,6 +106,16 @@ def get_worksheet(sheet_type):
         gc = None 
         return None
     return None
+
+# --- CONSTANTS ---
+AGENTS_BILLING = ["Arham Kaleem", "Arham Ali", "Haziq", "Anus", "Hasnain"]
+AGENTS_INSURANCE = ["Saad"]
+AGENTS_DESIGN = ["Designer 1", "Designer 2"]
+AGENTS_EBOOK = ["Writer 1", "Writer 2"]
+
+PROVIDERS = ["Spectrum", "Insurance", "Xfinity", "Frontier", "Optimum"]
+LLC_SPEC = ["Secure Claim Solutions", "Visionary Pathways"]
+LLC_INS = ["LMI"]
 
 # --- UTILS ---
 def send_pushbullet(title, body):
@@ -124,50 +131,63 @@ def get_timestamp():
     now = datetime.now(TZ_KARACHI)
     return now.strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d %H:%M:%S"), now
 
-def get_night_shift_window():
+def get_shift_start_time():
+    """
+    Returns the start datetime of the current 'business cycle' (9 PM).
+    If currently 3 PM, the cycle started Yesterday at 9 PM.
+    If currently 10 PM, the cycle started Today at 9 PM.
+    """
     now = datetime.now(TZ_KARACHI)
-    # If it's early morning (00:00 - 09:00), we are IN the shift that started yesterday 19:00
-    if now.hour < 9:
-        start_time = (now - timedelta(days=1)).replace(hour=19, minute=0, second=0, microsecond=0)
-    # If it's evening (19:00 - 23:59), we are IN the shift that started today 19:00
-    elif now.hour >= 19:
-        start_time = now.replace(hour=19, minute=0, second=0, microsecond=0)
-    # If it's daytime (09:00 - 19:00), the shift hasn't started yet. 
-    # FIX: Show the PREVIOUS shift stats so the dashboard isn't empty.
+    if now.hour < 21:
+        # Before 9 PM -> Cycle started yesterday
+        start = (now - timedelta(days=1)).replace(hour=21, minute=0, second=0, microsecond=0)
     else:
-        start_time = (now - timedelta(days=1)).replace(hour=19, minute=0, second=0, microsecond=0)
-        
-    end_time = start_time + timedelta(hours=14)
-    return start_time, end_time
+        # After 9 PM -> Cycle started today
+        start = now.replace(hour=21, minute=0, second=0, microsecond=0)
+    return start
 
-# --- FIXED STATS CALCULATION ---
-def calculate_mongo_stats(collection, ignore_status=False):
+# --- UPDATED STATS CALCULATION (Custom Windows) ---
+def calculate_mongo_stats(collection, dept_type):
     try:
-        start_dt, end_dt = get_night_shift_window()
+        # 1. Determine Window based on Dept
+        start_time = get_shift_start_time()
         
-        # Base Query: Filter by Time Window
-        match_query = {"created_at": {"$gte": start_dt, "$lte": end_dt}}
-        
-        # Status Filter: Only apply if NOT ignored
-        if not ignore_status:
-            match_query["status"] = "Charged"
-            
+        if dept_type in ['billing', 'insurance']:
+            # Window: 9 PM to 7 AM (Next Day) -> 10 Hours
+            end_time = start_time + timedelta(hours=10)
+            status_filter = {"status": "Charged"}
+        else:
+            # Window: 9 PM to 8:59 PM (Next Day) -> 24 Hours
+            end_time = start_time + timedelta(hours=23, minutes=59, seconds=59)
+            status_filter = {} # No status filter for Design/Ebook (Count All)
+
+        # 2. Build Query
+        match_query = {
+            "created_at": {"$gte": start_time, "$lte": end_time},
+            **status_filter
+        }
+
+        # 3. Aggregate
         pipeline = [
             {"$match": match_query},
-            {"$group": {"_id": "$agent", "total_amount": {"$sum": "$charge_amount"}}}
+            {"$group": {"_id": "$agent", "total": {"$sum": "$charge_amount"}}}
         ]
         results = list(collection.aggregate(pipeline))
-        breakdown = {}
-        total = 0.0
-        for r in results:
-            agent = r["_id"]
-            amt = r["total_amount"]
-            breakdown[agent] = amt
-            total += amt
-        return {"total": round(total, 2), "breakdown": breakdown}
+        
+        total = sum(r["total"] for r in results)
+        breakdown = {r["_id"]: r["total"] for r in results}
+
+        return {
+            "total": round(total, 2),
+            "breakdown": breakdown,
+            # Legacy keys for compatibility
+            "today": round(total, 2), 
+            "night": round(total, 2)
+        }
+
     except Exception as e:
-        print(f"Mongo Stats Error: {e}")
-        return {"total": 0, "breakdown": {}}
+        print(f"Stats Error ({dept_type}): {e}")
+        return {"total": 0, "breakdown": {}, "today": 0, "night": 0}
 
 # --- ROUTES ---
 
@@ -208,15 +228,17 @@ async def view_manager(request: Request):
 
 @app.get("/api/public/night-stats")
 async def get_public_stats():
-    # Only for Billing/Insurance widgets
     return {
-        "billing": calculate_mongo_stats(billing_col, ignore_status=False),
-        "insurance": calculate_mongo_stats(insurance_col, ignore_status=False)
+        "billing": calculate_mongo_stats(billing_col, 'billing'),
+        "insurance": calculate_mongo_stats(insurance_col, 'insurance'),
+        "design": calculate_mongo_stats(design_col, 'design'),
+        "ebook": calculate_mongo_stats(ebook_col, 'ebook')
     }
 
 # --- CHAT ENDPOINTS ---
 @app.get("/api/chat/history")
-async def get_chat_history(): return CHAT_HISTORY
+async def get_chat_history():
+    return CHAT_HISTORY
 
 @app.post("/api/chat/send")
 async def send_chat(sender: str = Form(...), message: str = Form(...), role: str = Form(...)):
@@ -283,8 +305,6 @@ async def save_lead(
         date_str, timestamp_str, ts_obj = get_timestamp()
 
     unique_id = str(order_id).strip() if type == 'billing' else str(record_id).strip()
-    
-    # Determine Collection
     if type == 'billing': target_col = billing_col
     elif type == 'insurance': target_col = insurance_col
     elif type == 'design': target_col = design_col
@@ -332,11 +352,11 @@ async def save_lead(
 
         if is_edit == 'true':
             pusher_client.trigger('techware-channel', 'lead-edited', {'agent': agent, 'id': unique_id, 'client': client_name, 'type': type, 'message': f"Edited by {agent}"})
-            return {"status": "success", "message": "Lead Updated"}
+            return {"status": "success", "message": "Lead Updated (Database)"}
         else:
-            pusher_client.trigger('techware-channel', 'new-lead', {'agent': agent, 'amount': final_charge_str, 'type': type, 'message': f"New {type} Lead: {final_charge_str}"})
+            pusher_client.trigger('techware-channel', 'new-lead', {'agent': agent, 'amount': final_charge_str, 'type': type, 'message': f"New {type.title()} Lead: {final_charge_str}"})
             send_pushbullet(f"New {type} Lead", f"{agent} - {final_charge_str}")
-            return {"status": "success", "message": "Lead Saved"}
+            return {"status": "success", "message": "Lead Saved Successfully"}
 
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, 500)
@@ -351,7 +371,7 @@ async def update_field_inline(
     try:
         if type == 'design': col = design_col
         elif type == 'ebook': col = ebook_col
-        else: return JSONResponse({"status": "error", "message": "Invalid Type"}, 400)
+        else: return JSONResponse({"status": "error", "message": "Invalid Type for inline edit"}, 400)
 
         db_field = field
         if field == 'Name': db_field = 'client_name'
@@ -359,12 +379,30 @@ async def update_field_inline(
         if field == 'Charge': db_field = 'charge_str'
 
         col.update_one({"record_id": id}, {"$set": {db_field: value}})
+        
+        pusher_client.trigger('techware-channel', 'lead-edited', {'agent': 'Inline', 'id': id, 'client': 'Record', 'type': type, 'message': "Inline Edit"})
         return {"status": "success"}
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, 500)
 
+@app.post("/api/delete-lead")
+async def delete_lead(type: str = Form(...), id: str = Form(...)):
+    try:
+        if type == 'billing': col = billing_col
+        elif type == 'insurance': col = insurance_col
+        elif type == 'design': col = design_col
+        elif type == 'ebook': col = ebook_col
+        else: return {"status": "error"}
+        
+        result = col.delete_one({"record_id": str(id)})
+        if result.deleted_count > 0:
+            return {"status": "success", "message": "Deleted from Database"}
+        return {"status": "error", "message": "ID not found in Database"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 @app.get("/api/get-lead")
-async def get_lead(type: str, id: str = None, limit: int = None):
+async def get_lead(type: str, id: str = None, row_index: int = None, limit: int = None):
     try:
         if type == 'billing': col = billing_col
         elif type == 'insurance': col = insurance_col
@@ -387,7 +425,21 @@ async def get_lead(type: str, id: str = None, limit: int = None):
         if id:
             doc = col.find_one({"record_id": str(id)})
             if not doc:
-                return JSONResponse({"status": "error", "message": "Not Found"}, 404)
+                candidates = list(col.find({"client_name": {"$regex": id, "$options": "i"}}))
+                if len(candidates) > 1:
+                    clean_cands = []
+                    for c in candidates:
+                         clean_cands.append({
+                             "name": c.get('client_name'),
+                             "charge": c.get('charge_str'),
+                             "timestamp": c.get('timestamp_str'),
+                             "record_id": c.get('record_id')
+                         })
+                    return {"status": "multiple", "candidates": clean_cands}
+                elif len(candidates) == 1:
+                    doc = candidates[0]
+            
+            if not doc: return JSONResponse({"status": "error", "message": "Not Found"}, 404)
             
             data = {
                 "Agent Name": doc.get("agent"),
@@ -457,11 +509,11 @@ async def get_manager_data(token: str):
         design_data = clean_docs(design_col.find().sort("created_at", -1).limit(200))
         ebook_data = clean_docs(ebook_col.find().sort("created_at", -1).limit(200))
         
-        # Calculate Stats (Billing/Ins = Strict 'Charged', Design/Ebook = All)
-        stats_bill = calculate_mongo_stats(billing_col, ignore_status=False)
-        stats_ins = calculate_mongo_stats(insurance_col, ignore_status=False)
-        stats_design = calculate_mongo_stats(design_col, ignore_status=True)
-        stats_ebook = calculate_mongo_stats(ebook_col, ignore_status=True)
+        # Stats using NEW Logic
+        stats_bill = calculate_mongo_stats(billing_col, 'billing')
+        stats_ins = calculate_mongo_stats(insurance_col, 'insurance')
+        stats_design = calculate_mongo_stats(design_col, 'design')
+        stats_ebook = calculate_mongo_stats(ebook_col, 'ebook')
         
         p_bill = billing_col.count_documents({"status": "Pending"})
         p_ins = insurance_col.count_documents({"status": "Pending"})
@@ -504,13 +556,3 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "success", "message": "Updated in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
-# CONSTANTS (Added back to avoid errors)
-AGENTS_BILLING = ["Arham Kaleem", "Arham Ali", "Haziq", "Anus", "Hasnain"]
-AGENTS_INSURANCE = ["Saad"]
-AGENTS_DESIGN = ["Taha"]
-AGENTS_EBOOK = ["Huzaifa", "Haseeb"]
-PROVIDERS = ["Spectrum", "Insurance", "Xfinity", "Frontier", "Optimum"]
-LLC_SPEC = ["Secure Claim Solutions", "Visionary Pathways"]
-LLC_INS = ["Secure Claim Solutions"]
-
