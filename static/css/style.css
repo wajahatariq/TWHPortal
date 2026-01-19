@@ -1,54 +1,79 @@
 /* =========================================
-   Techware Hub - Red/Black Professional
+   Techware Hub - Crimson Depth Theme
    ========================================= */
 
 :root {
-    --primary-red: #6E1A2D;
-    --dark-bg: #1a0505; /* Deep Red/Black mix */
-    --black-bg: #000000;
-    --text-color: #E6EFED;
-    --accent-gold: #F8F2E4;
+    /* Core Palette - No Pure Black */
+    --bg-gradient-start: #5a121f; /* Rich Crimson */
+    --bg-gradient-end: #2d050a;   /* Deepest Maroon (Not Black) */
+    
+    --card-bg: rgba(60, 10, 20, 0.4); /* Glassy Red */
+    --card-border: rgba(255, 150, 150, 0.15);
+    
+    --primary-accent: #ff4d4d; /* Bright Red/Pink for call to actions */
+    --secondary-accent: #6E1A2D; /* The Brand Red */
+    
+    --text-main: #ffebeb; /* Pale pinkish white */
+    --text-muted: #d6b3b8; /* Muted rose */
+    
+    --input-bg: rgba(0, 0, 0, 0.2); /* Slight darken for inputs, but blended */
+    --input-border: #6E1A2D;
 }
 
 body {
-    background-color: var(--black-bg);
-    color: var(--text-color);
+    /* The Main Gradient Background */
+    background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+    background-attachment: fixed; /* Keeps gradient stable on scroll */
+    color: var(--text-main);
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
 }
 
-/* --- SCROLLBAR --- */
+/* --- SCROLLBAR (Custom Red) --- */
 ::-webkit-scrollbar { width: 8px; }
-::-webkit-scrollbar-track { background: var(--dark-bg); }
-::-webkit-scrollbar-thumb { background: var(--primary-red); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #8B2339; }
+::-webkit-scrollbar-track { background: #2d050a; }
+::-webkit-scrollbar-thumb { background: #6E1A2D; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #ff4d4d; }
 
-/* --- CARD HOVER --- */
+/* --- CARDS & GLASSMORPHISM --- */
+.glass-panel {
+    background: var(--card-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--card-border);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
 .card-hover { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
 .card-hover:hover {
-    transform: translateY(-8px);
-    box-shadow: 0 20px 25px -5px rgba(110, 26, 45, 0.4);
-    border-color: var(--primary-red);
+    transform: translateY(-5px);
+    background: rgba(110, 26, 45, 0.6);
+    border-color: var(--primary-accent);
+    box-shadow: 0 15px 30px -5px rgba(255, 77, 77, 0.2);
 }
 
 /* --- INPUT FIELDS --- */
 .input-field {
     width: 100%;
-    background-color: #292229 !important;
-    border: 1px solid #6E1A2D;
+    background-color: var(--input-bg) !important;
+    border: 1px solid var(--input-border);
     border-radius: 0.5rem;
     padding: 0.75rem 1rem;
-    color: #ffffff !important;
+    color: #fff !important;
     font-size: 0.95rem;
     outline: none;
     transition: all 0.2s ease-in-out;
 }
 .input-field:focus {
-    border-color: #ff3333;
-    box-shadow: 0 0 0 3px rgba(110, 26, 45, 0.3);
-    background-color: #300003;
+    border-color: var(--primary-accent);
+    background-color: rgba(60, 10, 20, 0.8) !important;
+    box-shadow: 0 0 0 2px rgba(255, 77, 77, 0.2);
 }
-.input-field::placeholder { color: #9ca3af; }
+.input-field::placeholder { color: var(--text-muted); opacity: 0.7; }
+
+/* --- TABLES --- */
+table thead tr { background-color: rgba(110, 26, 45, 0.5) !important; }
+table tbody tr:hover { background-color: rgba(255, 255, 255, 0.05); }
 
 /* --- ANIMATIONS --- */
 @keyframes fadeInUp {
@@ -58,6 +83,3 @@ body {
 .animate-fade-in-up {
     animation: fadeInUp 0.3s ease-out forwards;
 }
-
-.custom-scrollbar::-webkit-scrollbar { width: 4px; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background: #555; border-radius: 2px; }
