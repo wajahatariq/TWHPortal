@@ -290,22 +290,52 @@ async function searchForEdit() {
     const type = document.getElementById('editSheetType').value;
     const id = document.getElementById('editSearchId').value;
     if(!id) return alert("Enter ID");
-    const res = await fetch(`/api/get-lead?type=${type}&id=${id}`);
-    const json = await res.json();
-    if(json.status === 'success') {
-        const d = json.data;
-        document.getElementById('editForm').classList.remove('hidden');
-        document.getElementById('e_agent').value = d['Agent Name'];
-        document.getElementById('e_client').value = d['Name'] || d['Client Name'];
-        document.getElementById('e_phone').value = d['Ph Number'];
-        document.getElementById('e_email').value = d['Email'];
-        document.getElementById('e_charge').value = d['Charge'];
-        document.getElementById('e_status').value = d['Status'];
-        document.getElementById('e_type').value = type;
-        if(type === 'billing') document.getElementById('e_order_id').value = d['Record_ID'];
-        else document.getElementById('e_record_id').value = d['Record_ID'];
-        document.getElementById('h_agent').value = d['Agent Name'];
-    } else { alert("Not Found"); document.getElementById('editForm').classList.add('hidden'); }
+    
+    try {
+        const res = await fetch(`/api/get-lead?type=${type}&id=${id}`);
+        const json = await res.json();
+        
+        if(json.status === 'success') {
+            const d = json.data;
+            document.getElementById('editForm').classList.remove('hidden');
+            
+            // --- ROBUST DATA POPULATION (Fixes "undefined" errors) ---
+            
+            // Agent
+            document.getElementById('e_agent').value = d['Agent Name'] || d['agent'] || '';
+            document.getElementById('h_agent').value = d['Agent Name'] || d['agent'] || '';
+            
+            // Client Name
+            document.getElementById('e_client').value = d['Name'] || d['Client Name'] || d['client_name'] || '';
+            
+            // Phone & Email
+            document.getElementById('e_phone').value = d['Ph Number'] || d['Phone'] || d['phone'] || '';
+            document.getElementById('e_email').value = d['Email'] || d['email'] || '';
+            
+            // Charge (Handles various keys and cleans currency symbols)
+            const rawCharge = d['Charge'] || d['Charge Amount'] || d['charge_str'] || d['charge_amt'] || '0';
+            document.getElementById('e_charge').value = String(rawCharge).replace(/[^0-9.]/g, '');
+            
+            // Status
+            document.getElementById('e_status').value = d['Status'] || d['status'] || 'Pending';
+            document.getElementById('e_type').value = type;
+            
+            // Record ID / Order ID
+            const recId = d['Record_ID'] || d['record_id'] || d['Order ID'] || d['order_id'] || id;
+            if(type === 'billing') {
+                document.getElementById('e_order_id').value = recId;
+            } else {
+                document.getElementById('e_record_id').value = recId;
+            }
+            
+        } else { 
+            alert(json.message || "Not Found"); 
+            document.getElementById('editForm').classList.add('hidden'); 
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Error searching for lead. Check console.");
+    }
 }
 
 document.getElementById('editForm').addEventListener('submit', async (e) => {
@@ -338,6 +368,7 @@ async function manualRefresh() {
 }
 
 setInterval(() => { fetchData(); }, 120000);
+
 
 
 
