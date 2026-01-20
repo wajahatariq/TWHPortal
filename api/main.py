@@ -269,7 +269,7 @@ async def save_lead(
     account_number: Optional[str] = Form(""),  
     original_timestamp: Optional[str] = Form(None),
     timestamp_mode: Optional[str] = Form("keep"),
-    row_index: Optional[int] = Form(None)
+    row_index: Optional[str] = Form(None)
 ):
     try:
         clean_charge = float(str(charge_amt).replace('$', '').replace(',', '').strip())
@@ -553,6 +553,7 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "success", "message": "Updated in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
