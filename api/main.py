@@ -1,3 +1,4 @@
+
 import os
 import json
 import gspread
@@ -322,7 +323,22 @@ async def save_lead(
     }
 
     try:
-        target_col.update_one({"record_id": unique_id}, {"$set": mongo_doc}, upsert=True)
+        # --- FIXED LOGIC START ---
+        if is_edit == 'true':
+            # Edit Mode: Target specific document using row_index (_id) if available
+            if row_index:
+                filter_query = {"_id": ObjectId(row_index)}
+            else:
+                filter_query = {"record_id": unique_id} # Fallback
+                
+            result = target_col.update_one(filter_query, {"$set": mongo_doc})
+            
+            if result.matched_count == 0:
+                 return JSONResponse({"status": "error", "message": "Record not found for update"}, 404)
+        else:
+            # New Lead: Always INSERT (allows duplicates, stops overwriting)
+            target_col.insert_one(mongo_doc)
+        # --- FIXED LOGIC END ---
 
         if is_edit != 'true':
             ws = get_worksheet(type)
@@ -340,7 +356,6 @@ async def save_lead(
             pusher_client.trigger('techware-channel', 'lead-edited', {'agent': agent, 'id': unique_id, 'client': client_name, 'type': type, 'message': f"Edited by {agent}"})
             return {"status": "success", "message": "Lead Updated"}
         else:
-            # UPDATED: Included 'client' in the payload
             pusher_client.trigger('techware-channel', 'new-lead', {
                 'agent': agent, 
                 'amount': final_charge_str, 
@@ -353,7 +368,7 @@ async def save_lead(
 
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, 500)
-
+      
 @app.post("/api/update_field")
 async def update_field_inline(
     type: str = Form(...),
@@ -502,10 +517,10 @@ async def get_manager_data(token: str):
                 docs.append(d)
             return docs
 
-        bill_data = clean_docs(billing_col.find().sort("created_at", -1).limit(1000))
-        ins_data = clean_docs(insurance_col.find().sort("created_at", -1).limit(1000))
-        design_data = clean_docs(design_col.find().sort("created_at", -1).limit(1000))
-        ebook_data = clean_docs(ebook_col.find().sort("created_at", -1).limit(1000))
+        bill_data = clean_docs(billing_col.find().sort("created_at", -1)
+        ins_data = clean_docs(insurance_col.find().sort("created_at", -1)
+        design_data = clean_docs(design_col.find().sort("created_at", -1)
+        ebook_data = clean_docs(ebook_col.find().sort("created_at", -1)
         
         stats_bill = calculate_mongo_stats(billing_col, 'billing')
         stats_ins = calculate_mongo_stats(insurance_col, 'insurance')
