@@ -401,7 +401,7 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
         return {"status": "error", "message": str(e)}
 
 @app.get("/api/get-lead")
-async def get_lead(type: str, id: str = None, limit: int = None):
+async def get_lead(type: str, id: str = None, limit: int = None, row_index: str = None):
     try:
         if type == 'billing': col = billing_col
         elif type == 'insurance': col = insurance_col
@@ -434,34 +434,72 @@ async def get_lead(type: str, id: str = None, limit: int = None):
                         results.append(doc)
                     return {"status": "success", "data": results}
 
-        if id:
-            doc = col.find_one({"record_id": str(id)})
-            if not doc:
+        # --- MODIFIED LOGIC START ---
+        doc = None
+
+        if row_index:
+            # Case 1: Fetch Specific Duplicate (User selected from dialog)
+            try:
+                doc = col.find_one({"_id": ObjectId(row_index)})
+            except:
+                return JSONResponse({"status": "error", "message": "Invalid ID format"}, 400)
+
+        elif id:
+            # Case 2: Search by Record ID (Check for duplicates)
+            cursor = col.find({"record_id": str(id)})
+            docs = list(cursor)
+
+            if len(docs) == 0:
                 return JSONResponse({"status": "error", "message": "Not Found"}, 404)
             
-            data = {
-                "Agent Name": doc.get("agent"),
-                "Name": doc.get("client_name"),
-                "Client Name": doc.get("client_name"),
-                "Ph Number": doc.get("phone"),
-                "Address": doc.get("address"),
-                "Email": doc.get("email"),
-                "Card Holder Name": doc.get("card_holder"),
-                "Card Number": doc.get("card_number"),
-                "Expiry Date": doc.get("exp_date"),
-                "CVC": doc.get("cvc"),
-                "Charge Amount": doc.get("charge_str"),
-                "Charge": doc.get("charge_str"),
-                "LLC": doc.get("llc"),
-                "Provider": doc.get("provider"),
-                "Timestamp": doc.get("timestamp_str"),
-                "Status": doc.get("status"),
-                "Record_ID": doc.get("record_id"),
-                "Order ID": doc.get("record_id"),
-                "PIN Code": doc.get("pin_code"),
-                "Account Number": doc.get("account_number")
-            }
-            return {"status": "success", "data": data}
+            # If multiple records found, return candidates list
+            if len(docs) > 1:
+                candidates = []
+                for d in docs:
+                    candidates.append({
+                        "name": d.get("client_name", "Unknown"),
+                        "charge": d.get("charge_str", "$0.00"),
+                        "agent": d.get("agent", "Unknown"),
+                        "timestamp": d.get("timestamp_str", ""),
+                        "row_index": str(d["_id"])  # Send unique Mongo ID
+                    })
+                return {
+                    "status": "multiple",
+                    "message": "Multiple records found",
+                    "candidates": candidates
+                }
+            
+            # If only one found, proceed as normal
+            doc = docs[0]
+        # --- MODIFIED LOGIC END ---
+
+        if not doc:
+            return JSONResponse({"status": "error", "message": "Not Found"}, 404)
+            
+        data = {
+            "Agent Name": doc.get("agent"),
+            "Name": doc.get("client_name"),
+            "Client Name": doc.get("client_name"),
+            "Ph Number": doc.get("phone"),
+            "Address": doc.get("address"),
+            "Email": doc.get("email"),
+            "Card Holder Name": doc.get("card_holder"),
+            "Card Number": doc.get("card_number"),
+            "Expiry Date": doc.get("exp_date"),
+            "CVC": doc.get("cvc"),
+            "Charge Amount": doc.get("charge_str"),
+            "Charge": doc.get("charge_str"),
+            "LLC": doc.get("llc"),
+            "Provider": doc.get("provider"),
+            "Timestamp": doc.get("timestamp_str"),
+            "Status": doc.get("status"),
+            "Record_ID": doc.get("record_id"),
+            "Order ID": doc.get("record_id"),
+            "PIN Code": doc.get("pin_code"),
+            "Account Number": doc.get("account_number"),
+            "row_index": str(doc["_id"]) # Critical for editing specific duplicate
+        }
+        return {"status": "success", "data": data}
 
     except Exception as e: 
         return JSONResponse({"status": "error", "message": str(e)}, 500)
@@ -553,6 +591,7 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "success", "message": "Updated in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
