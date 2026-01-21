@@ -26,24 +26,19 @@ function updateNightWidget() {
 }
 fetchNightStats(); setInterval(fetchNightStats, 120000); 
 
-// --- CORRECTED TOGGLE FUNCTION --
 function toggleProviderFields() {
     const provider = document.getElementById('providerSelect').value;
     const pinDiv = document.getElementById('pinContainer');
     const accDiv = document.getElementById('accountContainer');
-    const placeholder = document.getElementById('providerPlaceholder');
-
-    // Default: Hide Inputs, Show Placeholder
+    
+    // Reset
     pinDiv.classList.add('hidden');
     accDiv.classList.add('hidden');
-    if(placeholder) placeholder.classList.remove('hidden');
 
     if (provider === 'Spectrum') {
         pinDiv.classList.remove('hidden');
-        if(placeholder) placeholder.classList.add('hidden');
     } else if (provider === 'Optimum') {
         accDiv.classList.remove('hidden');
-        if(placeholder) placeholder.classList.add('hidden');
     }
 }
 
@@ -78,56 +73,52 @@ function clearForm() {
     showToast("Form Cleared");
 }
 
-async function searchLead(rowIndex = null) {
-    const id = document.getElementById('searchId').value;
+// --- UPDATED SEARCH LOGIC ---
+async function searchLead(specificRowIndex = null) {
+    const id = document.getElementById('searchId').value.trim();
     if(!id) return showToast("Enter an Order ID", true);
 
     const btn = document.querySelector('button[onclick="searchLead()"]');
-    if(!rowIndex) btn.innerText = "...";
+    if(!specificRowIndex) btn.innerText = "...";
     
     let url = `/api/get-lead?type=billing&id=${id}`;
-    if (rowIndex) url += `&row_index=${rowIndex}`;
+    // If we are selecting a specific duplicate, pass the row_index
+    if (specificRowIndex) url += `&row_index=${specificRowIndex}`;
 
     try {
         const res = await fetch(url);
         const json = await res.json();
         
-        console.log("Server Response:", json); // Debugging line to see exact data in Console
-
-        // --- ROBUST FIX FOR DUPLICATES ---
+        // --- 1. HANDLE DUPLICATES ---
         if(json.status === 'multiple') {
             const list = document.getElementById('duplicateList');
             list.innerHTML = '';
             
-            json.candidates.forEach(c => {
-                // FALLBACK LOGIC: Check Lowercase first, then Uppercase, then default
-                const name = c.name || c.Name || c['Client Name'] || 'Unknown';
-                const charge = c.charge || c.Charge || c['Charge Amount'] || '$0';
-                const date = c.timestamp || c.Timestamp || c.Date || '';
-                const rIndex = c.row_index || c.Row_Index;
-
+            // Use json.data (from backend)
+            json.data.forEach(c => {
                 const item = document.createElement('div');
-                item.className = "p-3 bg-slate-700/50 rounded-lg cursor-pointer hover:bg-blue-600/50 border border-slate-600 transition flex justify-between items-center";
+                item.className = "p-3 bg-slate-700/50 rounded-lg cursor-pointer hover:bg-blue-600/50 border border-slate-600 transition flex justify-between items-center mb-2";
                 
                 item.innerHTML = `
                     <div>
-                        <div class="font-bold text-white">${name}</div>
-                        <div class="text-xs text-slate-400">${date}</div>
+                        <div class="font-bold text-white text-sm">${c.Agent} - ${c.Client}</div>
+                        <div class="text-xs text-slate-400">${c.Timestamp}</div>
                     </div>
-                    <div class="text-green-400 font-mono font-bold">${charge}</div>
+                    <div class="text-green-400 font-mono font-bold text-sm">${c.Charge}</div>
                 `;
                 
                 item.onclick = () => {
                     document.getElementById('duplicateModal').classList.add('hidden');
-                    searchLead(rIndex);
+                    // Recursively call search with specific ID
+                    searchLead(c.row_index);
                 };
                 list.appendChild(item);
             });
             document.getElementById('duplicateModal').classList.remove('hidden');
             return; 
         }
-        // ---------------------------------
 
+        // --- 2. HANDLE SUCCESS ---
         if(json.status === 'success') {
             const d = json.data;
             document.getElementById('isEdit').value = "true";
@@ -137,15 +128,16 @@ async function searchLead(rowIndex = null) {
             submitBtn.classList.replace('bg-blue-600', 'bg-green-600');
             
             document.getElementById('editOptions').classList.remove('hidden');
-            // Handle various date keys
-            document.getElementById('original_timestamp').value = d['Timestamp'] || d['timestamp'];
+            
+            // Populate Fields
+            document.getElementById('original_timestamp').value = d['Timestamp'];
             document.getElementById('row_index').value = d['row_index'];
 
-            document.getElementById('agent').value = d['Agent Name'] || d['agent'];
-            document.getElementById('client_name').value = d['Name'] || d['Client Name']; 
-            document.getElementById('order_id').value = d['Record_ID'] || d['Order ID'];
+            document.getElementById('agent').value = d['Agent Name'];
+            document.getElementById('client_name').value = d['Client Name']; 
+            document.getElementById('order_id').value = d['Order ID'];
             document.getElementById('order_id').readOnly = true; 
-            document.getElementById('phone').value = d['Ph Number'] || d['Phone'];
+            document.getElementById('phone').value = d['Ph Number'];
             document.getElementById('address').value = d['Address'];
             document.getElementById('email').value = d['Email'];
             document.getElementById('card_holder').value = d['Card Holder Name'];
@@ -153,7 +145,7 @@ async function searchLead(rowIndex = null) {
             document.getElementById('exp_date').value = d['Expiry Date'];
             document.getElementById('cvc').value = d['CVC'];
             
-            const rawCharge = d['Charge'] || d['Charge Amount'] || '0';
+            const rawCharge = d['Charge'] || '0';
             const cleanCharge = String(rawCharge).replace(/[^0-9.]/g, '');
             document.getElementById('charge_amt').value = cleanCharge;
             
@@ -167,11 +159,12 @@ async function searchLead(rowIndex = null) {
             toggleProviderFields();
             showToast("Lead Loaded.");
         } else {
-            showToast("Order ID not found.", true);
+            showToast(json.message || "Order ID not found.", true);
         }
     } catch(e) { console.error(e); showToast("Error fetching data", true); }
-    finally { if(!rowIndex) btn.innerText = "Find"; }
+    finally { if(!specificRowIndex) btn.innerText = "Find"; }
 }
+
 document.getElementById('billingForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = document.getElementById('submitBtn');
@@ -185,10 +178,8 @@ document.getElementById('billingForm').addEventListener('submit', async (e) => {
         if (data.status === 'success') {
             showToast(data.message);
             fetchNightStats(); 
+            // Optional: clearForm(); 
         } else { showToast(data.message, true); }
     } catch (err) { showToast('Submission Failed', true); } 
     finally { btn.innerText = originalText; btn.disabled = false; }
 });
-
-
-
