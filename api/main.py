@@ -429,7 +429,9 @@ async def get_lead(type: str, id: str = None, limit: int = None):
         elif type == 'insurance': col = insurance_col
         elif type == 'design': col = design_col
         elif type == 'ebook': col = ebook_col
+        else: return JSONResponse({"status": "error", "message": "Invalid Type"}, 400)
         
+        # --- CASE 1: Fetching Recent Leads (for the table) ---
         if limit:
             cursor = col.find().sort("created_at", -1).limit(limit)
             results = []
@@ -453,15 +455,45 @@ async def get_lead(type: str, id: str = None, limit: int = None):
                 doc['PIN'] = doc.get('pin_code')
                 doc['Status'] = doc.get('status')
                 doc['Timestamp'] = doc.get('timestamp_str')
+                # IMPORTANT: Send the specific Mongo ID for editing
+                doc['row_index'] = str(doc['_id']) 
                 results.append(doc)
             return {"status": "success", "data": results}
 
+        # --- CASE 2: Searching by ID (for Editing) ---
         if id:
-            doc = col.find_one({"record_id": str(id)})
-            if not doc:
+            # SEARCH FOR ALL MATCHING RECORDS
+            cursor = col.find({"record_id": str(id)})
+            found_docs = list(cursor)
+
+            if len(found_docs) == 0:
                 return JSONResponse({"status": "error", "message": "Not Found"}, 404)
             
+            # --- SUB-CASE A: Duplicates Found (Show Dialog) ---
+            if len(found_docs) > 1:
+                duplicate_options = []
+                for d in found_docs:
+                    duplicate_options.append({
+                        "row_index": str(d.get('_id')), # Unique Key to identify this specific duplicate
+                        "Agent": d.get("agent"),
+                        "Client": d.get("client_name"),
+                        "Charge": d.get("charge_str"),
+                        "Timestamp": d.get("timestamp_str"),
+                        "Status": d.get("status")
+                    })
+                # Return distinct status "multiple" so frontend knows to show dialog
+                return {
+                    "status": "multiple", 
+                    "count": len(found_docs), 
+                    "data": duplicate_options,
+                    "message": "Multiple records found"
+                }
+
+            # --- SUB-CASE B: Single Record (Normal Behavior) ---
+            doc = found_docs[0]
+            
             data = {
+                "row_index": str(doc.get('_id')), # CRITICAL: Used to save edits to this specific doc
                 "Agent Name": doc.get("agent"),
                 "Name": doc.get("client_name"),
                 "Client Name": doc.get("client_name"),
@@ -487,6 +519,7 @@ async def get_lead(type: str, id: str = None, limit: int = None):
 
     except Exception as e: 
         return JSONResponse({"status": "error", "message": str(e)}, 500)
+      
 @app.post("/api/manager/login")
 async def manager_login(user_id: str = Form(...), password: str = Form(...)):
     try:
@@ -574,6 +607,7 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "success", "message": "Updated in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
