@@ -423,7 +423,7 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
         return {"status": "error", "message": str(e)}
 
 @app.get("/api/get-lead")
-async def get_lead(type: str, id: str = None, limit: int = None):
+async def get_lead(type: str, id: str = None, limit: int = None, row_index: str = None):
     try:
         if type == 'billing': col = billing_col
         elif type == 'insurance': col = insurance_col
@@ -437,7 +437,6 @@ async def get_lead(type: str, id: str = None, limit: int = None):
             results = []
             for doc in cursor:
                 doc['_id'] = str(doc['_id'])
-                # Map ALL fields for the table
                 doc['Record_ID'] = doc.get('record_id')
                 doc['Agent'] = doc.get('agent')
                 doc['Name'] = doc.get('client_name')
@@ -455,67 +454,76 @@ async def get_lead(type: str, id: str = None, limit: int = None):
                 doc['PIN'] = doc.get('pin_code')
                 doc['Status'] = doc.get('status')
                 doc['Timestamp'] = doc.get('timestamp_str')
-                # IMPORTANT: Send the specific Mongo ID for editing
                 doc['row_index'] = str(doc['_id']) 
                 results.append(doc)
             return {"status": "success", "data": results}
 
-        # --- CASE 2: Searching by ID (for Editing) ---
-        if id:
-            # SEARCH FOR ALL MATCHING RECORDS
+        # --- CASE 2: Specific Selection (User clicked a duplicate) ---
+        # This is the part you were missing!
+        if row_index:
+            try:
+                # Find the EXACT document by its unique Mongo ID
+                doc = col.find_one({"_id": ObjectId(row_index)})
+                if not doc: return JSONResponse({"status": "error", "message": "Specific record not found"}, 404)
+                found_docs = [doc] # Treat it as a found list of 1
+            except:
+                return JSONResponse({"status": "error", "message": "Invalid Row Index"}, 400)
+
+        # --- CASE 3: General Search by Order ID ---
+        elif id:
             cursor = col.find({"record_id": str(id)})
             found_docs = list(cursor)
-
+            
             if len(found_docs) == 0:
                 return JSONResponse({"status": "error", "message": "Not Found"}, 404)
             
-            # --- SUB-CASE A: Duplicates Found (Show Dialog) ---
+            # If duplicates found, return list so user can choose
             if len(found_docs) > 1:
                 duplicate_options = []
                 for d in found_docs:
                     duplicate_options.append({
-                        "row_index": str(d.get('_id')), # Unique Key to identify this specific duplicate
+                        "row_index": str(d.get('_id')), # Unique ID for the click handler
                         "Agent": d.get("agent"),
                         "Client": d.get("client_name"),
                         "Charge": d.get("charge_str"),
                         "Timestamp": d.get("timestamp_str"),
                         "Status": d.get("status")
                     })
-                # Return distinct status "multiple" so frontend knows to show dialog
                 return {
                     "status": "multiple", 
                     "count": len(found_docs), 
                     "data": duplicate_options,
                     "message": "Multiple records found"
                 }
+        else:
+            return JSONResponse({"status": "error", "message": "No ID provided"}, 400)
 
-            # --- SUB-CASE B: Single Record (Normal Behavior) ---
-            doc = found_docs[0]
-            
-            data = {
-                "row_index": str(doc.get('_id')), # CRITICAL: Used to save edits to this specific doc
-                "Agent Name": doc.get("agent"),
-                "Name": doc.get("client_name"),
-                "Client Name": doc.get("client_name"),
-                "Ph Number": doc.get("phone"),
-                "Address": doc.get("address"),
-                "Email": doc.get("email"),
-                "Card Holder Name": doc.get("card_holder"),
-                "Card Number": doc.get("card_number"),
-                "Expiry Date": doc.get("exp_date"),
-                "CVC": doc.get("cvc"),
-                "Charge Amount": doc.get("charge_str"),
-                "Charge": doc.get("charge_str"),
-                "LLC": doc.get("llc"),
-                "Provider": doc.get("provider"),
-                "Timestamp": doc.get("timestamp_str"),
-                "Status": doc.get("status"),
-                "Record_ID": doc.get("record_id"),
-                "Order ID": doc.get("record_id"),
-                "PIN Code": doc.get("pin_code"),
-                "Account Number": doc.get("account_number")
-            }
-            return {"status": "success", "data": data}
+        # --- RETURN SINGLE DOCUMENT (Populate Form) ---
+        doc = found_docs[0]
+        data = {
+            "row_index": str(doc.get('_id')), 
+            "Agent Name": doc.get("agent"),
+            "Name": doc.get("client_name"),
+            "Client Name": doc.get("client_name"),
+            "Ph Number": doc.get("phone"),
+            "Address": doc.get("address"),
+            "Email": doc.get("email"),
+            "Card Holder Name": doc.get("card_holder"),
+            "Card Number": doc.get("card_number"),
+            "Expiry Date": doc.get("exp_date"),
+            "CVC": doc.get("cvc"),
+            "Charge Amount": doc.get("charge_str"),
+            "Charge": doc.get("charge_str"),
+            "LLC": doc.get("llc"),
+            "Provider": doc.get("provider"),
+            "Timestamp": doc.get("timestamp_str"),
+            "Status": doc.get("status"),
+            "Record_ID": doc.get("record_id"),
+            "Order ID": doc.get("record_id"),
+            "PIN Code": doc.get("pin_code"),
+            "Account Number": doc.get("account_number")
+        }
+        return {"status": "success", "data": data}
 
     except Exception as e: 
         return JSONResponse({"status": "error", "message": str(e)}, 500)
@@ -607,6 +615,7 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "success", "message": "Updated in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
