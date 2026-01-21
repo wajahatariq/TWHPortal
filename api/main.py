@@ -415,14 +415,15 @@ async def delete_lead(type: str = Form(...), id: str = Form(...), row_index: str
         elif type == 'ebook': col = ebook_col
         else: return {"status": "error"}
         
-        # PRIORITIZE deleting by specific Row Index (Unique ID) if available
-        if row_index and row_index != 'undefined':
+        # PRIORITIZE deleting by specific Row Index (Unique ID)
+        if row_index and row_index != 'undefined' and row_index != '':
             try:
                 result = col.delete_one({"_id": ObjectId(row_index)})
-            except:
+            except Exception as e:
+                # Fallback to ID if ObjectId fails
                 result = col.delete_one({"record_id": str(id)})
         else:
-            # Fallback to deleting by Record ID (might delete the wrong duplicate)
+            # Fallback for old records without row_index
             result = col.delete_one({"record_id": str(id)})
 
         if result.deleted_count > 0:
@@ -622,6 +623,7 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "success", "message": "Updated in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
