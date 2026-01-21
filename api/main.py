@@ -269,64 +269,87 @@ async def save_lead(
     account_number: Optional[str] = Form(""),  
     original_timestamp: Optional[str] = Form(None),
     timestamp_mode: Optional[str] = Form("keep"),
-    row_index: Optional[int] = Form(None)
+    row_index: Optional[str] = Form(None)
 ):
     try:
-        clean_charge = float(str(charge_amt).replace('$', '').replace(',', '').strip())
-        final_charge_str = f"${clean_charge:.2f}"
-    except: 
-        clean_charge = 0.0
-        final_charge_str = charge_amt 
-
-    if is_edit == 'true' and timestamp_mode == 'keep' and original_timestamp:
         try:
-            ts_obj = datetime.strptime(original_timestamp, "%Y-%m-%d %H:%M:%S")
-            ts_obj = TZ_KARACHI.localize(ts_obj) if ts_obj.tzinfo is None else ts_obj
-            date_str = ts_obj.strftime("%Y-%m-%d")
-            timestamp_str = original_timestamp
-        except:
-             date_str, timestamp_str, ts_obj = get_timestamp()
-    else:
-        date_str, timestamp_str, ts_obj = get_timestamp()
+            clean_charge = float(str(charge_amt).replace('$', '').replace(',', '').strip())
+            final_charge_str = f"${clean_charge:.2f}"
+        except: 
+            clean_charge = 0.0
+            final_charge_str = charge_amt 
 
-    unique_id = str(order_id).strip() if type == 'billing' else str(record_id).strip()
-    
-    if type == 'billing': target_col = billing_col
-    elif type == 'insurance': target_col = insurance_col
-    elif type == 'design': target_col = design_col
-    elif type == 'ebook': target_col = ebook_col
-    else: return JSONResponse({"status": "error", "message": "Invalid Type"}, 400)
+        if is_edit == 'true' and timestamp_mode == 'keep' and original_timestamp:
+            try:
+                ts_obj = datetime.strptime(original_timestamp, "%Y-%m-%d %H:%M:%S")
+                ts_obj = TZ_KARACHI.localize(ts_obj) if ts_obj.tzinfo is None else ts_obj
+                date_str = ts_obj.strftime("%Y-%m-%d")
+                timestamp_str = original_timestamp
+            except:
+                 date_str, timestamp_str, ts_obj = get_timestamp()
+        else:
+            date_str, timestamp_str, ts_obj = get_timestamp()
 
-    mongo_doc = {
-        "record_id": unique_id,
-        "agent": agent,
-        "client_name": client_name,
-        "phone": phone,
-        "address": address,
-        "email": email,
-        "card_holder": card_holder,
-        "card_number": str(card_number),
-        "exp_date": str(exp_date),
-        "cvc": str(cvc),
-        "charge_amount": clean_charge,
-        "charge_str": final_charge_str,
-        "llc": llc,
-        "provider": provider,
-        "pin_code": pin_code,
-        "account_number": account_number,
-        "status": status if is_edit == 'true' else "Pending",
-        "created_at": ts_obj,
-        "timestamp_str": timestamp_str,
-        "date_str": date_str,
-        "type": type
-    }
+        unique_id = str(order_id).strip() if type == 'billing' else str(record_id).strip()
+        
+        if type == 'billing': target_col = billing_col
+        elif type == 'insurance': target_col = insurance_col
+        elif type == 'design': target_col = design_col
+        elif type == 'ebook': target_col = ebook_col
+        else: return JSONResponse({"status": "error", "message": "Invalid Type"}, 400)
 
-    try:
-        target_col.update_one({"record_id": unique_id}, {"$set": mongo_doc}, upsert=True)
+        mongo_doc = {
+            "record_id": unique_id,
+            "agent": agent,
+            "client_name": client_name,
+            "phone": phone,
+            "address": address,
+            "email": email,
+            "card_holder": card_holder,
+            "card_number": str(card_number),
+            "exp_date": str(exp_date),
+            "cvc": str(cvc),
+            "charge_amount": clean_charge,
+            "charge_str": final_charge_str,
+            "llc": llc,
+            "provider": provider,
+            "pin_code": pin_code,
+            "account_number": account_number,
+            "status": status if is_edit == 'true' else "Pending",
+            "created_at": ts_obj,
+            "timestamp_str": timestamp_str,
+            "date_str": date_str,
+            "type": type
+        }
+
+        # --- CRITICAL CHANGE FOR OVERWRITING ---
+        if is_edit == 'true':
+            # EDIT MODE: Only explicitly update if the user clicked "Edit"
+            if row_index and row_index != 'undefined':
+                try:
+                    filter_query = {"_id": ObjectId(row_index)}
+                except:
+                    filter_query = {"record_id": unique_id}
+            else:
+                filter_query = {"record_id": unique_id}
+                
+            result = target_col.update_one(filter_query, {"$set": mongo_doc})
+            if result.matched_count == 0:
+                 return JSONResponse({"status": "error", "message": "Record not found for update"}, 404)
+        else:
+            # NEW LEAD MODE: 
+            # We use insert_one(). 
+            # This creates a NEW document every single time.
+            # Even if the Record ID is the same.
+            # Even if the Agent Name is the same.
+            # It will NEVER overwrite an old lead.
+            target_col.insert_one(mongo_doc)
+        # ----------------------------------------
 
         if is_edit != 'true':
             ws = get_worksheet(type)
             if ws:
+                # Append row always adds to the bottom, never overwrites
                 if type == 'billing':
                     row_data = [unique_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge_str, llc, provider, date_str, "Pending", timestamp_str, pin_code or account_number]
                 elif type == 'insurance':
@@ -340,7 +363,6 @@ async def save_lead(
             pusher_client.trigger('techware-channel', 'lead-edited', {'agent': agent, 'id': unique_id, 'client': client_name, 'type': type, 'message': f"Edited by {agent}"})
             return {"status": "success", "message": "Lead Updated"}
         else:
-            # UPDATED: Included 'client' in the payload
             pusher_client.trigger('techware-channel', 'new-lead', {
                 'agent': agent, 
                 'amount': final_charge_str, 
@@ -552,6 +574,7 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "success", "message": "Updated in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
