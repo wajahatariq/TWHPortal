@@ -160,9 +160,7 @@ function renderPendingCards() {
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Card Name:</span><span class="text-white">${row['card_holder']}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Phone:</span><span class="text-white">${row['phone']}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Email:</span><span class="text-blue-300 truncate">${row['email']}</span></div>
-                
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Address:</span><span class="text-white break-words w-full">${address}</span></div>
-                
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">CVC:</span><span class="text-red-400 font-bold">${row['cvc']}</span></div>
             </div>
             <div class="grid grid-cols-2 gap-3 p-4 pt-0">
@@ -173,6 +171,7 @@ function renderPendingCards() {
         container.appendChild(card);
     });
 }
+
 function updateAgentSelector() {
     const type = document.getElementById('analysisSheetSelector').value;
     const data = allData[type] || [];
@@ -205,7 +204,6 @@ function renderAnalysis() {
     filtered.forEach(r => {
         const raw = String(r['Charge']).replace(/[^0-9.]/g, '');
         const val = parseFloat(raw) || 0;
-        
         let shouldCount = false;
         if(type === 'design' || type === 'ebook') shouldCount = true;
         else if(r['Status'] === 'Charged') shouldCount = true;
@@ -230,7 +228,6 @@ function renderAnalysis() {
     if(myChart) myChart.destroy();
     myChart = new Chart(ctx, { type: 'line', data: { labels: sortedHours, datasets: [{ label: 'Hourly Charged', data: values, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', tension: 0.4, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#334155' } }, x: { grid: { display: false } } } } });
 
-    // --- REPLACED: Enhanced Column Logic ---
     let columns = [];
     if (type === 'billing') {
         columns = ["Record_ID", "Agent Name", "Name", "Phone", "Email", "Address", "Card Number", "Exp Date", "CVC", "Charge", "Status", "LLC", "Provider", "PIN/Acc", "Timestamp"];
@@ -248,22 +245,16 @@ function renderAnalysis() {
         tbody.innerHTML = filtered.map(row => {
             return `<tr class="border-b border-slate-800 hover:bg-slate-800 transition">
                 ${columns.map(col => {
-                    // --- SMART VALUE LOOKUP ---
                     let val = row[col];
-                    
-                    // Fallback 1: Try normalized key (e.g. "Card Number" -> "card_number")
                     if (!val) {
                         const key = col.toLowerCase().replace(/ /g, '_').replace(/\//g, '_').replace('.', '');
                         val = row[key];
                     }
-                    
-                    // Fallback 2: Specific field mappings
                     if (!val && col === 'Name') val = row['Client Name'];
                     if (!val && col === 'Service') val = row['Provider'] || row['provider'];
                     if (!val && col === 'PIN/Acc') val = row['pin_code'] || row['account_number'];
                     if (!val && col === 'Exp Date') val = row['exp_date'] || row['Expiry Date'];
-                    
-                    if (!val) val = ''; // Default empty
+                    if (!val) val = ''; 
 
                     let color = 'text-slate-300';
                     if(col === 'Status') {
@@ -272,7 +263,6 @@ function renderAnalysis() {
                         else color = 'text-red-400';
                     }
                     if(col === 'Charge') color = 'text-green-400 font-mono font-bold';
-                    
                     return `<td class="p-3 text-sm ${color} whitespace-nowrap">${val}</td>`;
                 }).join('')}
             </tr>`;
@@ -296,15 +286,25 @@ async function setStatus(type, id, status, btnElement) {
     function resetButtons() { btns.forEach(b => { b.disabled = false; b.classList.remove('opacity-50'); }); btnElement.innerText = originalText; }
 }
 
-async function searchForEdit() {
+// --- UPDATED: Search with Duplicate Handling ---
+async function searchForEdit(specificRowIndex = null) {
     const type = document.getElementById('editSheetType').value;
-    const id = document.getElementById('editSearchId').value;
+    const id = document.getElementById('editSearchId').value.trim();
     if(!id) return alert("Enter ID");
     
+    let url = `/api/get-lead?type=${type}&id=${id}`;
+    if (specificRowIndex) url += `&row_index=${specificRowIndex}`;
+
     try {
-        const res = await fetch(`/api/get-lead?type=${type}&id=${id}`);
+        const res = await fetch(url);
         const json = await res.json();
         
+        // Handle Duplicates
+        if(json.status === 'multiple') {
+            showManagerDuplicateSelection(json.data);
+            return;
+        }
+
         if(json.status === 'success') {
             const d = json.data;
             document.getElementById('editForm').classList.remove('hidden');
@@ -321,6 +321,9 @@ async function searchForEdit() {
             document.getElementById('e_status').value = d['Status'] || d['status'] || 'Pending';
             document.getElementById('e_type').value = type;
             
+            // Populate hidden row_index for unique identification
+            document.getElementById('e_row_index').value = d['row_index'] || '';
+
             const recId = d['Record_ID'] || d['record_id'] || d['Order ID'] || d['order_id'] || id;
             if(type === 'billing') {
                 document.getElementById('e_order_id').value = recId;
@@ -338,6 +341,32 @@ async function searchForEdit() {
     }
 }
 
+// --- NEW: Duplicate Selection Modal Logic ---
+function showManagerDuplicateSelection(candidates) {
+    const modal = document.getElementById('duplicateModal');
+    const list = document.getElementById('duplicateList');
+    list.innerHTML = ''; 
+
+    candidates.forEach(c => {
+        const div = document.createElement('div');
+        div.className = "p-3 bg-slate-700 hover:bg-slate-600 rounded cursor-pointer border border-slate-600 flex justify-between items-center mb-2";
+        div.innerHTML = `
+            <div>
+                <div class="font-bold text-white text-sm">${c.Agent}</div>
+                <div class="text-xs text-slate-400">${c.Timestamp}</div>
+            </div>
+            <div class="font-mono text-green-400 font-bold">${c.Charge}</div>
+        `;
+        div.onclick = () => {
+            modal.classList.add('hidden');
+            searchForEdit(c.row_index); // Recurse with specific ID
+        };
+        list.appendChild(div);
+    });
+    
+    modal.classList.remove('hidden');
+}
+
 document.getElementById('editForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     if(!confirm("Update?")) return;
@@ -349,11 +378,18 @@ document.getElementById('editForm').addEventListener('submit', async (e) => {
     else alert(data.message);
 });
 
+// --- UPDATED: Delete using Unique Row Index ---
 async function deleteCurrentRecord() {
     if(!confirm("Delete?")) return;
     const type = document.getElementById('e_type').value;
     const id = type === 'billing' ? document.getElementById('e_order_id').value : document.getElementById('e_record_id').value;
-    const formData = new FormData(); formData.append('type', type); formData.append('id', id);
+    const rowIndex = document.getElementById('e_row_index').value;
+
+    const formData = new FormData(); 
+    formData.append('type', type); 
+    formData.append('id', id);
+    if(rowIndex) formData.append('row_index', rowIndex);
+
     const res = await fetch('/api/delete-lead', { method: 'POST', body: formData });
     const data = await res.json();
     if(data.status === 'success') { alert("Deleted"); fetchData(); document.getElementById('editForm').classList.add('hidden'); document.getElementById('editSearchId').value=""; }
