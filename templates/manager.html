@@ -171,7 +171,12 @@
                         <button onclick="searchForEdit()" class="bg-blue-600 hover:bg-blue-500 px-6 rounded font-bold text-white shadow-lg shadow-blue-500/30">Search</button>
                     </div>
                     <form id="editForm" class="space-y-4 hidden fade-in">
-                        <input type="hidden" name="type" id="e_type"><input type="hidden" name="order_id" id="e_order_id"><input type="hidden" name="record_id" id="e_record_id"><input type="hidden" name="agent" id="h_agent">
+                        <input type="hidden" name="type" id="e_type">
+                        <input type="hidden" name="order_id" id="e_order_id">
+                        <input type="hidden" name="record_id" id="e_record_id">
+                        <input type="hidden" name="agent" id="h_agent">
+                        <input type="hidden" name="row_index" id="e_row_index">
+
                         <div class="grid grid-cols-2 gap-4">
                             <div><label class="block text-xs text-slate-400 mb-1">Agent</label><input type="text" id="e_agent" disabled class="input-field w-full opacity-50 cursor-not-allowed"></div>
                             <div><label class="block text-xs text-slate-400 mb-1">Status</label><select name="status" id="e_status" class="input-field w-full"><option value="Pending">Pending</option><option value="Charged">Charged</option><option value="Declined">Declined</option><option value="Charge Back">Charge Back</option></select></div>
@@ -217,8 +222,15 @@
         </main>
     </div>
 
+    <div id="duplicateModal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+        <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 w-96 shadow-2xl">
+            <h3 class="text-xl font-bold text-white mb-4">Select Record to Edit</h3>
+            <div id="duplicateList" class="space-y-2 max-h-60 overflow-y-auto"></div>
+            <button onclick="document.getElementById('duplicateModal').classList.add('hidden')" class="mt-4 w-full bg-slate-700 hover:bg-slate-600 py-2 rounded-lg text-white">Cancel</button>
+        </div>
+    </div>
+
     <script src="/static/js/manager.js"></script>
     <script src="/static/js/main.js"></script>
 </body>
 </html>
-
