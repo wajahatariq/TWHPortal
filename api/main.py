@@ -20,7 +20,7 @@ load_dotenv()
 
 app = FastAPI()
 
-# --- SECURITY: LOAD SECRETS --
+# --- SECURITY: LOAD SECRETS -
 PUSHER_APP_ID = os.getenv("PUSHER_APP_ID")
 PUSHER_KEY = os.getenv("PUSHER_KEY")
 PUSHER_SECRET = os.getenv("PUSHER_SECRET")
@@ -567,6 +567,7 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "success", "message": "Updated in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
