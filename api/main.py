@@ -35,7 +35,7 @@ pusher_client = pusher.Pusher(
   ssl=True
 )
 
-# --- MONGODB SETUP ---
+# --- MONGODB SETUP --
 try:
     mongo_client = MongoClient(MONGO_URI)
     db = mongo_client["twh_portal"]
@@ -567,6 +567,7 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "success", "message": "Updated in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
