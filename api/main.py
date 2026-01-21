@@ -440,7 +440,7 @@ async def get_lead(type: str, id: str = None, limit: int = None, row_index: str 
         elif type == 'ebook': col = ebook_col
         else: return JSONResponse({"status": "error", "message": "Invalid Type"}, 400)
         
-        # --- CASE 1: Fetching Recent Leads (for the table) ---
+        # --- CASE 1: Fetching Recent Leads (Table) ---
         if limit:
             cursor = col.find().sort("created_at", -1).limit(limit)
             results = []
@@ -468,17 +468,15 @@ async def get_lead(type: str, id: str = None, limit: int = None, row_index: str 
             return {"status": "success", "data": results}
 
         # --- CASE 2: Specific Selection (User clicked a duplicate) ---
-        # This is the part you were missing!
         if row_index:
             try:
-                # Find the EXACT document by its unique Mongo ID
                 doc = col.find_one({"_id": ObjectId(row_index)})
                 if not doc: return JSONResponse({"status": "error", "message": "Specific record not found"}, 404)
-                found_docs = [doc] # Treat it as a found list of 1
+                found_docs = [doc]
             except:
                 return JSONResponse({"status": "error", "message": "Invalid Row Index"}, 400)
 
-        # --- CASE 3: General Search by Order ID ---
+        # --- CASE 3: General Search by ID ---
         elif id:
             cursor = col.find({"record_id": str(id)})
             found_docs = list(cursor)
@@ -486,12 +484,12 @@ async def get_lead(type: str, id: str = None, limit: int = None, row_index: str 
             if len(found_docs) == 0:
                 return JSONResponse({"status": "error", "message": "Not Found"}, 404)
             
-            # If duplicates found, return list so user can choose
+            # >>>> DUPLICATE DETECTION <<<<
             if len(found_docs) > 1:
                 duplicate_options = []
                 for d in found_docs:
                     duplicate_options.append({
-                        "row_index": str(d.get('_id')), # Unique ID for the click handler
+                        "row_index": str(d.get('_id')),
                         "Agent": d.get("agent"),
                         "Client": d.get("client_name"),
                         "Charge": d.get("charge_str"),
@@ -507,7 +505,7 @@ async def get_lead(type: str, id: str = None, limit: int = None, row_index: str 
         else:
             return JSONResponse({"status": "error", "message": "No ID provided"}, 400)
 
-        # --- RETURN SINGLE DOCUMENT (Populate Form) ---
+        # --- RETURN SINGLE DOCUMENT ---
         doc = found_docs[0]
         data = {
             "row_index": str(doc.get('_id')), 
@@ -624,6 +622,7 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "success", "message": "Updated in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
