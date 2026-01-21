@@ -502,10 +502,10 @@ async def get_manager_data(token: str):
                 docs.append(d)
             return docs
 
-        bill_data = clean_docs(billing_col.find().sort("created_at", -1).limit(1000))
-        ins_data = clean_docs(insurance_col.find().sort("created_at", -1).limit(1000))
-        design_data = clean_docs(design_col.find().sort("created_at", -1).limit(1000))
-        ebook_data = clean_docs(ebook_col.find().sort("created_at", -1).limit(1000))
+        bill_data = clean_docs(billing_col.find().sort("created_at", -1)
+        ins_data = clean_docs(insurance_col.find().sort("created_at", -1)
+        design_data = clean_docs(design_col.find().sort("created_at", -1)
+        ebook_data = clean_docs(ebook_col.find().sort("created_at", -1)
         
         stats_bill = calculate_mongo_stats(billing_col, 'billing')
         stats_ins = calculate_mongo_stats(insurance_col, 'insurance')
@@ -553,3 +553,4 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "success", "message": "Updated in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
