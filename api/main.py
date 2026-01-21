@@ -407,7 +407,7 @@ async def update_field_inline(
         return JSONResponse({"status": "error", "message": str(e)}, 500)
       
 @app.post("/api/delete-lead")
-async def delete_lead(type: str = Form(...), id: str = Form(...)):
+async def delete_lead(type: str = Form(...), id: str = Form(...), row_index: str = Form(None)):
     try:
         if type == 'billing': col = billing_col
         elif type == 'insurance': col = insurance_col
@@ -415,13 +415,22 @@ async def delete_lead(type: str = Form(...), id: str = Form(...)):
         elif type == 'ebook': col = ebook_col
         else: return {"status": "error"}
         
-        result = col.delete_one({"record_id": str(id)})
+        # PRIORITIZE deleting by specific Row Index (Unique ID) if available
+        if row_index and row_index != 'undefined':
+            try:
+                result = col.delete_one({"_id": ObjectId(row_index)})
+            except:
+                result = col.delete_one({"record_id": str(id)})
+        else:
+            # Fallback to deleting by Record ID (might delete the wrong duplicate)
+            result = col.delete_one({"record_id": str(id)})
+
         if result.deleted_count > 0:
             return {"status": "success", "message": "Deleted from Database"}
         return {"status": "error", "message": "ID not found in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
+      
 @app.get("/api/get-lead")
 async def get_lead(type: str, id: str = None, limit: int = None, row_index: str = None):
     try:
@@ -615,6 +624,7 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
         return {"status": "success", "message": "Updated in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
