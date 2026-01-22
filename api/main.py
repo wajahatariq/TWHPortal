@@ -390,22 +390,38 @@ async def update_field_inline(
     value: str = Form(...)
 ):
     try:
-        # UPDATED: Added billing and insurance to allowed types
+        # Select Collection
         if type == 'design': col = design_col
         elif type == 'ebook': col = ebook_col
         elif type == 'billing': col = billing_col
         elif type == 'insurance': col = insurance_col
         else: return JSONResponse({"status": "error", "message": "Invalid Type"}, 400)
 
-        db_field = field
-        # Map frontend field names to DB keys if they differ
-        if field == 'Name': db_field = 'client_name'
-        if field == 'Service' or field == 'Provider': db_field = 'provider'
-        if field == 'Charge': db_field = 'charge_str'
-        if field == 'Phone': db_field = 'phone'
-        if field == 'Email': db_field = 'email'
+        update_data = {}
+        
+        # --- FIX: Map Fields Correctly ---
+        if field == 'Name': update_data['client_name'] = value
+        elif field == 'Service' or field == 'Provider': update_data['provider'] = value
+        elif field == 'Phone': update_data['phone'] = value
+        elif field == 'Email': update_data['email'] = value
+        
+        # --- CRITICAL FIX: Update Number AND Text for Charge ---
+        elif field == 'Charge': 
+            update_data['charge_str'] = value
+            try:
+                # Remove '$' and ',' then convert to float for calculation
+                clean_val = float(str(value).replace('$', '').replace(',', '').strip())
+                update_data['charge_amount'] = clean_val
+            except:
+                # If invalid number, set to 0.0 to prevent errors
+                update_data['charge_amount'] = 0.0
+        
+        else:
+            # Default for other fields
+            update_data[field] = value
+        # -------------------------------------------------------
 
-        col.update_one({"record_id": id}, {"$set": {db_field: value}})
+        col.update_one({"record_id": id}, {"$set": update_data})
         
         pusher_client.trigger('techware-channel', 'lead-edited', {'agent': 'Inline', 'id': id, 'client': 'Record', 'type': type, 'message': "Inline Edit"})
         return {"status": "success"}
@@ -688,3 +704,4 @@ async def get_history_totals():
         return {"status": "success", "data": history}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
