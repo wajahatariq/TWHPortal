@@ -404,3 +404,42 @@ async function manualRefresh() {
 }
 
 setInterval(() => { fetchData(); }, 120000);
+// --- NEW: Load History Logic ---
+async function loadHistory() {
+    const tbody = document.getElementById('historyTableBody');
+    if(!tbody) return;
+    
+    tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-slate-500">Loading...</td></tr>';
+
+    try {
+        const res = await fetch('/api/manager/history-totals');
+        const json = await res.json();
+        
+        if(json.status === 'success') {
+            tbody.innerHTML = '';
+            json.data.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-700/50 transition";
+                tr.innerHTML = `
+                    <td class="p-4 font-mono text-slate-300">${row.date}</td>
+                    <td class="p-4 font-bold text-blue-400">$${row.billing.toLocaleString()}</td>
+                    <td class="p-4 font-bold text-green-400">$${row.insurance.toLocaleString()}</td>
+                    <td class="p-4 font-bold text-purple-400">$${row.design.toLocaleString()}</td>
+                    <td class="p-4 font-bold text-orange-400">$${row.ebook.toLocaleString()}</td>
+                    <td class="p-4 font-black text-white bg-slate-700/30">$${row.total.toLocaleString()}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } else {
+            tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-red-400">Error loading data</td></tr>';
+        }
+    } catch(e) {
+        console.error(e);
+        tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-red-400">Connection Error</td></tr>';
+    }
+}
+
+// Auto-load history when page loads
+if(document.getElementById('historyTableBody')) {
+    loadHistory();
+}
