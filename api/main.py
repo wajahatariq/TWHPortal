@@ -487,6 +487,7 @@ async def get_lead(type: str, id: str = None, limit: int = None, row_index: str 
                 doc['Status'] = doc.get('status')
                 doc['Timestamp'] = doc.get('timestamp_str')
                 doc['row_index'] = str(doc['_id']) 
+                doc['Service'] = doc.get('provider')
                 results.append(doc)
             return {"status": "success", "data": results}
 
@@ -705,5 +706,6 @@ async def get_history_totals():
         return {"status": "success", "data": history}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
