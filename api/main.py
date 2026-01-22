@@ -133,11 +133,11 @@ def get_timestamp():
 
 def get_shift_start_time():
     now = datetime.now(TZ_KARACHI)
-    # If currently before 8 PM (20:00), the shift started yesterday at 8 PM
+    # If it's before 8 PM (e.g., 4 AM), the shift started yesterday at 8 PM
     if now.hour < 20:
         start = (now - timedelta(days=1)).replace(hour=20, minute=0, second=0, microsecond=0)
     else:
-        # If currently after 8 PM, the shift started today at 8 PM
+        # If it's after 8 PM, the shift started today at 8 PM
         start = now.replace(hour=20, minute=0, second=0, microsecond=0)
     return start
 
@@ -145,17 +145,16 @@ def calculate_mongo_stats(collection, dept_type):
     try:
         start_time = get_shift_start_time()
         
-        # --- UPDATED LOGIC ---
-        # Window: 8 PM to 7 AM (11 Hours) for EVERYONE
-        end_time = start_time + timedelta(hours=11)
+        # LOGIC: 8 PM to 6 AM = 10 Hours exactly
+        end_time = start_time + timedelta(hours=10)
         
+        # Status Rules:
+        # Billing/Insurance -> Count 'Charged' only
+        # Design/Ebook      -> Count ALL (Pending, Declined, etc.)
         if dept_type in ['billing', 'insurance']:
-            # Billing/Insurance: Count only 'Charged'
             status_filter = {"status": "Charged"}
         else:
-            # Design/Ebook: Count ALL statuses (Pending, Declined, etc.)
             status_filter = {} 
-        # ---------------------
 
         match_query = {
             "created_at": {"$gte": start_time, "$lte": end_time},
@@ -635,16 +634,13 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
 async def get_history_totals():
     try:
         def get_daily_sums(col, use_status_filter=False):
-            # 1. Match Status (if applicable)
+            # 1. Apply Status Filter
             match_stage = {"$match": {"status": "Charged"}} if use_status_filter else {"$match": {}}
             
             pipeline = [
                 match_stage,
-                # 2. Project 'shift_date' and 'hour'
-                # We subtract 8 hours from the time. 
-                # Examples (approx):
-                # 22nd Jan 04:00 AM - 8h = 21st Jan 20:00 PM -> Grouped as 21st
-                # 21st Jan 21:00 PM - 8h = 21st Jan 13:00 PM -> Grouped as 21st
+                # 2. Project data to identify the shift
+                # We shift back 8 hours to align 4 AM with the previous day's 8 PM start.
                 {"$project": {
                     "charge_amount": 1,
                     "created_at": 1,
@@ -652,30 +648,30 @@ async def get_history_totals():
                     "shift_date": {
                         "$dateToString": {
                             "format": "%Y-%m-%d",
-                            "date": {"$subtract": ["$created_at", 1000 * 60 * 60 * 8]}, # Shift back 8h
+                            "date": {"$subtract": ["$created_at", 1000 * 60 * 60 * 8]}, 
                             "timezone": "Asia/Karachi"
                         }
                     }
                 }},
-                # 3. Filter strictly for the 8 PM - 7 AM window
-                # We keep hours >= 20 (8 PM) OR hours < 7 (7 AM)
+                # 3. STRICT WINDOW: 8 PM (20) to 6 AM (6)
+                # We keep hours >= 20 OR hours < 6
                 {"$match": {
-                    "$or": [{"hour": {"$gte": 20}}, {"hour": {"$lt": 7}}]
+                    "$or": [{"hour": {"$gte": 20}}, {"hour": {"$lt": 6}}]
                 }},
-                # 4. Group by the Shift Date
+                # 4. Group by Shift Date
                 {"$group": {"_id": "$shift_date", "total": {"$sum": "$charge_amount"}}},
                 {"$sort": {"_id": -1}},
                 {"$limit": 30}
             ]
             return {doc["_id"]: doc["total"] for doc in col.aggregate(pipeline)}
 
-        # Apply specific rules
-        bill_sums = get_daily_sums(billing_col, use_status_filter=True)   # Charged Only
-        ins_sums = get_daily_sums(insurance_col, use_status_filter=True)  # Charged Only
-        design_sums = get_daily_sums(design_col, use_status_filter=False) # Count All
-        ebook_sums = get_daily_sums(ebook_col, use_status_filter=False)   # Count All
+        # Billing/Insurance = Charged Only | Design/Ebook = All
+        bill_sums = get_daily_sums(billing_col, use_status_filter=True)
+        ins_sums = get_daily_sums(insurance_col, use_status_filter=True)
+        design_sums = get_daily_sums(design_col, use_status_filter=False)
+        ebook_sums = get_daily_sums(ebook_col, use_status_filter=False)
 
-        # Merge and Format
+        # Merge and sort dates
         all_dates = sorted(list(set(list(bill_sums.keys()) + list(ins_sums.keys()) + list(design_sums.keys()) + list(ebook_sums.keys()))), reverse=True)
         
         history = []
