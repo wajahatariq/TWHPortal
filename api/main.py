@@ -624,6 +624,40 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+@app.get("/api/manager/history-totals")
+async def get_history_totals():
+    try:
+        # Aggregation helper
+        def get_daily_sums(col):
+            pipeline = [
+                {"$group": {"_id": "$date_str", "total": {"$sum": "$charge_amount"}}},
+                {"$sort": {"_id": -1}},
+                {"$limit": 30} # Last 30 days
+            ]
+            return {doc["_id"]: doc["total"] for doc in col.aggregate(pipeline)}
+
+        bill_sums = get_daily_sums(billing_col)
+        ins_sums = get_daily_sums(insurance_col)
+        design_sums = get_daily_sums(design_col)
+        ebook_sums = get_daily_sums(ebook_col)
+
+        # Merge dates
+        all_dates = sorted(list(set(list(bill_sums.keys()) + list(ins_sums.keys()) + list(design_sums.keys()) + list(ebook_sums.keys()))), reverse=True)
+        
+        history = []
+        for d in all_dates:
+            history.append({
+                "date": d,
+                "billing": round(bill_sums.get(d, 0), 2),
+                "insurance": round(ins_sums.get(d, 0), 2),
+                "design": round(design_sums.get(d, 0), 2),
+                "ebook": round(ebook_sums.get(d, 0), 2),
+                "total": round(bill_sums.get(d, 0) + ins_sums.get(d, 0) + design_sums.get(d, 0) + ebook_sums.get(d, 0), 2)
+            })
+            
+        return {"status": "success", "data": history}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 
