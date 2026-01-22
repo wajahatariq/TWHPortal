@@ -186,48 +186,78 @@ function renderAnalysis() {
     const search = document.getElementById('analysisSearch').value.toLowerCase();
     const agentFilter = document.getElementById('analysisAgentSelector').value;
     const statusFilter = document.getElementById('analysisStatusSelector').value;
+    
+    // Get Date Range inputs
     const dateStartVal = document.getElementById('dateStart').value;
     const dateEndVal = document.getElementById('dateEnd').value;
-    let dStart = new Date(dateStartVal); dStart.setHours(0,0,0);
-    let dEnd = new Date(dateEndVal); dEnd.setHours(23,59,59);
+    
+    // Create Date Objects for the Filter Range (Local Time 00:00 to 23:59)
+    let dStart = new Date(dateStartVal); dStart.setHours(0,0,0,0);
+    let dEnd = new Date(dateEndVal); dEnd.setHours(23,59,59,999);
 
     const data = allData[type] || [];
+    
     const filtered = data.filter(row => {
+        // 1. Create Date object from the record's timestamp
         const t = new Date(row['Timestamp']);
-        if(t < dStart || t > dEnd) return false;
+        
+        // --- FIX: Apply Shift Logic (Subtract 8 Hours) ---
+        // 8 hours * 60 mins * 60 secs * 1000 ms = 28800000 ms
+        // This ensures 4 AM counts as the previous day, and 9 PM counts as today.
+        const shiftDate = new Date(t.getTime() - 28800000); 
+        // -------------------------------------------------
+
+        // 2. Compare SHIFT DATE vs Selected Range
+        if(shiftDate < dStart || shiftDate > dEnd) return false;
+
+        // 3. Apply other filters (Agent, Status, Search)
         if(agentFilter !== 'all' && row['Agent Name'] !== agentFilter) return false;
         if(statusFilter !== 'all' && row['Status'] !== statusFilter) return false;
+        
+        // Search text
         return JSON.stringify(row).toLowerCase().includes(search);
     });
 
-    let total = 0; let hours = {};
+    // --- Aggregation Logic (Calculations) ---
+    let total = 0; 
+    let hours = {};
+    
     filtered.forEach(r => {
+        // Clean the charge amount string to a number
         const raw = String(r['Charge']).replace(/[^0-9.]/g, '');
         const val = parseFloat(raw) || 0;
+        
+        // Status Logic: Billing/Insurance need "Charged", others count everything
         let shouldCount = false;
         if(type === 'design' || type === 'ebook') shouldCount = true;
         else if(r['Status'] === 'Charged') shouldCount = true;
 
         if(shouldCount) {
             total += val;
+            
+            // For the Chart: Extract the hour
             const hour = r['Timestamp'].substring(11, 13) + ":00";
             hours[hour] = (hours[hour] || 0) + val;
         }
     });
 
+    // --- Update DOM Elements ---
     document.getElementById('anaTotal').innerText = '$' + total.toLocaleString('en-US', {minimumFractionDigits: 2});
     document.getElementById('anaCount').innerText = filtered.length;
     document.getElementById('anaAvg').innerText = filtered.length ? '$' + (total/filtered.length).toFixed(2) : '$0.00';
+    
     let peak = '-'; let maxVal = 0;
     for(const [h, val] of Object.entries(hours)) { if(val > maxVal) { maxVal = val; peak = h; } }
     document.getElementById('anaPeak').innerText = peak;
 
+    // --- Render Chart ---
     const ctx = document.getElementById('analysisChart').getContext('2d');
     const sortedHours = Object.keys(hours).sort();
     const values = sortedHours.map(h => hours[h]);
     if(myChart) myChart.destroy();
     myChart = new Chart(ctx, { type: 'line', data: { labels: sortedHours, datasets: [{ label: 'Hourly Charged', data: values, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', tension: 0.4, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#334155' } }, x: { grid: { display: false } } } } });
 
+    // --- Render Table Columns ---
     let columns = [];
     if (type === 'billing') {
         columns = ["Record_ID", "Agent Name", "Name", "Phone", "Email", "Address", "Card Number", "Exp Date", "CVC", "Charge", "Status", "LLC", "Provider", "PIN/Acc", "Timestamp"];
@@ -241,6 +271,7 @@ function renderAnalysis() {
     const thead = document.getElementById('analysisHeader');
     thead.innerHTML = columns.map(c => `<th class="p-3 text-left text-xs font-bold text-slate-400 uppercase whitespace-nowrap">${c}</th>`).join('');
 
+    // --- Render Table Rows ---
     if (filtered.length > 0) {
         tbody.innerHTML = filtered.map(row => {
             return `<tr class="border-b border-slate-800 hover:bg-slate-800 transition">
@@ -269,7 +300,6 @@ function renderAnalysis() {
         }).join('');
     } else { tbody.innerHTML = `<tr><td colspan="100%" class="p-8 text-center text-slate-500">No records found.</td></tr>`; }
 }
-
 async function setStatus(type, id, status, btnElement) {
     const card = btnElement.closest('.pending-card');
     const btns = card.querySelectorAll('button');
@@ -443,3 +473,4 @@ async function loadHistory() {
 if(document.getElementById('historyTableBody')) {
     loadHistory();
 }
+
