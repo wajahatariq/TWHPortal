@@ -591,6 +591,7 @@ async def get_manager_data(token: str):
                 d['Record_ID'] = d.get('record_id')
                 d['LLC'] = d.get('llc')
                 d['Provider'] = d.get('provider')
+                d['Service'] = d.get('provider', '')
                 docs.append(d)
             return docs
 
@@ -704,4 +705,5 @@ async def get_history_totals():
         return {"status": "success", "data": history}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
