@@ -143,12 +143,16 @@ def calculate_mongo_stats(collection, dept_type):
     try:
         start_time = get_shift_start_time()
         
+        # LOGIC: 
+        # Billing/Insurance -> 9 PM to 7 AM (10h), Must be 'Charged'
+        # Design/Ebook      -> 9 PM to 6 AM (9h),  Count ALL Statuses
+        
         if dept_type in ['billing', 'insurance']:
             end_time = start_time + timedelta(hours=10)
             status_filter = {"status": "Charged"}
         else:
-            end_time = start_time + timedelta(hours=23, minutes=59, seconds=59)
-            status_filter = {} 
+            end_time = start_time + timedelta(hours=9) 
+            status_filter = {} # Empty filter = Count everything (Pending, Declined, etc.)
 
         match_query = {
             "created_at": {"$gte": start_time, "$lte": end_time},
@@ -174,7 +178,6 @@ def calculate_mongo_stats(collection, dept_type):
     except Exception as e:
         print(f"Stats Error ({dept_type}): {e}")
         return {"total": 0, "breakdown": {}, "today": 0, "night": 0}
-
 # --- ROUTES ---
 
 @app.get("/", response_class=HTMLResponse)
@@ -627,19 +630,25 @@ async def update_status(type: str = Form(...), id: str = Form(...), status: str 
 @app.get("/api/manager/history-totals")
 async def get_history_totals():
     try:
-        # Aggregation helper
-        def get_daily_sums(col):
+        # Helper to get daily sums with optional status filtering
+        def get_daily_sums(col, use_status_filter=False):
+            # If Billing/Insurance, only count 'Charged'. 
+            # If Design/Ebook, count ALL.
+            match_stage = {"$match": {"status": "Charged"}} if use_status_filter else {"$match": {}}
+            
             pipeline = [
+                match_stage,
                 {"$group": {"_id": "$date_str", "total": {"$sum": "$charge_amount"}}},
                 {"$sort": {"_id": -1}},
-                {"$limit": 30} # Last 30 days
+                {"$limit": 30}
             ]
             return {doc["_id"]: doc["total"] for doc in col.aggregate(pipeline)}
 
-        bill_sums = get_daily_sums(billing_col)
-        ins_sums = get_daily_sums(insurance_col)
-        design_sums = get_daily_sums(design_col)
-        ebook_sums = get_daily_sums(ebook_col)
+        # Apply specific rules per department
+        bill_sums = get_daily_sums(billing_col, use_status_filter=True)
+        ins_sums = get_daily_sums(insurance_col, use_status_filter=True)
+        design_sums = get_daily_sums(design_col, use_status_filter=False) # Count All
+        ebook_sums = get_daily_sums(ebook_col, use_status_filter=False)   # Count All
 
         # Merge dates
         all_dates = sorted(list(set(list(bill_sums.keys()) + list(ins_sums.keys()) + list(design_sums.keys()) + list(ebook_sums.keys()))), reverse=True)
@@ -658,13 +667,3 @@ async def get_history_totals():
         return {"status": "success", "data": history}
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
-
-
-
-
-
-
-
-
-
