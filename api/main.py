@@ -422,6 +422,11 @@ async def update_field_inline(
         # -------------------------------------------------------
 
         col.update_one({"record_id": id}, {"$set": update_data})
+        
+        pusher_client.trigger('techware-channel', 'lead-edited', {'agent': 'Inline', 'id': id, 'client': 'Record', 'type': type, 'message': "Inline Edit"})
+        return {"status": "success"}
+    except Exception as e:
+        return JSONResponse({"status": "error", "message": str(e)}, 500)
       
 @app.post("/api/delete-lead")
 async def delete_lead(type: str = Form(...), id: str = Form(...), row_index: str = Form(None)):
@@ -701,7 +706,5 @@ async def get_history_totals():
         return {"status": "success", "data": history}
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
-
 
 
