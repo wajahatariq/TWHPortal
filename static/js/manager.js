@@ -204,7 +204,7 @@ function renderAnalysis() {
         // --- FIX: Apply Shift Logic (Subtract 8 Hours) ---
         // 8 hours * 60 mins * 60 secs * 1000 ms = 28800000 ms
         // This ensures 4 AM counts as the previous day, and 9 PM counts as today.
-        const shiftDate = new Date(t.getTime() - 28800000); 
+        const shiftDate = new Date(t.getTime() - 21600000); 
         // -------------------------------------------------
 
         // 2. Compare SHIFT DATE vs Selected Range
@@ -473,4 +473,5 @@ async function loadHistory() {
 if(document.getElementById('historyTableBody')) {
     loadHistory();
 }
+
 
