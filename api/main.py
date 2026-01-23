@@ -110,7 +110,7 @@ def get_worksheet(sheet_type):
 # --- CONSTANTS ---
 AGENTS_BILLING = ["Arham Kaleem", "Arham Ali", "Haziq", "Anus", "Hasnain"]
 AGENTS_INSURANCE = ["Saad"]
-AGENTS_DESIGN = ["Taha"]
+AGENTS_DESIGN = ["Taha", "Osama"]
 AGENTS_EBOOK = ["Huzaifa", "Haseeb"]
 
 PROVIDERS = ["Spectrum", "Insurance", "Xfinity", "Frontier", "Optimum"]
@@ -706,5 +706,6 @@ async def get_history_totals():
         return {"status": "success", "data": history}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
