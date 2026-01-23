@@ -181,3 +181,41 @@ function showDuplicateSelection(candidates) {
     
     modal.classList.remove('hidden');
 }
+
+// --- AUTO-FORMATTING (Real-Time) ---
+document.addEventListener('DOMContentLoaded', function() {
+    const cardInput = document.getElementById('card_number');
+    const expInput = document.getElementById('exp_date');
+
+    // 1. Card Number: Adds space after every 4 digits while typing
+    if (cardInput) {
+        cardInput.addEventListener('input', function(e) {
+            // Remove any existing spaces or non-digits
+            let value = e.target.value.replace(/\D/g, '');
+            
+            // Limit to 16 digits max
+            value = value.substring(0, 16);
+            
+            // Add space after every 4 digits
+            e.target.value = value.replace(/(\d{4})(?=\d)/g, '$1 ');
+        });
+    }
+
+    // 2. Expiry Date: Adds slash after 2 digits while typing
+    if (expInput) {
+        expInput.addEventListener('input', function(e) {
+            // Remove any existing slash or non-digits
+            let value = e.target.value.replace(/\D/g, '');
+            
+            // Limit to 4 digits (MMYY)
+            value = value.substring(0, 4);
+            
+            // Insert slash automatically after the 2nd digit
+            if (value.length > 2) {
+                e.target.value = value.substring(0, 2) + '/' + value.substring(2);
+            } else {
+                e.target.value = value;
+            }
+        });
+    }
+});
