@@ -136,9 +136,9 @@ function renderPendingCards() {
         return;
     }
 
-    // Options derived from main.py constants
+    // FIXED: Removed extra bracket syntax error
     const llcOptions = pendingSubTab === 'billing' 
-        ? ["Secure Claim Solutions-NMI", "Visionary Pathways-Authorize", "Visionary Pathways-Chase"]]  
+        ? ["Secure Claim Solutions-NMI", "Visionary Pathways-Authorize", "Visionary Pathways-Chase"]  
         : ["Secure Claim Solutions-NMI"];
 
     data.forEach(row => {
@@ -151,7 +151,6 @@ function renderPendingCards() {
         const card = document.createElement('div');
         card.className = "pending-card fade-in p-0 bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-lg hover:border-blue-500/50 transition-all";
         
-        // Integration of hidden row-index and corrected HTML structure
         card.innerHTML = `
             <input type="hidden" class="row-index" value="${row['row_index']}">
             <div class="bg-slate-900/50 p-4 border-b border-slate-700">
@@ -188,10 +187,14 @@ function renderPendingCards() {
     });
 }
 
-// NEW FUNCTION: Validation wrapper to ensure LLC is picked
+// FIXED: Now correctly extracts rowIndex to handle duplicate leads
 async function validateAndSetStatus(type, id, status, btnElement) {
     const llcSelect = document.getElementById(`llc_select_${id}`);
     const selectedLLC = llcSelect ? llcSelect.value : null;
+    
+    // Find the specific card to get the unique row index for duplicate safety
+    const card = btnElement.closest('.pending-card');
+    const rowIndex = card.querySelector('.row-index')?.value;
 
     if (!selectedLLC) {
         alert("Action Required: Please select an LLC from the dropdown before approving or declining.");
@@ -199,17 +202,20 @@ async function validateAndSetStatus(type, id, status, btnElement) {
         return;
     }
 
-    // Update the LLC in the database first
     try {
         const fd = new FormData();
         fd.append('type', type);
         fd.append('id', id);
         fd.append('field', 'llc');
         fd.append('value', selectedLLC);
+        
+        // Ensure the field update also respects the specific row
+        if (rowIndex) fd.append('row_index', rowIndex);
+
         await fetch('/api/update_field', { method: 'POST', body: fd });
         
         // Proceed with original status update logic
-        setStatus(type, id, status, btnElement);
+        setStatus(type, id, status, btnElement, rowIndex);
     } catch (e) {
         console.error("LLC Update Failed", e);
         alert("Failed to assign LLC. Please try again.");
@@ -565,6 +571,7 @@ async function processLeadWithLLC(type, id, status, btn) {
         alert("Error saving LLC. Please try again.");
     }
 }
+
 
 
 
