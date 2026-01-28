@@ -190,31 +190,38 @@ function renderPendingCards() {
 
 // NEW FUNCTION: Validation wrapper to ensure LLC is picked
 async function validateAndSetStatus(type, id, status, btnElement) {
+    const card = btnElement.closest('.pending-card');
     const llcSelect = document.getElementById(`llc_select_${id}`);
     const selectedLLC = llcSelect ? llcSelect.value : null;
+    
+    // Get the unique MongoDB ID from the hidden input we rendered
+    const rowIndex = card.querySelector('.row-index').value;
 
     if (!selectedLLC) {
-        alert("Action Required: Please select an LLC from the dropdown before approving or declining.");
+        alert("Action Required: Please select an LLC before approving or declining.");
         llcSelect.classList.add('border-red-500');
         return;
     }
 
-    // Update the LLC in the database first
     try {
+        // 1. Update the LLC using the unique Row Index
         const fd = new FormData();
         fd.append('type', type);
         fd.append('id', id);
         fd.append('field', 'llc');
         fd.append('value', selectedLLC);
+        fd.append('row_index', rowIndex); // CRITICAL: Send the unique ID
+        
         await fetch('/api/update_field', { method: 'POST', body: fd });
         
-        // Proceed with original status update logic
-        setStatus(type, id, status, btnElement);
+        // 2. Proceed with status update using the unique Row Index
+        setStatus(type, id, status, btnElement, rowIndex); 
     } catch (e) {
-        console.error("LLC Update Failed", e);
-        alert("Failed to assign LLC. Please try again.");
+        console.error("Update Failed", e);
+        alert("Failed to process update. Please try again.");
     }
 }
+
 function updateAgentSelector() {
     const type = document.getElementById('analysisSheetSelector').value;
     const data = allData[type] || [];
@@ -565,3 +572,4 @@ async function processLeadWithLLC(type, id, status, btn) {
         alert("Error saving LLC. Please try again.");
     }
 }
+
