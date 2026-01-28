@@ -142,18 +142,22 @@ function renderPendingCards() {
         : ["Secure Claim Solutions-NMI"];
 
     data.forEach(row => {
+        // 1. Correctly identify the unique record ID
+        // Check both 'row_index' (mapped by API) and '_id' (direct MongoDB key)
+        const uniqueRowIndex = row['row_index'] || row['_id']; 
+        
         const id = row['Record_ID'] || row['Order ID']; 
         const cleanCharge = String(row['charge_str'] || row['Charge Amount'] || '').replace(/[^0-9.]/g, '');
         const cleanCard = String(row['card_number'] || '').replace(/\s+/g, ''); 
         const cleanExpiry = String(row['exp_date'] || '').replace(/[\/\\]/g, ''); 
         const address = row['Address'] || row['address'] || row['adress'] || 'N/A';
-
+    
         const card = document.createElement('div');
         card.className = "pending-card fade-in p-0 bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-lg hover:border-blue-500/50 transition-all";
         
-        // Integration of hidden row-index and corrected HTML structure
         card.innerHTML = `
-            <input type="hidden" class="row-index" value="${row['row_index']}">
+            <input type="hidden" class="row-index" value="${uniqueRowIndex}">
+            
             <div class="bg-slate-900/50 p-4 border-b border-slate-700">
                 <div class="flex justify-between items-center">
                     <h3 class="text-white font-bold text-lg truncate">${row['agent']} — <span class="text-green-400">$${cleanCharge}</span></h3>
@@ -170,7 +174,7 @@ function renderPendingCards() {
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Address:</span><span class="text-white break-words w-full">${address}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">CVC:</span><span class="text-red-400 font-bold">${row['cvc']}</span></div>
             </div>
-
+    
             <div class="px-4 mb-4">
                 <label class="block text-xs font-bold text-blue-400 uppercase mb-1">Select LLC *</label>
                 <select id="llc_select_${id}" class="input-field w-full py-2 text-sm border-blue-500/50 bg-slate-900">
@@ -178,7 +182,7 @@ function renderPendingCards() {
                     ${llcOptions.map(opt => `<option value="${opt}">${opt}</option>`).join('')}
                 </select>
             </div>
-
+    
             <div class="grid grid-cols-2 gap-3 p-4 pt-0">
                 <button onclick="validateAndSetStatus('${pendingSubTab}', '${id}', 'Charged', this)" class="bg-green-600 hover:bg-green-500 text-white py-2 rounded-lg font-bold shadow-lg shadow-green-900/20 active:scale-95 transition">Approve</button>
                 <button onclick="validateAndSetStatus('${pendingSubTab}', '${id}', 'Declined', this)" class="bg-red-600 hover:bg-red-500 text-white py-2 rounded-lg font-bold shadow-lg shadow-red-900/20 active:scale-95 transition">Decline</button>
@@ -572,4 +576,5 @@ async function processLeadWithLLC(type, id, status, btn) {
         alert("Error saving LLC. Please try again.");
     }
 }
+
 
