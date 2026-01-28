@@ -56,8 +56,7 @@
                 <div><label class="block text-sm font-medium mb-2">Charge Amount</label><input type="number" step="0.01" name="charge_amt" id="charge_amt" required class="input-field"></div>
 
                 <div><label class="block text-sm font-medium mb-2">Address</label><input type="text" name="address" id="address" required class="input-field"></div>
-                <div><label class="block text-sm font-medium mb-2">LLC</label><select name="llc" id="llc" required class="input-field"><option value="">Select LLC</option>{% for llc in llcs %}<option value="{{ llc }}">{{ llc }}</option>{% endfor %}</select></div>
-
+        
                 <div><label class="block text-sm font-medium mb-2">Email</label><input type="email" name="email" id="email" required class="input-field"></div>
                 <div><label class="block text-sm font-medium mb-2">Provider</label><select name="provider" id="providerSelect" required class="input-field" onchange="toggleProviderFields()"><option value="">Select Provider</option>{% for p in providers %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select></div>
 
