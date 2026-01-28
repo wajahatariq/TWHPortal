@@ -136,35 +136,49 @@ function renderPendingCards() {
         return;
     }
 
-    // LLC lists as defined in your main.py
+    // Options from main.py lists
     const llcOptions = pendingSubTab === 'billing' 
         ? ["Secure Claim Solutions", "Visionary Pathways"] 
         : ["Secure Claim Solutions"];
 
     data.forEach(row => {
-        const id = row['Record_ID'] || row['Order ID'];
-        
-        // ... (existing charge/card/address cleaning logic) ...
+        const id = row['Record_ID'] || row['Order ID']; 
+        const cleanCharge = String(row['charge_str'] || row['Charge Amount'] || '').replace(/[^0-9.]/g, '');
+        const cleanCard = String(row['card_number'] || '').replace(/\s+/g, ''); 
+        const cleanExpiry = String(row['exp_date'] || '').replace(/[\/\\]/g, ''); 
+        const address = row['Address'] || row['address'] || row['adress'] || 'N/A';
 
         const card = document.createElement('div');
         card.className = "pending-card fade-in p-0 bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-lg hover:border-blue-500/50 transition-all";
         card.innerHTML = `
             <div class="bg-slate-900/50 p-4 border-b border-slate-700">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-white font-bold text-lg truncate">${row['agent']} — <span class="text-green-400">$${cleanCharge}</span></h3>
+                    <div class="text-xs text-slate-400">(${row['llc'] || row['provider']})</div>
                 </div>
+            </div>
             <div class="p-4 space-y-2 text-sm font-mono text-slate-300">
-                </div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Card Number:</span><span class="text-white tracking-widest font-bold">${cleanCard}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Expiry Date:</span><span class="text-white">${cleanExpiry}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Charge:</span><span class="text-green-400 font-bold">$${cleanCharge}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Card Name:</span><span class="text-white">${row['card_holder']}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Phone:</span><span class="text-white">${row['phone']}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Email:</span><span class="text-blue-300 truncate">${row['email']}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Address:</span><span class="text-white break-words w-full">${address}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">CVC:</span><span class="text-red-400 font-bold">${row['cvc']}</span></div>
+            </div>
 
             <div class="px-4 mb-4">
-                <label class="block text-xs font-bold text-blue-400 uppercase mb-1">Assign LLC *</label>
+                <label class="block text-xs font-bold text-blue-400 uppercase mb-1">Select LLC *</label>
                 <select id="llc_select_${id}" class="input-field w-full py-2 text-sm border-blue-500/50 bg-slate-900">
-                    <option value="">-- Select LLC --</option>
+                    <option value="">-- Choose LLC --</option>
                     ${llcOptions.map(opt => `<option value="${opt}">${opt}</option>`).join('')}
                 </select>
             </div>
 
             <div class="grid grid-cols-2 gap-3 p-4 pt-0">
-                <button onclick="validateAndSetStatus('${pendingSubTab}', '${id}', 'Charged', this)" class="bg-green-600 hover:bg-green-500 text-white py-2 rounded-lg font-bold shadow-lg shadow-green-900/20 active:scale-95 transition">Approve</button>
-                <button onclick="validateAndSetStatus('${pendingSubTab}', '${id}', 'Declined', this)" class="bg-red-600 hover:bg-red-500 text-white py-2 rounded-lg font-bold shadow-lg shadow-red-900/20 active:scale-95 transition">Decline</button>
+                <button onclick="processLeadWithLLC('${pendingSubTab}', '${id}', 'Charged', this)" class="bg-green-600 hover:bg-green-500 text-white py-2 rounded-lg font-bold shadow-lg shadow-green-900/20 active:scale-95 transition">Approve</button>
+                <button onclick="processLeadWithLLC('${pendingSubTab}', '${id}', 'Declined', this)" class="bg-red-600 hover:bg-red-500 text-white py-2 rounded-lg font-bold shadow-lg shadow-red-900/20 active:scale-95 transition">Decline</button>
             </div>
         `;
         container.appendChild(card);
@@ -498,6 +512,31 @@ async function loadHistory() {
 // Auto-load history when page loads
 if(document.getElementById('historyTableBody')) {
     loadHistory();
+}
+async function processLeadWithLLC(type, id, status, btn) {
+    const llcSelect = document.getElementById(`llc_select_${id}`);
+    const val = llcSelect.value;
+
+    if (!val) {
+        alert("Please select an LLC before processing this lead.");
+        llcSelect.focus();
+        return;
+    }
+
+    // Save the LLC selection to the lead record first
+    const fd = new FormData();
+    fd.append('type', type);
+    fd.append('id', id);
+    fd.append('field', 'llc');
+    fd.append('value', val);
+
+    try {
+        await fetch('/api/update_field', { method: 'POST', body: fd });
+        // Call your existing setStatus function
+        setStatus(type, id, status, btn);
+    } catch (e) {
+        alert("Error saving LLC. Please try again.");
+    }
 }
 
 
