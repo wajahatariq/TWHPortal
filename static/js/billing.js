@@ -73,7 +73,7 @@ function clearForm() {
     showToast("Form Cleared");
 }
 
-// --- UPDATED SEARCH LOGIC ---
+// --- UPDATED SEARCH LOGIC in billing.js ---
 async function searchLead(specificRowIndex = null) {
     const id = document.getElementById('searchId').value.trim();
     if(!id) return showToast("Enter an Order ID", true);
@@ -82,23 +82,19 @@ async function searchLead(specificRowIndex = null) {
     if(!specificRowIndex) btn.innerText = "...";
     
     let url = `/api/get-lead?type=billing&id=${id}`;
-    // If we are selecting a specific duplicate, pass the row_index
     if (specificRowIndex) url += `&row_index=${specificRowIndex}`;
 
     try {
         const res = await fetch(url);
         const json = await res.json();
         
-        // --- 1. HANDLE DUPLICATES ---
+        // 1. HANDLE DUPLICATES
         if(json.status === 'multiple') {
             const list = document.getElementById('duplicateList');
             list.innerHTML = '';
-            
-            // Use json.data (from backend)
             json.data.forEach(c => {
                 const item = document.createElement('div');
                 item.className = "p-3 bg-slate-700/50 rounded-lg cursor-pointer hover:bg-blue-600/50 border border-slate-600 transition flex justify-between items-center mb-2";
-                
                 item.innerHTML = `
                     <div>
                         <div class="font-bold text-white text-sm">${c.Agent} - ${c.Client}</div>
@@ -106,19 +102,17 @@ async function searchLead(specificRowIndex = null) {
                     </div>
                     <div class="text-green-400 font-mono font-bold text-sm">${c.Charge}</div>
                 `;
-                
                 item.onclick = () => {
                     document.getElementById('duplicateModal').classList.add('hidden');
-                    // Recursively call search with specific ID
                     searchLead(c.row_index);
                 };
                 list.appendChild(item);
             });
             document.getElementById('duplicateModal').classList.remove('hidden');
-            return; 
+            return; // Exit here if duplicates are found
         }
 
-        // --- 2. HANDLE SUCCESS ---
+        // 2. HANDLE SUCCESS
         if(json.status === 'success') {
             const d = json.data;
             document.getElementById('isEdit').value = "true";
@@ -130,27 +124,26 @@ async function searchLead(specificRowIndex = null) {
             document.getElementById('editOptions').classList.remove('hidden');
             
             // Populate Fields
-            document.getElementById('original_timestamp').value = d['Timestamp'];
-            document.getElementById('row_index').value = d['row_index'];
-
-            document.getElementById('agent').value = d['Agent Name'];
-            document.getElementById('client_name').value = d['Client Name']; 
-            document.getElementById('order_id').value = d['Order ID'];
+            document.getElementById('original_timestamp').value = d['Timestamp'] || '';
+            document.getElementById('row_index').value = d['row_index'] || '';
+            document.getElementById('agent').value = d['Agent Name'] || '';
+            document.getElementById('client_name').value = d['Client Name'] || ''; 
+            document.getElementById('order_id').value = d['Order ID'] || id;
             document.getElementById('order_id').readOnly = true; 
-            document.getElementById('phone').value = d['Ph Number'];
-            document.getElementById('address').value = d['Address'];
-            document.getElementById('email').value = d['Email'];
-            document.getElementById('card_holder').value = d['Card Holder Name'];
-            document.getElementById('card_number').value = d['Card Number'];
-            document.getElementById('exp_date').value = d['Expiry Date'];
-            document.getElementById('cvc').value = d['CVC'];
+            document.getElementById('phone').value = d['Ph Number'] || '';
+            document.getElementById('address').value = d['Address'] || '';
+            document.getElementById('email').value = d['Email'] || '';
+            document.getElementById('card_holder').value = d['Card Holder Name'] || '';
+            document.getElementById('card_number').value = d['Card Number'] || '';
+            document.getElementById('exp_date').value = d['Expiry Date'] || '';
+            document.getElementById('cvc').value = d['CVC'] || '';
             
             const rawCharge = d['Charge'] || '0';
             const cleanCharge = String(rawCharge).replace(/[^0-9.]/g, '');
             document.getElementById('charge_amt').value = cleanCharge;
             
-            document.getElementById('llc').value = d['LLC'];
-            document.getElementById('providerSelect').value = d['Provider'];
+            document.getElementById('llc').value = d['LLC'] || '';
+            document.getElementById('providerSelect').value = d['Provider'] || '';
             
             const savedCode = d['PIN Code'] || d['Account Number'] || '';
             document.getElementById('pin_code').value = savedCode;
@@ -158,11 +151,16 @@ async function searchLead(specificRowIndex = null) {
             
             toggleProviderFields();
             showToast("Lead Loaded.");
+            return; // CRITICAL: Return here so it doesn't hit the 'catch' block
         } else {
             showToast(json.message || "Order ID not found.", true);
         }
-    } catch(e) { console.error(e); showToast("Error fetching data", true); }
-    finally { if(!specificRowIndex) btn.innerText = "Find"; }
+    } catch(e) { 
+        console.error(e); 
+        showToast("Error fetching data", true); 
+    } finally { 
+        if(!specificRowIndex) btn.innerText = "Find"; 
+    }
 }
 
 document.getElementById('billingForm').addEventListener('submit', async (e) => {
@@ -221,3 +219,4 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
