@@ -340,20 +340,44 @@ function renderAnalysis() {
         }).join('');
     } else { tbody.innerHTML = `<tr><td colspan="100%" class="p-8 text-center text-slate-500">No records found.</td></tr>`; }
 }
-async function setStatus(type, id, status, btnElement) {
+// Updated setStatus to handle the unique identifier
+async function setStatus(type, id, status, btnElement, rowIndex = null) {
     const card = btnElement.closest('.pending-card');
     const btns = card.querySelectorAll('button');
     btns.forEach(b => { b.disabled = true; b.classList.add('opacity-50'); });
     const originalText = btnElement.innerText;
     btnElement.innerText = "...";
+    
     try {
-        const formData = new FormData(); formData.append('type', type); formData.append('id', id); formData.append('status', status);
+        const formData = new FormData(); 
+        formData.append('type', type); 
+        formData.append('id', id); 
+        formData.append('status', status);
+        
+        // Use the unique row_index to distinguish between duplicate IDs
+        if (rowIndex) formData.append('row_index', rowIndex);
+
         const res = await fetch('/api/manager/update_status', { method: 'POST', body: formData });
         const data = await res.json();
-        if(data.status === 'success') { card.style.transition = "all 0.5s"; card.style.opacity = "0"; card.style.transform = "scale(0.9)"; setTimeout(() => { fetchData(); }, 500); } 
-        else { alert("Error: " + data.message); resetButtons(); }
-    } catch (error) { alert("Update Failed!"); resetButtons(); }
-    function resetButtons() { btns.forEach(b => { b.disabled = false; b.classList.remove('opacity-50'); }); btnElement.innerText = originalText; }
+        
+        if (data.status === 'success') { 
+            card.style.transition = "all 0.5s"; 
+            card.style.opacity = "0"; 
+            card.style.transform = "scale(0.9)"; 
+            setTimeout(() => { fetchData(); }, 500); 
+        } else { 
+            alert("Error: " + data.message); 
+            resetButtons(); 
+        }
+    } catch (error) { 
+        alert("Update Failed!"); 
+        resetButtons(); 
+    }
+
+    function resetButtons() { 
+        btns.forEach(b => { b.disabled = false; b.classList.remove('opacity-50'); }); 
+        btnElement.innerText = originalText; 
+    }
 }
 
 // --- UPDATED: Search with Duplicate Handling ---
@@ -538,6 +562,7 @@ async function processLeadWithLLC(type, id, status, btn) {
         alert("Error saving LLC. Please try again.");
     }
 }
+
 
 
 
