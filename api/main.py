@@ -626,24 +626,35 @@ async def get_manager_data(token: str):
         return JSONResponse({"status": "error", "message": "Data sync failed"}, 500)
 
 @app.post("/api/manager/update_status")
-async def update_status(type: str = Form(...), id: str = Form(...), status: str = Form(...)):
+async def update_status(
+    type: str = Form(...), 
+    id: str = Form(...), 
+    status: str = Form(...),
+    row_index: str = Form(None)  # Added to capture the unique record ID
+):
     try:
         if type == 'billing': col = billing_col
         elif type == 'insurance': col = insurance_col
         elif type == 'design': col = design_col
         elif type == 'ebook': col = ebook_col
         
+        # Priority: Use unique row_index (ObjectId) to distinguish between duplicates
+        # Fallback: Use record_id if row_index is missing
+        filter_query = {"_id": ObjectId(row_index)} if row_index else {"record_id": str(id)}
+        
         result = col.find_one_and_update(
-            {"record_id": str(id)},
+            filter_query,
             {"$set": {"status": status}},
             return_document=True
         )
+        
         if not result: raise Exception("ID not found in DB")
         
         pusher_client.trigger('techware-channel', 'status-update', {
             'id': id, 'status': status, 'type': type,
             'agent': result.get('agent'), 'client': result.get('client_name')
         })
+        
         return {"status": "success", "message": "Updated in Database"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -706,6 +717,7 @@ async def get_history_totals():
         return {"status": "success", "data": history}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
