@@ -138,8 +138,8 @@ function renderPendingCards() {
 
     // Options derived from main.py constants
     const llcOptions = pendingSubTab === 'billing' 
-        ? ["Secure Claim Solutions", "Visionary Pathways"] 
-        : ["Secure Claim Solutions"];
+        ? ["Secure Claim Solutions-NMI", "Visionary Pathways-Authorize", "Visionary Pathways-Chase"]]  
+        : ["Secure Claim Solutions-NMI"];
 
     data.forEach(row => {
         const id = row['Record_ID'] || row['Order ID']; 
@@ -565,6 +565,7 @@ async function processLeadWithLLC(type, id, status, btn) {
         alert("Error saving LLC. Please try again.");
     }
 }
+
 
 
 
