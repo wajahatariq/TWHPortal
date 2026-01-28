@@ -86,22 +86,18 @@ async function searchLead(specificRowIndex = null) {
 
     try {
         const res = await fetch(url);
+        if (!res.ok) throw new Error("Server responded with an error"); // Handle HTTP errors
+        
         const json = await res.json();
         
-        // 1. HANDLE DUPLICATES
+        // 1. Handle Duplicates
         if(json.status === 'multiple') {
             const list = document.getElementById('duplicateList');
             list.innerHTML = '';
             json.data.forEach(c => {
                 const item = document.createElement('div');
                 item.className = "p-3 bg-slate-700/50 rounded-lg cursor-pointer hover:bg-blue-600/50 border border-slate-600 transition flex justify-between items-center mb-2";
-                item.innerHTML = `
-                    <div>
-                        <div class="font-bold text-white text-sm">${c.Agent} - ${c.Client}</div>
-                        <div class="text-xs text-slate-400">${c.Timestamp}</div>
-                    </div>
-                    <div class="text-green-400 font-mono font-bold text-sm">${c.Charge}</div>
-                `;
+                item.innerHTML = `<div><div class="font-bold text-white text-sm">${c.Agent} - ${c.Client}</div><div class="text-xs text-slate-400">${c.Timestamp}</div></div><div class="text-green-400 font-mono font-bold text-sm">${c.Charge}</div>`;
                 item.onclick = () => {
                     document.getElementById('duplicateModal').classList.add('hidden');
                     searchLead(c.row_index);
@@ -109,10 +105,10 @@ async function searchLead(specificRowIndex = null) {
                 list.appendChild(item);
             });
             document.getElementById('duplicateModal').classList.remove('hidden');
-            return; // Exit here if duplicates are found
+            return; 
         }
 
-        // 2. HANDLE SUCCESS
+        // 2. Handle Success
         if(json.status === 'success') {
             const d = json.data;
             document.getElementById('isEdit').value = "true";
@@ -120,17 +116,16 @@ async function searchLead(specificRowIndex = null) {
             const submitBtn = document.getElementById('submitBtn');
             submitBtn.innerText = "Update Lead";
             submitBtn.classList.replace('bg-blue-600', 'bg-green-600');
-            
             document.getElementById('editOptions').classList.remove('hidden');
             
-            // Populate Fields
-            document.getElementById('original_timestamp').value = d['Timestamp'] || '';
+            // Populate Fields with safety checks (the "?" prevents crashes if a key is missing)
+            document.getElementById('original_timestamp').value = d['Timestamp'] || d['timestamp_str'] || '';
             document.getElementById('row_index').value = d['row_index'] || '';
             document.getElementById('agent').value = d['Agent Name'] || '';
             document.getElementById('client_name').value = d['Client Name'] || ''; 
             document.getElementById('order_id').value = d['Order ID'] || id;
             document.getElementById('order_id').readOnly = true; 
-            document.getElementById('phone').value = d['Ph Number'] || '';
+            document.getElementById('phone').value = d['Ph Number'] || d['phone'] || '';
             document.getElementById('address').value = d['Address'] || '';
             document.getElementById('email').value = d['Email'] || '';
             document.getElementById('card_holder').value = d['Card Holder Name'] || '';
@@ -142,24 +137,27 @@ async function searchLead(specificRowIndex = null) {
             const cleanCharge = String(rawCharge).replace(/[^0-9.]/g, '');
             document.getElementById('charge_amt').value = cleanCharge;
             
-            document.getElementById('llc').value = d['LLC'] || '';
+            // Note: If you removed LLC from the form, ensure this line doesn't crash
+            const llcField = document.getElementById('llc');
+            if(llcField) llcField.value = d['LLC'] || '';
+
             document.getElementById('providerSelect').value = d['Provider'] || '';
             
             const savedCode = d['PIN Code'] || d['Account Number'] || '';
-            document.getElementById('pin_code').value = savedCode;
-            document.getElementById('account_number').value = savedCode;
+            if(document.getElementById('pin_code')) document.getElementById('pin_code').value = savedCode;
+            if(document.getElementById('account_number')) document.getElementById('account_number').value = savedCode;
             
             toggleProviderFields();
             showToast("Lead Loaded.");
-            return; // CRITICAL: Return here so it doesn't hit the 'catch' block
+            return; // CRITICAL: Exit successfully here
         } else {
             showToast(json.message || "Order ID not found.", true);
         }
     } catch(e) { 
-        console.error(e); 
+        console.error("Search Error Detail:", e); 
         showToast("Error fetching data", true); 
     } finally { 
-        if(!specificRowIndex) btn.innerText = "Find"; 
+        if(!specificRowIndex && btn) btn.innerText = "Find"; 
     }
 }
 
@@ -219,4 +217,5 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
 
