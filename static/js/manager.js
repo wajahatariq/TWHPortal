@@ -136,7 +136,7 @@ function renderPendingCards() {
         return;
     }
 
-    // Options from main.py lists
+    // Options derived from main.py constants
     const llcOptions = pendingSubTab === 'billing' 
         ? ["Secure Claim Solutions", "Visionary Pathways"] 
         : ["Secure Claim Solutions"];
@@ -150,7 +150,10 @@ function renderPendingCards() {
 
         const card = document.createElement('div');
         card.className = "pending-card fade-in p-0 bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-lg hover:border-blue-500/50 transition-all";
+        
+        // Integration of hidden row-index and corrected HTML structure
         card.innerHTML = `
+            <input type="hidden" class="row-index" value="${row['row_index']}">
             <div class="bg-slate-900/50 p-4 border-b border-slate-700">
                 <div class="flex justify-between items-center">
                     <h3 class="text-white font-bold text-lg truncate">${row['agent']} — <span class="text-green-400">$${cleanCharge}</span></h3>
@@ -177,8 +180,8 @@ function renderPendingCards() {
             </div>
 
             <div class="grid grid-cols-2 gap-3 p-4 pt-0">
-                <button onclick="processLeadWithLLC('${pendingSubTab}', '${id}', 'Charged', this)" class="bg-green-600 hover:bg-green-500 text-white py-2 rounded-lg font-bold shadow-lg shadow-green-900/20 active:scale-95 transition">Approve</button>
-                <button onclick="processLeadWithLLC('${pendingSubTab}', '${id}', 'Declined', this)" class="bg-red-600 hover:bg-red-500 text-white py-2 rounded-lg font-bold shadow-lg shadow-red-900/20 active:scale-95 transition">Decline</button>
+                <button onclick="validateAndSetStatus('${pendingSubTab}', '${id}', 'Charged', this)" class="bg-green-600 hover:bg-green-500 text-white py-2 rounded-lg font-bold shadow-lg shadow-green-900/20 active:scale-95 transition">Approve</button>
+                <button onclick="validateAndSetStatus('${pendingSubTab}', '${id}', 'Declined', this)" class="bg-red-600 hover:bg-red-500 text-white py-2 rounded-lg font-bold shadow-lg shadow-red-900/20 active:scale-95 transition">Decline</button>
             </div>
         `;
         container.appendChild(card);
@@ -562,6 +565,7 @@ async function processLeadWithLLC(type, id, status, btn) {
         alert("Error saving LLC. Please try again.");
     }
 }
+
 
 
 
