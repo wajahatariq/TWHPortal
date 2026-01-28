@@ -404,7 +404,7 @@ async def update_field_inline(
         elif field == 'Service' or field == 'Provider': update_data['provider'] = value
         elif field == 'Phone': update_data['phone'] = value
         elif field == 'Email': update_data['email'] = value
-        
+        elif field == 'llc': update_data['llc'] = value
         # --- CRITICAL FIX: Update Number AND Text for Charge ---
         elif field == 'Charge': 
             update_data['charge_str'] = value
@@ -706,6 +706,7 @@ async def get_history_totals():
         return {"status": "success", "data": history}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
