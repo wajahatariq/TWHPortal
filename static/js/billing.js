@@ -14,14 +14,28 @@ function updateNightWidget() {
     document.getElementById('nightWidgetAmount').innerText = '$' + data.total.toFixed(2);
     const listDiv = document.getElementById('nightBreakdown');
     listDiv.innerHTML = '';
+    
     if (data.breakdown && Object.keys(data.breakdown).length > 0) {
         listDiv.classList.remove('hidden');
-        for (const [agent, amount] of Object.entries(data.breakdown)) {
+        
+        // 1. Sort by Amount Descending (Largest on Top)
+        const sortedEntries = Object.entries(data.breakdown).sort((a, b) => b[1] - a[1]);
+
+        sortedEntries.forEach(([agent, amount], index) => {
             const row = document.createElement('div');
-            row.className = "flex justify-between border-b border-slate-900/10 pb-1 last:border-0";
-            row.innerHTML = `<span class="truncate pr-2">${agent}</span> <span class="font-bold">$${amount.toFixed(2)}</span>`;
+            
+            if (index === 0) {
+                // 2. Gold Touch for Top Performer
+                row.className = "flex justify-between items-center bg-gradient-to-r from-yellow-300 to-amber-400 text-slate-900 font-extrabold p-2 rounded shadow-md mb-1 border border-yellow-500/50 transform scale-105";
+                row.innerHTML = `<span class="truncate pr-2 flex items-center gap-1">👑 ${agent}</span> <span>$${amount.toFixed(2)}</span>`;
+            } else {
+                // Standard Styling for others
+                row.className = "flex justify-between items-center border-b border-slate-900/10 py-1 last:border-0";
+                row.innerHTML = `<span class="truncate pr-2">${agent}</span> <span class="font-bold">$${amount.toFixed(2)}</span>`;
+            }
             listDiv.appendChild(row);
-        }
+        });
+
     } else { listDiv.classList.add('hidden'); }
 }
 fetchNightStats(); setInterval(fetchNightStats, 120000); 
@@ -217,5 +231,3 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
-
-
