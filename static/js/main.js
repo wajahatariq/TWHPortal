@@ -276,11 +276,12 @@ document.addEventListener("DOMContentLoaded", function() {
         channel.bind('status-update', function(data) {
             const status = data.status.toLowerCase();
             const isApproved = status === 'charged' || status === 'approved';
+            const llcName = data.llc ? ` on ${data.llc}` : "";
             
             // Format: Congrats/Sorry [Agent] [Client] got [Status]
             let msg = '';
             if(isApproved) {
-                msg = `Congrats ${data.agent} ${data.client} got approved`;
+                msg = `Congrats ${data.agent} ${data.client} got approved on ${llcName} puchna mt ab.`;
             } else {
                 msg = `Sorry ${data.agent} ${data.client} got declined`;
             }
@@ -313,3 +314,4 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 });
+
