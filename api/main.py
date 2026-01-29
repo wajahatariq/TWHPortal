@@ -422,8 +422,7 @@ async def update_field_inline(
         # -------------------------------------------------------
 
         col.update_one({"record_id": id}, {"$set": update_data})
-        
-        pusher_client.trigger('techware-channel', 'lead-edited', {'agent': 'Inline', 'id': id, 'client': 'Record', 'type': type, 'message': "Inline Edit"})
+        # pusher_client.trigger('techware-channel', 'lead-edited', {'agent': 'Inline', 'id': id, 'client': 'Record', 'type': type, 'message': "Inline Edit"})
         return {"status": "success"}
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, 500)
@@ -652,7 +651,7 @@ async def update_status(
         
         pusher_client.trigger('techware-channel', 'status-update', {
             'id': id, 'status': status, 'type': type,
-            'agent': result.get('agent'), 'client': result.get('client_name')
+            'agent': result.get('agent'), 'client': result.get('client_name'), 'llc': result.get('llc')
         })
         
         return {"status": "success", "message": "Updated in Database"}
@@ -717,6 +716,7 @@ async def get_history_totals():
         return {"status": "success", "data": history}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
