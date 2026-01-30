@@ -111,7 +111,7 @@ def get_worksheet(sheet_type):
 AGENTS_BILLING = ["Arham Kaleem", "Arham Ali", "Haziq", "Anus", "Hasnain"]
 AGENTS_INSURANCE = ["Saad"]
 AGENTS_DESIGN = ["Taha", "Osama"]
-AGENTS_EBOOK = ["Huzaifa", "Haseeb"]
+AGENTS_EBOOK = ["Huzaifa"]
 
 PROVIDERS = ["Spectrum", "Insurance", "Xfinity", "Frontier", "Optimum"]
 LLC_SPEC = ["Secure Claim Solutions", "Visionary Pathways"]
@@ -168,7 +168,21 @@ def calculate_mongo_stats(collection, dept_type):
         results = list(collection.aggregate(pipeline))
         
         total = sum(r["total"] for r in results)
-        breakdown = {r["_id"]: r["total"] for r in results}
+        
+        # --- FIX: Initialize breakdown with ALL agents set to 0 ---
+        target_agents = []
+        if dept_type == 'billing': target_agents = AGENTS_BILLING
+        elif dept_type == 'insurance': target_agents = AGENTS_INSURANCE
+        elif dept_type == 'design': target_agents = AGENTS_DESIGN
+        elif dept_type == 'ebook': target_agents = AGENTS_EBOOK
+        
+        # Create dictionary with 0.0 default for everyone
+        breakdown = {agent: 0.0 for agent in target_agents}
+        
+        # Update with actual values from database
+        for r in results:
+            breakdown[r["_id"]] = r["total"]
+        # -----------------------------------------------------------
 
         return {
             "total": round(total, 2),
@@ -716,6 +730,7 @@ async def get_history_totals():
         return {"status": "success", "data": history}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
