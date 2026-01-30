@@ -31,8 +31,8 @@ function updateNightWidget() {
             } else if (index === sortedEntries.length - 1 && sortedEntries.length > 1) {
                 // --- BOTTOM PERFORMER: Slight Backdrop & Banana ---
                 // Only applies if there's more than 1 person (otherwise they are Top)
-                row.className = "flex justify-between items-center bg-slate-800/80 text-slate-400 font-medium p-1.5 rounded border border-slate-700/50 mt-1";
-                row.innerHTML = `<span class="truncate pr-2 flex items-center gap-1">🍌 ${agent}</span> <span class="text-slate-500">$${amount.toFixed(2)}</span>`;
+                row.className = "flex justify-between items-center bg-white text-slate-900 font-bold p-2 rounded border border-slate-200 mt-1 shadow-sm opacity-90";
+                row.innerHTML = `<span class="truncate pr-2 flex items-center gap-1">🍌 ${agent}</span> <span class="text-slate-900 font-black">$${amount.toFixed(2)}</span>`;
                 
             } else {
                 // Standard Styling for others
@@ -237,4 +237,5 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
 
