@@ -281,7 +281,7 @@ document.addEventListener("DOMContentLoaded", function() {
             // Format: Congrats/Sorry [Agent] [Client] got [Status]
             let msg = '';
             if(isApproved) {
-                msg = `Congrats ${data.agent} ${data.client} got approved ${llcName} puchna mt ab.`;
+                msg = `Congrats ${data.agent} ${data.client} got approved${llcName} puchna mt ab.`;
             } else {
                 msg = `Sorry ${data.agent} ${data.client} got declined`;
             }
@@ -314,5 +314,6 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 });
+
 
 
