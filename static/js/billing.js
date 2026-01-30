@@ -28,6 +28,12 @@ function updateNightWidget() {
                 // 2. Gold Touch for Top Performer
                 row.className = "flex justify-between items-center bg-gradient-to-r from-yellow-300 to-amber-400 text-slate-900 font-extrabold p-2 rounded shadow-md mb-1 border border-yellow-500/50 transform scale-105";
                 row.innerHTML = `<span class="truncate pr-2 flex items-center gap-1">👑 ${agent}</span> <span>$${amount.toFixed(2)}</span>`;
+            } else if (index === sortedEntries.length - 1 && sortedEntries.length > 1) {
+                // --- BOTTOM PERFORMER: Slight Backdrop & Banana ---
+                // Only applies if there's more than 1 person (otherwise they are Top)
+                row.className = "flex justify-between items-center bg-slate-800/80 text-slate-400 font-medium p-1.5 rounded border border-slate-700/50 mt-1";
+                row.innerHTML = `<span class="truncate pr-2 flex items-center gap-1">🍌 ${agent}</span> <span class="text-slate-500">$${amount.toFixed(2)}</span>`;
+                
             } else {
                 // Standard Styling for others
                 row.className = "flex justify-between items-center border-b border-slate-900/10 py-1 last:border-0";
@@ -231,3 +237,4 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
