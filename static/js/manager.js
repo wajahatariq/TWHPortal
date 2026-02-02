@@ -73,24 +73,29 @@ function updateDashboardStats() {
         if (sortedAgents.length === 0) {
             listContainer.innerHTML = '<div class="text-slate-500 col-span-full italic text-center py-4">No data available for this shift</div>';
         } else {
-            // Find max and min values for emojis
             const values = Object.values(breakdown);
             const maxVal = Math.max(...values);
             const minVal = Math.min(...values);
 
             sortedAgents.forEach(([agent, amount]) => {
-                // Emoji logic
-                let emoji = '';
+                let badgeHtml = '';
+                
+                // King styling (Gold Background)
                 if (amount === maxVal && maxVal > 0) {
-                    emoji = ' 👑';
-                } else if (amount === minVal && values.length > 1) {
-                    emoji = ' 🍌';
+                    badgeHtml = `<span class="ml-2 px-2 py-0.5 rounded text-xs bg-yellow-500/20 text-yellow-400 border border-yellow-500/50">👑</span>`;
+                } 
+                // Banana styling (White Backdrop, Black Text)
+                else if (amount === minVal && values.length > 1) {
+                    badgeHtml = `<span class="ml-2 px-2 py-0.5 rounded text-xs bg-white text-black font-bold border border-gray-300">🍌</span>`;
                 }
 
                 const div = document.createElement('div');
                 div.className = 'bg-slate-700/50 p-3 rounded-lg border border-slate-600 flex justify-between items-center';
                 div.innerHTML = `
-                    <span class="font-medium text-slate-200">${agent}${emoji}</span>
+                    <div class="flex items-center">
+                        <span class="font-medium text-slate-200">${agent}</span>
+                        ${badgeHtml}
+                    </div>
                     <span class="text-blue-400 font-bold">$${amount.toFixed(2)}</span>
                 `;
                 listContainer.appendChild(div);
@@ -593,6 +598,7 @@ async function processLeadWithLLC(type, id, status, btn) {
         alert("Error saving LLC. Please try again.");
     }
 }
+
 
 
 
