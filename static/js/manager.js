@@ -67,20 +67,37 @@ function updateDashboardStats() {
     const breakdown = stats.breakdown || {};
     const sortedAgents = Object.entries(breakdown).sort((a, b) => b[1] - a[1]);
     const listContainer = document.getElementById('agentPerformanceList');
+
     if(listContainer) {
         listContainer.innerHTML = '';
-        if (sortedAgents.length === 0) listContainer.innerHTML = '<div class="text-slate-500 col-span-full italic">No night sales yet.</div>';
-        else {
+        if (sortedAgents.length === 0) {
+            listContainer.innerHTML = '<div class="text-slate-500 col-span-full italic text-center py-4">No data available for this shift</div>';
+        } else {
+            // Find max and min values for emojis
+            const values = Object.values(breakdown);
+            const maxVal = Math.max(...values);
+            const minVal = Math.min(...values);
+
             sortedAgents.forEach(([agent, amount]) => {
-                const item = document.createElement('div');
-                item.className = "flex justify-between items-center bg-slate-700/50 p-3 rounded-lg border border-slate-600 hover:bg-slate-600 transition";
-                item.innerHTML = `<span class="font-bold text-white">${agent}</span><span class="font-mono text-blue-300 font-bold">$${amount.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>`;
-                listContainer.appendChild(item);
+                // Emoji logic
+                let emoji = '';
+                if (amount === maxVal && maxVal > 0) {
+                    emoji = ' 👑';
+                } else if (amount === minVal && values.length > 1) {
+                    emoji = ' 🍌';
+                }
+
+                const div = document.createElement('div');
+                div.className = 'bg-slate-700/50 p-3 rounded-lg border border-slate-600 flex justify-between items-center';
+                div.innerHTML = `
+                    <span class="font-medium text-slate-200">${agent}${emoji}</span>
+                    <span class="text-blue-400 font-bold">$${amount.toFixed(2)}</span>
+                `;
+                listContainer.appendChild(div);
             });
         }
     }
 }
-
 function updateDepartmentTotals() {
     const billTotal = allData.stats_bill?.total || 0;
     const insTotal = allData.stats_ins?.total || 0;
@@ -576,5 +593,6 @@ async function processLeadWithLLC(type, id, status, btn) {
         alert("Error saving LLC. Please try again.");
     }
 }
+
 
 
