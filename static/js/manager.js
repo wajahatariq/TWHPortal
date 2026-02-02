@@ -67,42 +67,57 @@ function updateDashboardStats() {
     const breakdown = stats.breakdown || {};
     const sortedAgents = Object.entries(breakdown).sort((a, b) => b[1] - a[1]);
     const listContainer = document.getElementById('agentPerformanceList');
-
+    
     if(listContainer) {
         listContainer.innerHTML = '';
         if (sortedAgents.length === 0) {
-            listContainer.innerHTML = '<div class="text-slate-500 col-span-full italic text-center py-4">No data available for this shift</div>';
+            listContainer.innerHTML = '<div class="text-slate-500 col-span-full italic">No night sales yet.</div>';
         } else {
             const values = Object.values(breakdown);
             const maxVal = Math.max(...values);
             const minVal = Math.min(...values);
 
             sortedAgents.forEach(([agent, amount]) => {
-                let badgeHtml = '';
+                const item = document.createElement('div');
                 
-                // King styling (Gold Background)
+                // Default styling
+                let rowClass = "flex justify-between items-center p-3 rounded-lg border transition ";
+                let nameClass = "font-bold ";
+                let amountClass = "font-mono font-bold ";
+                let emoji = "";
+
+                // Apply Gold Gradient for King (Top Performer)
                 if (amount === maxVal && maxVal > 0) {
-                    badgeHtml = `<span class="ml-2 px-2 py-0.5 rounded text-xs bg-yellow-500/20 text-yellow-400 border border-yellow-500/50">👑</span>`;
+                    rowClass += "bg-gradient-to-r from-yellow-600 to-yellow-400 border-yellow-300 shadow-lg shadow-yellow-900/20";
+                    nameClass += "text-black";
+                    amountClass += "text-black";
+                    emoji = " 👑";
                 } 
-                // Banana styling (White Backdrop, Black Text)
+                // Apply White Backdrop for Banana (Lowest Performer)
                 else if (amount === minVal && values.length > 1) {
-                    badgeHtml = `<span class="ml-2 px-2 py-0.5 rounded text-xs bg-white text-black font-bold border border-gray-300">🍌</span>`;
+                    rowClass += "bg-white border-gray-200 shadow-md";
+                    nameClass += "text-black";
+                    amountClass += "text-black";
+                    emoji = " 🍌";
+                } 
+                // Default look for everyone else
+                else {
+                    rowClass += "bg-slate-700/50 border-slate-600 hover:bg-slate-600 text-white";
+                    nameClass += "text-white";
+                    amountClass += "text-blue-300";
                 }
 
-                const div = document.createElement('div');
-                div.className = 'bg-slate-700/50 p-3 rounded-lg border border-slate-600 flex justify-between items-center';
-                div.innerHTML = `
-                    <div class="flex items-center">
-                        <span class="font-medium text-slate-200">${agent}</span>
-                        ${badgeHtml}
-                    </div>
-                    <span class="text-blue-400 font-bold">$${amount.toFixed(2)}</span>
+                item.className = rowClass;
+                item.innerHTML = `
+                    <span class="${nameClass}">${agent}${emoji}</span>
+                    <span class="${amountClass}">$${amount.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                 `;
-                listContainer.appendChild(div);
+                listContainer.appendChild(item);
             });
         }
     }
 }
+
 function updateDepartmentTotals() {
     const billTotal = allData.stats_bill?.total || 0;
     const insTotal = allData.stats_ins?.total || 0;
@@ -598,6 +613,7 @@ async function processLeadWithLLC(type, id, status, btn) {
         alert("Error saving LLC. Please try again.");
     }
 }
+
 
 
 
