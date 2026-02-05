@@ -273,3 +273,76 @@ if(newLeadBtn) {
         }
     });
 }
+(function() {
+    // 1. Save the original toast function so we don't break it
+    const originalShowToast = window.showToast;
+    
+    // 2. List of Hype Quotes
+    const hypeQuotes = [
+        "CHA-CHING! 💸",
+        "Money printer go BRRRR! 🖨️💵",
+        "Another one! DJ Khaled would be proud. 🔑",
+        "Save some commissions for the rest of us! 🤑",
+        "You're on fire! (Not literally, please). 🔥",
+        "Stonks only go up! 📈",
+        "Glengarry Glen Ross vibes! ☕",
+        "Show me the money!!! 💰",
+        "Boom! Mic drop. 🎤",
+        "I smell a bonus... 👃💵"
+    ];
+
+    // 3. Override the showToast function
+    window.showToast = function(msg, isError = false) {
+        // Only trigger fun stuff on Success (when msg contains 'saved', 'created', or 'success')
+        if (!isError && (msg.toLowerCase().includes('saved') || msg.toLowerCase().includes('created') || msg.toLowerCase().includes('success'))) {
+            
+            // Pick a random quote
+            const randomQuote = hypeQuotes[Math.floor(Math.random() * hypeQuotes.length)];
+            msg = `${msg} — ${randomQuote}`;
+            
+            // Make it rain!
+            makeItRain();
+        }
+        
+        // Call the original function to show the message
+        if (originalShowToast) originalShowToast(msg, isError);
+    };
+
+    // 4. The Money Rain Logic (Pure JS & CSS injection)
+    function makeItRain() {
+        // Create container
+        const container = document.createElement('div');
+        Object.assign(container.style, {
+            position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
+            pointerEvents: 'none', zIndex: '9999', overflow: 'hidden'
+        });
+        document.body.appendChild(container);
+
+        // Inject Animation CSS if not present
+        if (!document.getElementById('money-rain-style')) {
+            const style = document.createElement('style');
+            style.id = 'money-rain-style';
+            style.innerHTML = `@keyframes moneyFall { to { transform: translateY(110vh) rotate(720deg); } }`;
+            document.head.appendChild(style);
+        }
+
+        // Create 50 falling emojis
+        const currencies = ['💸', '💵', '💰', '🤑', '💎'];
+        for (let i = 0; i < 50; i++) {
+            const money = document.createElement('div');
+            money.innerText = currencies[Math.floor(Math.random() * currencies.length)];
+            Object.assign(money.style, {
+                position: 'absolute',
+                left: Math.random() * 100 + 'vw',
+                top: '-50px',
+                fontSize: (Math.random() * 20 + 25) + 'px',
+                animation: `moneyFall ${Math.random() * 2 + 1.5}s linear forwards`,
+                opacity: Math.random() + 0.5
+            });
+            container.appendChild(money);
+        }
+
+        // Cleanup after 4 seconds
+        setTimeout(() => container.remove(), 4000);
+    }
+})();
