@@ -167,10 +167,14 @@ function switchPendingSubTab(tab) {
    (Ensures Unique ID is hidden in the card)
    ========================================= */
 
+/* =========================================
+   1. RESTORED: renderPendingCards
+   (Back to the version you liked)
+   ========================================= */
+
 function renderPendingCards() {
     const container = document.getElementById('pendingContainer');
     container.innerHTML = '';
-    
     const rawData = pendingSubTab === 'billing' ? allData.billing : allData.insurance;
     const data = rawData.filter(row => row['Status'] === 'Pending').slice().reverse();
 
@@ -179,26 +183,26 @@ function renderPendingCards() {
         return;
     }
 
+    // Options derived from your original code
     const llcOptions = pendingSubTab === 'billing' 
         ? ["Secure Claim Solutions-NMI", "Visionary Pathways-Authorize", "Visionary Pathways-Chase", "Zelle"] 
         : ["Secure Claim Solutions-NMI"];
 
     data.forEach(row => {
-        // --- GRAB UNIQUE ID (_id) ---
-        const uniqueDbId = row['_id'] || row['row_index'] || ''; 
-        const displayId = row['Record_ID'] || row['Order ID']; 
+        // We capture both IDs here
+        const uniqueRowIndex = row['row_index'] || row['_id']; 
+        const id = row['Record_ID'] || row['Order ID']; 
         
-        // Clean Data
         const cleanCharge = String(row['charge_str'] || row['Charge Amount'] || '').replace(/[^0-9.]/g, '');
-        const cleanCard = String(row['card_number'] || '').replace(/\s+/g, '');
-        const cleanExpiry = String(row['exp_date'] || '').replace(/[\/\\]/g, '');
-        const address = row['Address'] || 'N/A';
+        const cleanCard = String(row['card_number'] || '').replace(/\s+/g, ''); 
+        const cleanExpiry = String(row['exp_date'] || '').replace(/[\/\\]/g, ''); 
+        const address = row['Address'] || row['address'] || row['adress'] || 'N/A';
     
         const card = document.createElement('div');
         card.className = "pending-card fade-in p-0 bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-lg hover:border-blue-500/50 transition-all";
         
         card.innerHTML = `
-            <input type="hidden" class="unique-db-id" value="${uniqueDbId}">
+            <input type="hidden" class="row-index" value="${uniqueRowIndex}">
             
             <div class="bg-slate-900/50 p-4 border-b border-slate-700">
                 <div class="flex justify-between items-center">
@@ -210,107 +214,71 @@ function renderPendingCards() {
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Card Number:</span><span class="text-white tracking-widest font-bold">${cleanCard}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Expiry Date:</span><span class="text-white">${cleanExpiry}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Charge:</span><span class="text-green-400 font-bold">$${cleanCharge}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Card Name:</span><span class="text-white">${row['card_holder']}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Phone:</span><span class="text-white">${row['phone']}</span></div>
+                <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Email:</span><span class="text-blue-300 truncate">${row['email']}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">Address:</span><span class="text-white break-words w-full">${address}</span></div>
                 <div class="flex"><span class="w-36 text-slate-500 font-semibold shrink-0">CVC:</span><span class="text-red-400 font-bold">${row['cvc']}</span></div>
             </div>
     
             <div class="px-4 mb-4">
                 <label class="block text-xs font-bold text-blue-400 uppercase mb-1">Select LLC *</label>
-                <select class="llc-select-box input-field w-full py-2 text-sm border-blue-500/50 bg-slate-900">
+                <select id="llc_select_${id}" class="input-field w-full py-2 text-sm border-blue-500/50 bg-slate-900">
                     <option value="">-- Choose LLC --</option>
                     ${llcOptions.map(opt => `<option value="${opt}">${opt}</option>`).join('')}
                 </select>
             </div>
     
             <div class="grid grid-cols-2 gap-3 p-4 pt-0">
-                <button onclick="validateAndSetStatus('${pendingSubTab}', '${displayId}', 'Charged', this)" class="bg-green-600 hover:bg-green-500 text-white py-2 rounded-lg font-bold shadow-lg shadow-green-900/20 active:scale-95 transition">Approve</button>
-                <button onclick="validateAndSetStatus('${pendingSubTab}', '${displayId}', 'Declined', this)" class="bg-red-600 hover:bg-red-500 text-white py-2 rounded-lg font-bold shadow-lg shadow-red-900/20 active:scale-95 transition">Decline</button>
+                <button onclick="validateAndSetStatus('${pendingSubTab}', '${id}', 'Charged', this)" class="bg-green-600 hover:bg-green-500 text-white py-2 rounded-lg font-bold shadow-lg shadow-green-900/20 active:scale-95 transition">Approve</button>
+                <button onclick="validateAndSetStatus('${pendingSubTab}', '${id}', 'Declined', this)" class="bg-red-600 hover:bg-red-500 text-white py-2 rounded-lg font-bold shadow-lg shadow-red-900/20 active:scale-95 transition">Decline</button>
             </div>
         `;
         container.appendChild(card);
     });
 }
 
-
 /* =========================================
-   REPLACE "validateAndSetStatus" IN manager.js
-   (Bulletproof Version)
+   2. FIXED: validateAndSetStatus
+   (Smart Logic: Finds dropdown inside the card)
    ========================================= */
 
 async function validateAndSetStatus(type, id, status, btnElement) {
-    // 1. Find the specific card the user clicked inside
     const card = btnElement.closest('.pending-card');
-    if (!card) {
-        alert("Error: Could not locate the lead card.");
-        return;
-    }
-
-    // 2. ROBUST SELECTOR: Find the dropdown (Try specific class, then fallback to any select)
-    const llcSelect = card.querySelector('.llc-select-box') || card.querySelector('select'); 
     
-    if (!llcSelect) {
-        alert("Error: LLC Dropdown not found in this card.");
-        return;
-    }
-
-    const selectedLLC = llcSelect.value;
+    // --- THE FIX ---
+    // Instead of looking for ID="llc_select_123" (which fails on duplicates),
+    // we just find the <select> tag closest to the button you clicked.
+    const llcSelect = card.querySelector('select'); 
+    const selectedLLC = llcSelect ? llcSelect.value : null;
     
-    // 3. Get the Unique ID (Try the hidden input, fallback to the button's ID)
-    const uniqueIdInput = card.querySelector('.unique-db-id') || card.querySelector('.row-index');
-    const uniqueDbId = uniqueIdInput ? uniqueIdInput.value : null;
+    // Get the unique identifier from the hidden input
+    const rowIndex = card.querySelector('.row-index').value;
 
-    // VALIDATION CHECK
     if (!selectedLLC) {
-        // Highlight the box to show the user WHICH one is empty
-        llcSelect.classList.add('border-red-500', 'ring-2', 'ring-red-500');
+        alert("Action Required: Please select an LLC before approving or declining.");
+        llcSelect.classList.add('border-red-500');
         llcSelect.focus();
-        
-        // Remove the red highlight when they change it
-        llcSelect.addEventListener('change', () => {
-            llcSelect.classList.remove('border-red-500', 'ring-2', 'ring-red-500');
-        }, { once: true });
-        
-        alert("⚠️ Please select an LLC for this specific order before approving.");
         return;
     }
-
-    // UI Feedback (Disable button to prevent double-click)
-    const originalText = btnElement.innerText;
-    btnElement.innerText = "Saving...";
-    btnElement.disabled = true;
 
     try {
-        // 4. Update the LLC
         const fd = new FormData();
         fd.append('type', type);
-        fd.append('id', id);       // Standard Display ID (Order ID)
+        fd.append('id', id);
         fd.append('field', 'llc');
         fd.append('value', selectedLLC);
+        fd.append('row_index', rowIndex); // Uses unique ID
         
-        // Critical: Send unique ID if we have it, to avoid duplicate errors
-        if(uniqueDbId) fd.append('row_index', uniqueDbId); 
+        await fetch('/api/update_field', { method: 'POST', body: fd });
         
-        const res = await fetch('/api/update_field', { method: 'POST', body: fd });
-        const json = await res.json();
-
-        if(json.status === 'success') {
-            // 5. Proceed with Status Update
-            await setStatus(type, id, status, btnElement, uniqueDbId);
-        } else {
-            throw new Error(json.message || "Failed to save LLC");
-        }
-
+        // Pass the unique rowIndex to setStatus so it updates the correct record
+        setStatus(type, id, status, btnElement, rowIndex); 
     } catch (e) {
         console.error("Update Failed", e);
-        alert("❌ Error: " + e.message);
-        
-        // Reset Button
-        btnElement.innerText = originalText;
-        btnElement.disabled = false;
+        alert("Failed to process update. Please try again.");
     }
 }
-
 function updateAgentSelector() {
     const type = document.getElementById('analysisSheetSelector').value;
     const data = allData[type] || [];
@@ -661,6 +629,7 @@ async function processLeadWithLLC(type, id, status, btn) {
         alert("Error saving LLC. Please try again.");
     }
 }
+
 
 
 
