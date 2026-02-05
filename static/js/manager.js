@@ -162,10 +162,19 @@ function switchPendingSubTab(tab) {
     renderPendingCards();
 }
 
+/* =========================================
+   1. REPLACE "renderPendingCards" FUNCTION
+   (This ensures the unique database ID is hidden in the card)
+   ========================================= */
+
 function renderPendingCards() {
     const container = document.getElementById('pendingContainer');
     container.innerHTML = '';
+    
+    // Get data based on selected tab
     const rawData = pendingSubTab === 'billing' ? allData.billing : allData.insurance;
+    
+    // Filter for Pending only and reverse (newest top)
     const data = rawData.filter(row => row['Status'] === 'Pending').slice().reverse();
 
     if(data.length === 0) {
@@ -173,17 +182,16 @@ function renderPendingCards() {
         return;
     }
 
-    // Options derived from main.py constants
     const llcOptions = pendingSubTab === 'billing' 
-        ? ["Secure Claim Solutions-NMI", "Visionary Pathways-Authorize", "Visionary Pathways-Chase","Zelle"] 
+        ? ["Secure Claim Solutions-NMI", "Visionary Pathways-Authorize", "Visionary Pathways-Chase", "Zelle"] 
         : ["Secure Claim Solutions-NMI"];
 
     data.forEach(row => {
-        // 1. Correctly identify the unique record ID
-        // Check both 'row_index' (mapped by API) and '_id' (direct MongoDB key)
-        const uniqueRowIndex = row['row_index'] || row['_id']; 
+        // --- CRITICAL CHANGE: USE MONGODB _id ---
+        // We prioritize _id, then fallback to row_index if _id is missing
+        const uniqueDbId = row['_id'] || row['row_index']; 
         
-        const id = row['Record_ID'] || row['Order ID']; 
+        const displayId = row['Record_ID'] || row['Order ID']; 
         const cleanCharge = String(row['charge_str'] || row['Charge Amount'] || '').replace(/[^0-9.]/g, '');
         const cleanCard = String(row['card_number'] || '').replace(/\s+/g, ''); 
         const cleanExpiry = String(row['exp_date'] || '').replace(/[\/\\]/g, ''); 
@@ -193,7 +201,7 @@ function renderPendingCards() {
         card.className = "pending-card fade-in p-0 bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-lg hover:border-blue-500/50 transition-all";
         
         card.innerHTML = `
-            <input type="hidden" class="row-index" value="${uniqueRowIndex}">
+            <input type="hidden" class="unique-db-id" value="${uniqueDbId}">
             
             <div class="bg-slate-900/50 p-4 border-b border-slate-700">
                 <div class="flex justify-between items-center">
@@ -214,55 +222,73 @@ function renderPendingCards() {
     
             <div class="px-4 mb-4">
                 <label class="block text-xs font-bold text-blue-400 uppercase mb-1">Select LLC *</label>
-                <select id="llc_select_${id}" class="input-field w-full py-2 text-sm border-blue-500/50 bg-slate-900">
+                <select class="llc-select-box input-field w-full py-2 text-sm border-blue-500/50 bg-slate-900">
                     <option value="">-- Choose LLC --</option>
                     ${llcOptions.map(opt => `<option value="${opt}">${opt}</option>`).join('')}
                 </select>
             </div>
     
             <div class="grid grid-cols-2 gap-3 p-4 pt-0">
-                <button onclick="validateAndSetStatus('${pendingSubTab}', '${id}', 'Charged', this)" class="bg-green-600 hover:bg-green-500 text-white py-2 rounded-lg font-bold shadow-lg shadow-green-900/20 active:scale-95 transition">Approve</button>
-                <button onclick="validateAndSetStatus('${pendingSubTab}', '${id}', 'Declined', this)" class="bg-red-600 hover:bg-red-500 text-white py-2 rounded-lg font-bold shadow-lg shadow-red-900/20 active:scale-95 transition">Decline</button>
+                <button onclick="validateAndSetStatus('${pendingSubTab}', '${displayId}', 'Charged', this)" class="bg-green-600 hover:bg-green-500 text-white py-2 rounded-lg font-bold shadow-lg shadow-green-900/20 active:scale-95 transition">Approve</button>
+                <button onclick="validateAndSetStatus('${pendingSubTab}', '${displayId}', 'Declined', this)" class="bg-red-600 hover:bg-red-500 text-white py-2 rounded-lg font-bold shadow-lg shadow-red-900/20 active:scale-95 transition">Decline</button>
             </div>
         `;
         container.appendChild(card);
     });
 }
 
-// NEW FUNCTION: Validation wrapper to ensure LLC is picked
-async function validateAndSetStatus(type, id, status, btnElement) {
+
+/* =========================================
+   2. REPLACE "validateAndSetStatus" FUNCTION
+   (This uses the closest() method and Unique ID)
+   ========================================= */
+
+async function validateAndSetStatus(type, displayId, status, btnElement) {
+    // 1. Find the specific card the user clicked inside
     const card = btnElement.closest('.pending-card');
-    const llcSelect = document.getElementById(`llc_select_${id}`);
+    
+    // 2. Find the LLC dropdown INSIDE this specific card
+    const llcSelect = card.querySelector('.llc-select-box'); 
     const selectedLLC = llcSelect ? llcSelect.value : null;
     
-    // Get the unique MongoDB ID from the hidden input we rendered
-    const rowIndex = card.querySelector('.row-index').value;
+    // 3. Get the UNIQUE DB ID (Safe for duplicates)
+    const uniqueDbId = card.querySelector('.unique-db-id').value;
 
     if (!selectedLLC) {
         alert("Action Required: Please select an LLC before approving or declining.");
-        llcSelect.classList.add('border-red-500');
+        llcSelect.classList.add('border-red-500'); // Highlight the box
+        llcSelect.focus();
         return;
     }
 
+    // UI Feedback
+    const originalText = btnElement.innerText;
+    btnElement.innerText = "...";
+    btnElement.disabled = true;
+
     try {
-        // 1. Update the LLC using the unique Row Index
+        // 4. Update the LLC using the Unique DB ID
         const fd = new FormData();
         fd.append('type', type);
-        fd.append('id', id);
+        fd.append('id', displayId); // Still send display ID for logging
         fd.append('field', 'llc');
         fd.append('value', selectedLLC);
-        fd.append('row_index', rowIndex); // CRITICAL: Send the unique ID
+        
+        // Pass the Unique ID as 'row_index' (or 'oid' if your backend supports it)
+        // Most backends will treat this parameter as the lookup key
+        fd.append('row_index', uniqueDbId); 
         
         await fetch('/api/update_field', { method: 'POST', body: fd });
         
-        // 2. Proceed with status update using the unique Row Index
-        setStatus(type, id, status, btnElement, rowIndex); 
+        // 5. Proceed with status update using Unique ID
+        setStatus(type, displayId, status, btnElement, uniqueDbId); 
     } catch (e) {
         console.error("Update Failed", e);
         alert("Failed to process update. Please try again.");
+        btnElement.innerText = originalText;
+        btnElement.disabled = false;
     }
 }
-
 function updateAgentSelector() {
     const type = document.getElementById('analysisSheetSelector').value;
     const data = allData[type] || [];
@@ -613,6 +639,7 @@ async function processLeadWithLLC(type, id, status, btn) {
         alert("Error saving LLC. Please try again.");
     }
 }
+
 
 
 
