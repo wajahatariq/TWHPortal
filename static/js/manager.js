@@ -830,7 +830,7 @@ async function processLeadWithLLC(type, id, status, btn) {
     const tickerContainer = document.createElement('div');
     tickerContainer.id = 'stock-ticker';
     tickerContainer.innerHTML = `
-        <div class="ticker-label">MARKET LIVE 🔴</div>
+        <div class="ticker-label">TWH LIVE 🔴</div>
         <div class="ticker-track" id="tickerTrack">
             </div>
     `;
@@ -878,3 +878,4 @@ async function processLeadWithLLC(type, id, status, btn) {
     setInterval(updateTicker, 5000); // Update data every 5 seconds
 
 })();
+
