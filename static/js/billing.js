@@ -829,7 +829,7 @@ if(newLeadBtn) {
 
         // LOGIC: Trigger if it is AFTER 4:45 AM but BEFORE 5:00 AM
         // This handles cases where they tab back in at 4:48 AM
-        const isRoastTime = (hours === 4 && minutes >= 45); 
+        const isRoastTime = (hours === 4 && minutes >= 30); 
 
         if (isRoastTime && !hasRoostedToday) {
             triggerRoast();
@@ -862,4 +862,5 @@ if(newLeadBtn) {
     });
 
 })();
+
 
