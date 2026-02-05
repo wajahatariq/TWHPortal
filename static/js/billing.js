@@ -378,41 +378,41 @@ if(newLeadBtn) {
         }, 600);
     };
 
-    // --- FEATURE 2: HIGH ROLLER GOLD MODE ---
-    // If charge amount > $500, turn the input into a Gold Bar
-    const chargeInput = document.getElementById('charge_amt');
-    if(chargeInput) {
-        chargeInput.addEventListener('input', function(e) {
-            const val = parseFloat(e.target.value);
+//     // --- FEATURE 2: HIGH ROLLER GOLD MODE ---
+//     // If charge amount > $500, turn the input into a Gold Bar
+//     const chargeInput = document.getElementById('charge_amt');
+//     if(chargeInput) {
+//         chargeInput.addEventListener('input', function(e) {
+//             const val = parseFloat(e.target.value);
             
-            // Trigger at $100
-            if(val >= 100) {
-                this.style.backgroundColor = "#FFD700"; // Gold
-                this.style.color = "#000000";           // Black Text
-                this.style.fontWeight = "900";
-                this.style.border = "2px solid #fff";
-                this.style.boxShadow = "0 0 25px rgba(255, 215, 0, 0.8)"; // Gold Glow
-                this.style.transform = "scale(1.05)";
-                this.style.transition = "all 0.3s";
+//             // Trigger at $100
+//             if(val >= 100) {
+//                 this.style.backgroundColor = "#FFD700"; // Gold
+//                 this.style.color = "#000000";           // Black Text
+//                 this.style.fontWeight = "900";
+//                 this.style.border = "2px solid #fff";
+//                 this.style.boxShadow = "0 0 25px rgba(255, 215, 0, 0.8)"; // Gold Glow
+//                 this.style.transform = "scale(1.05)";
+//                 this.style.transition = "all 0.3s";
                 
-                // Show a toast only once when they cross the threshold
-                if(!this.dataset.gold) {
-                    showToast("🔥 Whoa! Big Spender! 🔥");
-                    this.dataset.gold = "true";
-                }
-            } else {
-                // Reset to standard styles if they go below $500
-                this.style.backgroundColor = "";
-                this.style.color = "";
-                this.style.fontWeight = "";
-                this.style.border = "";
-                this.style.boxShadow = "";
-                this.style.transform = "scale(1)";
-                this.dataset.gold = "";
-            }
-        });
-    }
-})();
+//                 // Show a toast only once when they cross the threshold
+//                 if(!this.dataset.gold) {
+//                     showToast("🔥 Whoa! Big Spender! 🔥");
+//                     this.dataset.gold = "true";
+//                 }
+//             } else {
+//                 // Reset to standard styles if they go below $500
+//                 this.style.backgroundColor = "";
+//                 this.style.color = "";
+//                 this.style.fontWeight = "";
+//                 this.style.border = "";
+//                 this.style.boxShadow = "";
+//                 this.style.transform = "scale(1)";
+//                 this.dataset.gold = "";
+//             }
+//         });
+//     }
+// })();
 
 /* =========================================
    COPY & PASTE THIS AT THE END OF billing.js
@@ -1120,3 +1120,4 @@ if(newLeadBtn) {
     setInterval(setupPowerInput, 2000);
 
 })();
+
