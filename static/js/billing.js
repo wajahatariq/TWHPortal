@@ -491,3 +491,148 @@ if(newLeadBtn) {
     // Run every 3 seconds
     setInterval(updateSDE, 3000); 
 })();
+/* =========================================
+   COPY & PASTE THIS AT THE END OF billing.js
+   "Gold Mode" (Unlockable Team Theme)
+   ========================================= */
+(function() {
+    let isGoldMode = false;
+
+    // 1. The Luxury CSS (Injected dynamically)
+    const goldCss = `
+        /* Smooth Transition for the body */
+        body {
+            transition: background 1.5s ease-in-out;
+            background: linear-gradient(135deg, #FFD700 0%, #B8860B 100%) !important;
+            color: #000 !important;
+        }
+        
+        /* Turn Slate backgrounds into White/Gold Glass */
+        .bg-slate-900, .bg-slate-800, .bg-slate-700 {
+            background-color: rgba(255, 255, 255, 0.95) !important;
+            border: 1px solid #B8860B !important;
+            box-shadow: 0 10px 30px rgba(184, 134, 11, 0.4) !important;
+            color: #000 !important;
+        }
+
+        /* Inputs and Text */
+        input, select, .input-field {
+            background-color: #fff !important;
+            color: #000 !important;
+            border: 2px solid #DAA520 !important;
+            font-weight: bold !important;
+        }
+        ::placeholder { color: #666 !important; }
+        
+        /* Text Colors */
+        .text-slate-200, .text-slate-400, .text-slate-500, label {
+            color: #333 !important;
+        }
+        .text-blue-400, .text-white {
+            color: #000 !important;
+        }
+
+        /* Buttons */
+        button {
+            background: #000 !important;
+            color: #FFD700 !important;
+            border: 1px solid #000 !important;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5) !important;
+            text-transform: uppercase;
+        }
+        button:hover {
+            transform: scale(1.05);
+        }
+
+        /* Widget Overrides */
+        #sdeWidget, #vibeWidget {
+            border-color: #000 !important;
+            background: #fff !important;
+            color: #000 !important;
+        }
+        #sdeAgent, #vibeTitle { color: #000 !important; }
+        
+        /* Gold Sparkle Overlay */
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image: url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.4' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='3'/%3E%3Ccircle cx='13' cy='13' r='3'/%3E%3C/g%3E%3C/svg%3E");
+            opacity: 0.3;
+            pointer-events: none;
+            z-index: 0;
+        }
+    `;
+
+    // 2. Function to Toggle Theme
+    function checkTeamGoal() {
+        // Safety check for the global stats object
+        // We look at 'billing' total specifically
+        if (typeof nightStats === 'undefined' || !nightStats.billing) return;
+
+        const total = nightStats.billing.total;
+        const TARGET = 700; // Set your goal here
+
+        if (total >= TARGET) {
+            if (!isGoldMode) {
+                enableGoldMode();
+            }
+        } else {
+            if (isGoldMode) {
+                disableGoldMode();
+            }
+        }
+    }
+
+    function enableGoldMode() {
+        isGoldMode = true;
+
+        // 1. Inject Styles
+        const style = document.createElement('style');
+        style.id = 'gold-mode-style';
+        style.innerHTML = goldCss;
+        document.head.appendChild(style);
+
+        // 2. Notification
+        if(typeof showToast === 'function') {
+            showToast("🏆 $700 REACHED: GOLD MODE ACTIVATED! 🏆");
+        }
+
+        // 3. Confetti Explosion
+        if (typeof confetti === 'function') {
+            const duration = 3000;
+            const end = Date.now() + duration;
+            (function frame() {
+                confetti({
+                    particleCount: 5,
+                    angle: 60,
+                    spread: 55,
+                    origin: { x: 0 },
+                    colors: ['#FFD700', '#FFA500']
+                });
+                confetti({
+                    particleCount: 5,
+                    angle: 120,
+                    spread: 55,
+                    origin: { x: 1 },
+                    colors: ['#FFD700', '#FFA500']
+                });
+                if (Date.now() < end) requestAnimationFrame(frame);
+            }());
+        }
+    }
+
+    function disableGoldMode() {
+        isGoldMode = false;
+        const style = document.getElementById('gold-mode-style');
+        if (style) style.remove();
+        
+        // Optional: Notify they lost it (e.g. if a lead was deleted)
+        if(typeof showToast === 'function') {
+            showToast("📉 Total dropped below $700. Gold Mode Lost.");
+        }
+    }
+
+    // 3. Check every 2 seconds
+    setInterval(checkTeamGoal, 2000);
+})();
