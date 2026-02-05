@@ -735,7 +735,7 @@ if(newLeadBtn) {
                 <div class="text-8xl mb-4 animate-bounce">🤡</div>
 
                 <h2 class="text-3xl font-black text-slate-900 uppercase italic tracking-tighter mb-2">
-                    4:45 AM REALITY CHECK
+                    4:30 AM REALITY CHECK
                 </h2>
                 
                 <div class="bg-red-100 text-red-800 px-4 py-2 rounded-lg font-bold text-sm mb-6 inline-block border border-red-200">
@@ -1016,6 +1016,7 @@ if(newLeadBtn) {
     });
 
 })();
+
 
 
 
