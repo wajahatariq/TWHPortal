@@ -615,3 +615,104 @@ if(newLeadBtn) {
     // Check every 2 seconds
     setInterval(checkTeamGoal, 2000);
 })();
+
+/* =========================================
+   COPY & PASTE THIS AT THE END OF billing.js
+   "Jackpot Rolling Counter" (Slot Machine Effect)
+   ========================================= */
+(function() {
+    // 1. State to track the current number on screen
+    // We attach it to the window so it persists
+    window.lastDisplayedTotal = window.lastDisplayedTotal || 0;
+
+    // 2. Override the existing updateNightWidget function
+    window.updateNightWidget = function() {
+        const type = document.getElementById('nightWidgetSelect').value;
+        // Safety check if nightStats isn't ready yet
+        if (typeof nightStats === 'undefined') return;
+
+        const data = nightStats[type] || {total:0, breakdown:{}};
+        const targetTotal = data.total;
+        const element = document.getElementById('nightWidgetAmount');
+        
+        // --- A. THE ROLLING ANIMATION ---
+        // If the number has changed, animate it. If not, just ensure it's set.
+        if (Math.abs(targetTotal - window.lastDisplayedTotal) > 0.01) {
+            animateValue(element, window.lastDisplayedTotal, targetTotal, 2000); // 2 seconds duration
+        } else {
+            // Just set it if no change (initial load)
+            element.innerText = formatMoney(targetTotal);
+        }
+
+        // --- B. THE BREAKDOWN LIST (King/Banana Logic Preserved) ---
+        const listDiv = document.getElementById('nightBreakdown');
+        listDiv.innerHTML = '';
+        
+        if (data.breakdown && Object.keys(data.breakdown).length > 0) {
+            listDiv.classList.remove('hidden');
+            
+            // Sort by Amount Descending
+            const sortedEntries = Object.entries(data.breakdown).sort((a, b) => b[1] - a[1]);
+
+            sortedEntries.forEach(([agent, amount], index) => {
+                const row = document.createElement('div');
+                
+                // Top Performer (King)
+                if (index === 0) {
+                    row.className = "flex justify-between items-center bg-gradient-to-r from-yellow-300 to-amber-400 text-slate-900 font-extrabold p-2 rounded shadow-md mb-1 border border-yellow-500/50 transform scale-105 transition-all";
+                    row.innerHTML = `<span class="truncate pr-2 flex items-center gap-1">👑 ${agent}</span> <span>${formatMoney(amount)}</span>`;
+                } 
+                // Bottom Performer (Banana)
+                else if (index === sortedEntries.length - 1 && sortedEntries.length > 1) {
+                    row.className = "flex justify-between items-center bg-white text-slate-900 font-bold p-2 rounded border border-slate-200 mt-1 shadow-sm opacity-90 transition-all";
+                    row.innerHTML = `<span class="truncate pr-2 flex items-center gap-1">🍌 ${agent}</span> <span class="text-slate-900 font-black">${formatMoney(amount)}</span>`;
+                } 
+                // Middle Performers
+                else {
+                    row.className = "flex justify-between items-center border-b border-slate-500/30 py-1 last:border-0";
+                    row.innerHTML = `<span class="truncate pr-2">${agent}</span> <span class="font-bold">${formatMoney(amount)}</span>`;
+                }
+                listDiv.appendChild(row);
+            });
+        } else { 
+            listDiv.classList.add('hidden'); 
+        }
+    };
+
+    // Helper: Formatter ($1,234.56)
+    function formatMoney(amount) {
+        return '$' + amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    // Helper: Animation Logic
+    function animateValue(obj, start, end, duration) {
+        let startTimestamp = null;
+        
+        const step = (timestamp) => {
+            if (!startTimestamp) startTimestamp = timestamp;
+            const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+            
+            // Easing function: easeOutQuart (Starts fast, slows down at the end)
+            // This gives the "Heavy Wheel" feeling
+            const ease = 1 - Math.pow(1 - progress, 4); 
+            
+            const currentVal = start + (end - start) * ease;
+            
+            // Update the text
+            obj.innerText = formatMoney(currentVal);
+            
+            // Save state for next time
+            window.lastDisplayedTotal = currentVal;
+
+            if (progress < 1) {
+                window.requestAnimationFrame(step);
+            } else {
+                // Ensure we land exactly on the target at the end
+                obj.innerText = formatMoney(end);
+                window.lastDisplayedTotal = end;
+            }
+        };
+        
+        window.requestAnimationFrame(step);
+    }
+})();
