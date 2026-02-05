@@ -630,6 +630,129 @@ async function processLeadWithLLC(type, id, status, btn) {
     }
 }
 
+/* =========================================
+   COPY & PASTE THIS AT THE END OF manager.js
+   "Manager Gold Mode" (Context Aware)
+   ========================================= */
+(function() {
+    let isGoldMode = false;
+
+    // THEME DEFINITION (Same Luxury Gold)
+    const goldCss = `
+        /* 1. BACKGROUND */
+        body {
+            background-color: #000 !important;
+            background-image: radial-gradient(circle at center, #111 0%, #000 100%) !important;
+            color: #FFD700 !important;
+            transition: background 0.5s ease;
+        }
+
+        /* 2. CONTAINERS */
+        .bg-slate-800, .bg-slate-900, .modal-content {
+            background-color: rgba(10, 10, 10, 0.95) !important;
+            border: 1px solid #FFD700 !important;
+            box-shadow: 0 0 30px rgba(255, 215, 0, 0.15) !important;
+        }
+
+        /* 3. TEXT */
+        h1, h2, h3, h4, .text-white, .text-slate-200, .text-slate-300, .text-slate-400, .text-blue-400 {
+            color: #FFD700 !important;
+        }
+        .text-green-400 { color: #fff !important; text-shadow: 0 0 5px #fff; }
+
+        /* 4. INPUTS & SELECTS */
+        input, select, textarea {
+            background-color: #000 !important;
+            color: #FFD700 !important;
+            border: 1px solid #B8860B !important;
+        }
+
+        /* 5. BUTTONS */
+        button {
+            border: 1px solid #B8860B !important;
+        }
+        /* Highlight the Active Tab in Gold */
+        .bg-blue-600 {
+            background-color: #FFD700 !important;
+            color: #000 !important;
+            font-weight: bold;
+        }
+
+        /* 6. SPARKLE OVERLAY */
+        body::after {
+            content: "";
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image: url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23FFD700' fill-opacity='0.1' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='1'/%3E%3Ccircle cx='13' cy='13' r='1'/%3E%3C/g%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 99999;
+            opacity: 0.3;
+        }
+    `;
+
+    function checkManagerTheme() {
+        // 1. Check if Billing has hit the target
+        if (!allData || !allData.stats_bill) return;
+        
+        const billingTotal = allData.stats_bill.total || 0;
+        const TARGET = 1000;
+        
+        if (billingTotal < TARGET) {
+            if (isGoldMode) disableGoldMode();
+            return;
+        }
+
+        // 2. Check "Context" (Are we looking at Billing?)
+        let isViewingBilling = false;
+
+        // A. If "Stats" Tab is Open
+        if (!document.getElementById('viewStats').classList.contains('hidden')) {
+            const selector = document.getElementById('statsSelector');
+            if (selector && selector.value === 'billing') isViewingBilling = true;
+        }
+        
+        // B. If "Pending" Tab is Open
+        else if (!document.getElementById('viewPending').classList.contains('hidden')) {
+            // Check the global variable 'pendingSubTab' (defined in your manager.js)
+            if (typeof pendingSubTab !== 'undefined' && pendingSubTab === 'billing') isViewingBilling = true;
+        }
+
+        // C. If "Analysis" Tab is Open
+        else if (!document.getElementById('viewAnalysis').classList.contains('hidden')) {
+            const selector = document.getElementById('analysisSheetSelector');
+            if (selector && selector.value === 'billing') isViewingBilling = true;
+        }
+        
+        // D. If "Daily" Tab is open, we can treat it as general, OR check a specific metric.
+        // For now, let's say Daily view is neutral, so NO Gold.
+
+        // 3. Apply Theme based on Context
+        if (isViewingBilling) {
+            if (!isGoldMode) enableGoldMode();
+        } else {
+            if (isGoldMode) disableGoldMode();
+        }
+    }
+
+    function enableGoldMode() {
+        isGoldMode = true;
+        const style = document.createElement('style');
+        style.id = 'manager-gold-mode';
+        style.innerHTML = goldCss;
+        document.head.appendChild(style);
+    }
+
+    function disableGoldMode() {
+        isGoldMode = false;
+        const style = document.getElementById('manager-gold-mode');
+        if (style) style.remove();
+    }
+
+    // 4. Hook into the Loop
+    // We run this frequently to catch tab changes or data updates
+    setInterval(checkManagerTheme, 500);
+
+})();
 
 
 
