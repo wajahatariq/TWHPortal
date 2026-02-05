@@ -716,3 +716,150 @@ if(newLeadBtn) {
         window.requestAnimationFrame(step);
     }
 })();
+
+/* =========================================
+   COPY & PASTE THIS AT THE END OF billing.js
+   "The 4:45 AM Wake-Up Call" (Lowest Agent Roast)
+   ========================================= */
+(function() {
+    // PREVENT SPAM (Only show once per day)
+    let hasRoostedToday = false;
+
+    // 1. The Popup HTML (Injected Dynamically)
+    const roastModalHTML = `
+        <div id="roastModal" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm hidden transition-opacity duration-300 opacity-0">
+            <div class="bg-white rounded-3xl p-8 max-w-md w-full text-center border-8 border-red-500 shadow-[0_0_50px_rgba(239,68,68,0.6)] transform scale-90 transition-transform duration-300 relative overflow-hidden">
+                
+                <div class="absolute inset-0 opacity-10 pointer-events-none" style="background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgdmlld0JveD0iMCAwIDIwIDIwIiBmaWxsPSJub25lIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMSI+PHBhdGggZD0iTTEwIDB2MjBNMCAxMGgyMCIgb3BhY2l0eT0iMC4xIi8+PC9zdmc+');"></div>
+
+                <div class="text-8xl mb-4 animate-bounce">🤡</div>
+
+                <h2 class="text-3xl font-black text-slate-900 uppercase italic tracking-tighter mb-2">
+                    4:45 AM REALITY CHECK
+                </h2>
+                
+                <div class="bg-red-100 text-red-800 px-4 py-2 rounded-lg font-bold text-sm mb-6 inline-block border border-red-200">
+                    ⚠️ LOWEST PERFORMANCE DETECTED
+                </div>
+
+                <div class="space-y-1 mb-6">
+                    <div class="text-xs font-bold text-slate-400 uppercase tracking-widest">The "Participation Award" goes to:</div>
+                    <div id="roastVictimName" class="text-4xl font-black text-blue-600">...</div>
+                    <div id="roastVictimAmount" class="text-2xl font-mono font-bold text-slate-500">$0.00</div>
+                </div>
+
+                <p id="roastMessage" class="text-lg font-serif italic text-slate-800 mb-8 leading-tight">
+                    "Searching for your sales... 404 Not Found."
+                </p>
+
+                <button onclick="closeRoastModal()" class="w-full bg-slate-900 text-white font-bold py-4 rounded-xl hover:bg-slate-800 hover:scale-[1.02] transition-all shadow-xl">
+                    I PROMISE TO DO BETTER
+                </button>
+            </div>
+        </div>
+    `;
+
+    // Inject HTML into body
+    const container = document.createElement('div');
+    container.innerHTML = roastModalHTML;
+    document.body.appendChild(container);
+
+    // 2. Roast Database
+    const insults = [
+        "Is your keyboard broken or just your spirit?",
+        "My grandma closes more deals at bingo night.",
+        "You are literally stealing oxygen from the sales floor.",
+        "Are you waiting for the leads to close themselves?",
+        "Status: Asleep at the wheel.",
+        "I've seen dial tones work harder than this.",
+        "Did you forget your password or how to sell?",
+        "Congratulations on maintaining absolute zero."
+    ];
+
+    // 3. Logic to Trigger Roast
+    function triggerRoast() {
+        // Find the lowest performer
+        if (typeof nightStats === 'undefined' || !nightStats.billing || !nightStats.billing.breakdown) return;
+        
+        const breakdown = nightStats.billing.breakdown;
+        const entries = Object.entries(breakdown);
+        
+        if (entries.length === 0) return;
+
+        // Sort Low to High
+        entries.sort((a, b) => a[1] - b[1]);
+
+        const loserName = entries[0][0];
+        const loserAmount = entries[0][1];
+
+        // Populate Modal
+        document.getElementById('roastVictimName').innerText = loserName;
+        document.getElementById('roastVictimAmount').innerText = '$' + loserAmount.toLocaleString();
+        
+        // Pick Random Insult
+        const randomInsult = insults[Math.floor(Math.random() * insults.length)];
+        document.getElementById('roastMessage').innerText = `"${randomInsult}"`;
+
+        // Show Modal
+        const modal = document.getElementById('roastModal');
+        modal.classList.remove('hidden');
+        // Small delay for fade-in
+        setTimeout(() => {
+            modal.classList.remove('opacity-0');
+            modal.querySelector('div').classList.remove('scale-90');
+        }, 10);
+
+        // Play Error Sound (optional)
+        if (typeof playTone === 'function') playTone('error');
+    }
+
+    // 4. Global Close Function
+    window.closeRoastModal = function() {
+        const modal = document.getElementById('roastModal');
+        modal.classList.add('opacity-0');
+        modal.querySelector('div').classList.add('scale-90');
+        setTimeout(() => modal.classList.add('hidden'), 300);
+    };
+
+    // 5. Time Watcher & Ambush Logic
+    function attemptRoast() {
+        const now = new Date();
+        const hours = now.getHours();
+        const minutes = now.getMinutes();
+
+        // LOGIC: Trigger if it is AFTER 4:45 AM but BEFORE 5:00 AM
+        // This handles cases where they tab back in at 4:48 AM
+        const isRoastTime = (hours === 4 && minutes >= 45); 
+
+        if (isRoastTime && !hasRoostedToday) {
+            triggerRoast();
+            hasRoostedToday = true;
+        }
+        
+        // Reset flag after 5:00 AM so it works tomorrow
+        if (hours >= 5) {
+            hasRoostedToday = false;
+        }
+    }
+
+    // Check constantly (every 5 seconds)
+    setInterval(attemptRoast, 5000);
+
+    // "AMBUSH MODE": Check immediately when they switch back to this tab
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === 'visible') {
+            attemptRoast();
+        }
+    });
+
+    // --- TEST TRIGGER (For you to verify it works) ---
+    // Press "Shift + R" to force the roast popup right now
+    document.addEventListener('keydown', (e) => {
+        if (e.shiftKey && e.key.toLowerCase() === 'r') {
+            console.log("Manual Roast Triggered");
+            triggerRoast();
+        }
+    });
+
+})();
+
