@@ -93,6 +93,9 @@
 
             <div class="flex gap-4 mt-8">
                 <button type="submit" id="submitBtn" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-blue-500/30">Submit Billing</button>
+                
+                <button type="button" id="newLeadBtn" class="hidden flex-1 bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-purple-500/30">Save as New Lead</button>
+                
                 <button type="button" onclick="clearForm()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 px-8 rounded-xl transition-all">Clear Form</button>
             </div>
         </form>
@@ -108,6 +111,7 @@
 
     <script src="/static/js/billing.js"></script>
     <script>
+        // Set display date to today
         document.getElementById('displayDate').value = new Date().toISOString().split('T')[0].replace(/-/g, '/');
     </script>
     
