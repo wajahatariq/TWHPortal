@@ -401,7 +401,8 @@ async def update_field_inline(
     type: str = Form(...),
     id: str = Form(...),
     field: str = Form(...),
-    value: str = Form(...)
+    value: str = Form(...),
+    row_index: str = Form(None) # <--- NEW PARAMETER
 ):
     try:
         # Select Collection
@@ -413,30 +414,39 @@ async def update_field_inline(
 
         update_data = {}
         
-        # --- FIX: Map Fields Correctly ---
+        # Map Fields
         if field == 'Name': update_data['client_name'] = value
         elif field == 'Service' or field == 'Provider': update_data['provider'] = value
         elif field == 'Phone': update_data['phone'] = value
         elif field == 'Email': update_data['email'] = value
         elif field == 'llc': update_data['llc'] = value
-        # --- CRITICAL FIX: Update Number AND Text for Charge ---
         elif field == 'Charge': 
             update_data['charge_str'] = value
             try:
-                # Remove '$' and ',' then convert to float for calculation
                 clean_val = float(str(value).replace('$', '').replace(',', '').strip())
                 update_data['charge_amount'] = clean_val
             except:
-                # If invalid number, set to 0.0 to prevent errors
                 update_data['charge_amount'] = 0.0
-        
         else:
-            # Default for other fields
             update_data[field] = value
-        # -------------------------------------------------------
 
-        col.update_one({"record_id": id}, {"$set": update_data})
-        # pusher_client.trigger('techware-channel', 'lead-edited', {'agent': 'Inline', 'id': id, 'client': 'Record', 'type': type, 'message': "Inline Edit"})
+        # --- THE FIX IS HERE ---
+        # If we have the Unique ID (row_index), use it!
+        if row_index and row_index != 'undefined':
+            try:
+                query = {"_id": ObjectId(row_index)}
+            except:
+                # Fallback if ID is invalid
+                query = {"record_id": id}
+        else:
+            # Fallback for old code
+            query = {"record_id": id}
+            
+        result = col.update_one(query, {"$set": update_data})
+        
+        if result.matched_count == 0:
+            return JSONResponse({"status": "error", "message": "Record not found"}, 404)
+
         return {"status": "success"}
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, 500)
@@ -730,6 +740,7 @@ async def get_history_totals():
         return {"status": "success", "data": history}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
