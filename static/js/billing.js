@@ -30,7 +30,6 @@ function updateNightWidget() {
                 row.innerHTML = `<span class="truncate pr-2 flex items-center gap-1">👑 ${agent}</span> <span>$${amount.toFixed(2)}</span>`;
             } else if (index === sortedEntries.length - 1 && sortedEntries.length > 1) {
                 // --- BOTTOM PERFORMER: Slight Backdrop & Banana ---
-                // Only applies if there's more than 1 person (otherwise they are Top)
                 row.className = "flex justify-between items-center bg-white text-slate-900 font-bold p-2 rounded border border-slate-200 mt-1 shadow-sm opacity-90";
                 row.innerHTML = `<span class="truncate pr-2 flex items-center gap-1">🍌 ${agent}</span> <span class="text-slate-900 font-black">$${amount.toFixed(2)}</span>`;
                 
@@ -86,6 +85,9 @@ function clearForm() {
     document.getElementById('editOptions').classList.add('hidden');
     document.getElementById('row_index').value = '';
     
+    // HIDE NEW LEAD BUTTON ON CLEAR
+    document.getElementById('newLeadBtn').classList.add('hidden');
+    
     submitBtn.innerText = "Submit Billing";
     submitBtn.classList.replace('bg-green-600', 'bg-blue-600');
     
@@ -93,7 +95,7 @@ function clearForm() {
     showToast("Form Cleared");
 }
 
-// --- UPDATED SEARCH LOGIC in billing.js ---
+// --- UPDATED SEARCH LOGIC ---
 async function searchLead(specificRowIndex = null) {
     const id = document.getElementById('searchId').value.trim();
     if(!id) return showToast("Enter an Order ID", true);
@@ -106,7 +108,7 @@ async function searchLead(specificRowIndex = null) {
 
     try {
         const res = await fetch(url);
-        if (!res.ok) throw new Error("Server responded with an error"); // Handle HTTP errors
+        if (!res.ok) throw new Error("Server responded with an error"); 
         
         const json = await res.json();
         
@@ -138,7 +140,9 @@ async function searchLead(specificRowIndex = null) {
             submitBtn.classList.replace('bg-blue-600', 'bg-green-600');
             document.getElementById('editOptions').classList.remove('hidden');
             
-            // Populate Fields with safety checks (the "?" prevents crashes if a key is missing)
+            // SHOW NEW LEAD BUTTON
+            document.getElementById('newLeadBtn').classList.remove('hidden');
+            
             document.getElementById('original_timestamp').value = d['Timestamp'] || d['timestamp_str'] || '';
             document.getElementById('row_index').value = d['row_index'] || '';
             document.getElementById('agent').value = d['Agent Name'] || '';
@@ -157,7 +161,6 @@ async function searchLead(specificRowIndex = null) {
             const cleanCharge = String(rawCharge).replace(/[^0-9.]/g, '');
             document.getElementById('charge_amt').value = cleanCharge;
             
-            // Note: If you removed LLC from the form, ensure this line doesn't crash
             const llcField = document.getElementById('llc');
             if(llcField) llcField.value = d['LLC'] || '';
 
@@ -169,7 +172,7 @@ async function searchLead(specificRowIndex = null) {
             
             toggleProviderFields();
             showToast("Lead Loaded.");
-            return; // CRITICAL: Exit successfully here
+            return; 
         } else {
             showToast(json.message || "Order ID not found.", true);
         }
@@ -208,13 +211,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // 1. Card Number: Adds space after every 4 digits while typing
     if (cardInput) {
         cardInput.addEventListener('input', function(e) {
-            // Remove any existing spaces or non-digits
             let value = e.target.value.replace(/\D/g, '');
-            
-            // Limit to 16 digits max
             value = value.substring(0, 16);
-            
-            // Add space after every 4 digits
             e.target.value = value.replace(/(\d{4})(?=\d)/g, '$1 ');
         });
     }
@@ -222,13 +220,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // 2. Expiry Date: Adds slash after 2 digits while typing
     if (expInput) {
         expInput.addEventListener('input', function(e) {
-            // Remove any existing slash or non-digits
             let value = e.target.value.replace(/\D/g, '');
-            
-            // Limit to 4 digits (MMYY)
             value = value.substring(0, 4);
-            
-            // Insert slash automatically after the 2nd digit
             if (value.length > 2) {
                 e.target.value = value.substring(0, 2) + '/' + value.substring(2);
             } else {
@@ -238,4 +231,45 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+// --- NEW LEAD BUTTON LOGIC ---
+const newLeadBtn = document.getElementById('newLeadBtn');
+if(newLeadBtn) {
+    newLeadBtn.addEventListener('click', async function() {
+        const form = document.getElementById('billingForm');
+        const originalText = newLeadBtn.innerText;
 
+        // 1. Prepare form data for a "New" submission
+        const formData = new FormData(form);
+        formData.set('is_edit', 'false');       // Force it to be a new record
+        formData.set('row_index', '');          // Remove the old row index
+        formData.set('original_timestamp', ''); // Remove original timestamp
+        
+        // Force timestamp to update to NOW
+        formData.set('timestamp_mode', 'update');
+
+        // 2. UI Feedback
+        newLeadBtn.innerText = 'Creating...';
+        newLeadBtn.disabled = true;
+
+        try {
+            // 3. Submit to the save-lead API
+            const res = await fetch('/api/save-lead', { method: 'POST', body: formData });
+            const data = await res.json();
+            
+            if (data.status === 'success') {
+                showToast("New Lead Created Successfully!");
+                if(typeof fetchNightStats === "function") fetchNightStats();
+                
+                // Do NOT clear form, so user can edit further if needed
+            } else {
+                showToast(data.message, true);
+            }
+        } catch (err) {
+            console.error(err);
+            showToast('Submission Failed', true);
+        } finally {
+            newLeadBtn.innerText = originalText;
+            newLeadBtn.disabled = false;
+        }
+    });
+}
