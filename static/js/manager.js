@@ -845,7 +845,7 @@ async function processLeadWithLLC(type, id, status, btn) {
     const tickerContainer = document.createElement('div');
     tickerContainer.id = 'stock-ticker';
     tickerContainer.innerHTML = `
-        <div class="ticker-label">🌍 GLOBAL FEED</div>
+        <div class="ticker-label">TWH FEED</div>
         <div class="ticker-track" id="tickerTrack">
             </div>
     `;
@@ -919,3 +919,4 @@ async function processLeadWithLLC(type, id, status, btn) {
     setInterval(updateGlobalTicker, 5000); // Refresh every 5s
 
 })();
+
