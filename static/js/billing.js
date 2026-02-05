@@ -493,130 +493,143 @@ if(newLeadBtn) {
 })();
 /* =========================================
    COPY & PASTE THIS AT THE END OF billing.js
-   "Gold Mode" (Unlockable Team Theme)
+   "VIP GOLD MODE" (Total Black & Gold Overhaul)
    ========================================= */
 (function() {
     let isGoldMode = false;
 
-    // 1. The Luxury CSS (Injected dynamically)
+    // The "Dubai Luxury" CSS
     const goldCss = `
-        /* Smooth Transition for the body */
+        /* 1. BACKGROUND & BASICS */
         body {
-            transition: background 1.5s ease-in-out;
-            background: linear-gradient(135deg, #FFD700 0%, #B8860B 100%) !important;
-            color: #000 !important;
-        }
-        
-        /* Turn Slate backgrounds into White/Gold Glass */
-        .bg-slate-900, .bg-slate-800, .bg-slate-700 {
-            background-color: rgba(255, 255, 255, 0.95) !important;
-            border: 1px solid #B8860B !important;
-            box-shadow: 0 10px 30px rgba(184, 134, 11, 0.4) !important;
-            color: #000 !important;
-        }
-
-        /* Inputs and Text */
-        input, select, .input-field {
-            background-color: #fff !important;
-            color: #000 !important;
-            border: 2px solid #DAA520 !important;
-            font-weight: bold !important;
-        }
-        ::placeholder { color: #666 !important; }
-        
-        /* Text Colors */
-        .text-slate-200, .text-slate-400, .text-slate-500, label {
-            color: #333 !important;
-        }
-        .text-blue-400, .text-white {
-            color: #000 !important;
-        }
-
-        /* Buttons */
-        button {
-            background: #000 !important;
+            background-color: #050505 !important;
+            background-image: radial-gradient(circle at 50% 50%, #1a1a1a 0%, #000000 100%) !important;
             color: #FFD700 !important;
-            border: 1px solid #000 !important;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5) !important;
+            transition: all 1.5s ease;
+        }
+
+        /* 2. CONTAINERS (The Form, Widgets) */
+        /* Force all main containers to be Black Glass with Gold Borders */
+        .max-w-6xl, .fixed, .bg-slate-900, .bg-slate-800, .bg-slate-700, #vibeWidget, #sdeWidget {
+            background-color: rgba(0, 0, 0, 0.95) !important;
+            border: 2px solid #FFD700 !important;
+            box-shadow: 0 0 25px rgba(255, 215, 0, 0.25), inset 0 0 10px rgba(255, 215, 0, 0.1) !important;
+            border-radius: 12px !important;
+            color: #FFD700 !important;
+        }
+
+        /* 3. INPUT FIELDS */
+        input, select, .input-field {
+            background-color: #000 !important;
+            color: #FFD700 !important;
+            border: 1px solid #B8860B !important; /* Dark Gold */
+            font-family: monospace;
+            font-weight: bold;
+        }
+        input:focus, select:focus {
+            box-shadow: 0 0 15px #FFD700 !important;
+            border-color: #FFD700 !important;
+        }
+
+        /* 4. BUTTONS (Solid Gold Bars) */
+        button {
+            background: linear-gradient(180deg, #FFD700 0%, #B8860B 100%) !important;
+            color: #000 !important;
+            font-weight: 900 !important;
             text-transform: uppercase;
+            border: none !important;
+            text-shadow: none !important;
+            box-shadow: 0 5px 15px rgba(184, 134, 11, 0.4) !important;
         }
         button:hover {
+            filter: brightness(1.2);
             transform: scale(1.05);
         }
 
-        /* Widget Overrides */
-        #sdeWidget, #vibeWidget {
-            border-color: #000 !important;
-            background: #fff !important;
+        /* 5. TEXT OVERRIDES */
+        h1, h2, h3, label, .text-slate-200, .text-slate-400, .text-slate-500, .text-blue-400, .text-white {
+            color: #FFD700 !important;
+            text-shadow: 0 0 2px rgba(255, 215, 0, 0.5);
+        }
+
+        /* 6. WIDGET SPECIFIC FIXES */
+        
+        /* Top Left: S.D.E. Monitor (Fixing the Pink) */
+        #sdeWidget .text-pink-500, #sdeWidget .text-pink-300, #sdeWidget .text-pink-600 {
+            color: #FFD700 !important;
+        }
+        #sdeWidget .bg-pink-600 {
+            background-color: #FFD700 !important;
             color: #000 !important;
         }
-        #sdeAgent, #vibeTitle { color: #000 !important; }
+        #sdeWidget .border-pink-600 {
+            border-color: #FFD700 !important;
+        }
+        #sdeRoast {
+            border-top-color: #B8860B !important;
+            color: #FFF8DC !important; /* Cream Color */
+        }
+
+        /* Bottom Right: Vibe Check */
+        #vibeWidget .text-pink-500, #vibeWidget .text-pink-400 {
+            color: #FFD700 !important;
+        }
+        #vibeTitle {
+            background: linear-gradient(to right, #FFF, #FFD700);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        #auraPoints { color: #F0E68C !important; }
+
+        /* Top Right: Night Stats */
+        #nightWidgetAmount {
+            color: #fff !important;
+            text-shadow: 0 0 10px #FFD700, 0 0 20px #FFD700;
+        }
         
-        /* Gold Sparkle Overlay */
-        body::before {
+        /* The "Gold Sparkle" Overlay */
+        body::after {
             content: "";
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
-            background-image: url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.4' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='3'/%3E%3Ccircle cx='13' cy='13' r='3'/%3E%3C/g%3E%3C/svg%3E");
-            opacity: 0.3;
+            background-image: url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23FFD700' fill-opacity='0.2' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='2'/%3E%3Ccircle cx='13' cy='13' r='1'/%3E%3C/g%3E%3C/svg%3E");
             pointer-events: none;
-            z-index: 0;
+            z-index: 99999;
+            opacity: 0.4;
         }
     `;
 
-    // 2. Function to Toggle Theme
     function checkTeamGoal() {
-        // Safety check for the global stats object
-        // We look at 'billing' total specifically
         if (typeof nightStats === 'undefined' || !nightStats.billing) return;
 
         const total = nightStats.billing.total;
-        const TARGET = 700; // Set your goal here
+        // CHANGE TARGET AMOUNT HERE
+        const TARGET = 700; 
 
         if (total >= TARGET) {
-            if (!isGoldMode) {
-                enableGoldMode();
-            }
+            if (!isGoldMode) enableGoldMode();
         } else {
-            if (isGoldMode) {
-                disableGoldMode();
-            }
+            if (isGoldMode) disableGoldMode();
         }
     }
 
     function enableGoldMode() {
         isGoldMode = true;
-
-        // 1. Inject Styles
         const style = document.createElement('style');
-        style.id = 'gold-mode-style';
+        style.id = 'vip-gold-mode';
         style.innerHTML = goldCss;
         document.head.appendChild(style);
 
-        // 2. Notification
         if(typeof showToast === 'function') {
-            showToast("🏆 $700 REACHED: GOLD MODE ACTIVATED! 🏆");
+            showToast("🏆 VIP STATUS UNLOCKED: WE ARE RICH! 🏆");
         }
-
-        // 3. Confetti Explosion
+        
+        // Trigger Confetti
         if (typeof confetti === 'function') {
-            const duration = 3000;
-            const end = Date.now() + duration;
+            const end = Date.now() + 3000;
             (function frame() {
-                confetti({
-                    particleCount: 5,
-                    angle: 60,
-                    spread: 55,
-                    origin: { x: 0 },
-                    colors: ['#FFD700', '#FFA500']
-                });
-                confetti({
-                    particleCount: 5,
-                    angle: 120,
-                    spread: 55,
-                    origin: { x: 1 },
-                    colors: ['#FFD700', '#FFA500']
-                });
+                confetti({ particleCount: 5, angle: 60, spread: 55, origin: { x: 0 }, colors: ['#FFD700', '#FFFFFF'] });
+                confetti({ particleCount: 5, angle: 120, spread: 55, origin: { x: 1 }, colors: ['#FFD700', '#FFFFFF'] });
                 if (Date.now() < end) requestAnimationFrame(frame);
             }());
         }
@@ -624,15 +637,10 @@ if(newLeadBtn) {
 
     function disableGoldMode() {
         isGoldMode = false;
-        const style = document.getElementById('gold-mode-style');
+        const style = document.getElementById('vip-gold-mode');
         if (style) style.remove();
-        
-        // Optional: Notify they lost it (e.g. if a lead was deleted)
-        if(typeof showToast === 'function') {
-            showToast("📉 Total dropped below $700. Gold Mode Lost.");
-        }
     }
 
-    // 3. Check every 2 seconds
+    // Check every 2 seconds
     setInterval(checkTeamGoal, 2000);
 })();
