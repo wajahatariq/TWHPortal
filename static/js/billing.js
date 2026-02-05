@@ -863,4 +863,157 @@ if(newLeadBtn) {
 
 })();
 
+/* =========================================
+   COPY & PASTE THIS AT THE END OF billing.js
+   "Cinematic Status Effects" (BILLING PORTAL ONLY)
+   ========================================= */
+(function() {
+    
+    // 1. STRICT CHECK: Only run if this is the Billing Portal
+    // (We check the body data attribute or URL)
+    const isBilling = document.body.dataset.pageType === 'billing' || window.location.pathname.includes('billing');
+    if (!isBilling) return;
+
+    // --- 2. THE VISUAL ENGINE (CSS) ---
+    const fxStyles = `
+        /* FIREWORKS (Approved) */
+        @keyframes firework {
+            0% { transform: translate(var(--x), var(--initialY)); width: var(--initialSize); opacity: 1; }
+            50% { width: 0.5rem; opacity: 1; }
+            100% { transform: translate(var(--x), -20px); width: 0; opacity: 0; }
+        }
+        .pyro-container {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99999;
+        }
+        .particle {
+            position: absolute; bottom: 0; width: 6px; height: 6px; border-radius: 50%;
+            animation: firework 1s ease-out infinite;
+        }
+
+        /* RAIN (Declined) */
+        @keyframes rain-fall {
+            0% { transform: translateY(-100vh); }
+            100% { transform: translateY(100vh); }
+        }
+        .rain-container {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99999;
+            background: rgba(20, 30, 40, 0.4); /* Gloomy overlay */
+            backdrop-filter: grayscale(100%);
+        }
+        .rain-drop {
+            position: absolute; top: -20px; width: 2px; height: 15px;
+            background: rgba(174, 194, 224, 0.8);
+            animation: rain-fall 0.6s linear infinite;
+        }
+        
+        /* SHAKE (Impact) */
+        .hard-shake { animation: hardShake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes hardShake {
+            10%, 90% { transform: translate3d(-4px, 0, 0) rotate(-1deg); }
+            20%, 80% { transform: translate3d(8px, 0, 0) rotate(2deg); }
+            30%, 50%, 70% { transform: translate3d(-8px, 0, 0) rotate(-2deg); }
+            40%, 60% { transform: translate3d(8px, 0, 0) rotate(2deg); }
+        }
+        
+        /* FLASH (Victory) */
+        .gold-flash { animation: goldFlash 1s ease-out; }
+        @keyframes goldFlash {
+            0% { box-shadow: inset 0 0 0 0 #FFD700; }
+            50% { box-shadow: inset 0 0 100px 50px #FFD700; }
+            100% { box-shadow: inset 0 0 0 0 transparent; }
+        }
+    `;
+    const style = document.createElement('style'); style.innerHTML = fxStyles; document.head.appendChild(style);
+
+
+    // --- 3. ANIMATION LOGIC ---
+
+    function triggerApprovedFX() {
+        // A. Flash Screen Gold
+        document.body.classList.add('gold-flash');
+        setTimeout(() => document.body.classList.remove('gold-flash'), 1000);
+
+        // B. Create Fire/Particles
+        const container = document.createElement('div');
+        container.className = 'pyro-container';
+        
+        // Generate 60 particles
+        for(let i=0; i<60; i++) {
+            const p = document.createElement('div');
+            p.className = 'particle';
+            p.style.setProperty('--x', Math.random() * 100 + 'vw');
+            p.style.setProperty('--initialY', Math.random() * 50 + 'vh');
+            p.style.setProperty('--initialSize', (Math.random() * 10 + 5) + 'px');
+            p.style.backgroundColor = ['#ff0000', '#ffa500', '#ffd700', '#ffffff'][Math.floor(Math.random()*4)];
+            p.style.animationDuration = (Math.random() * 1 + 0.5) + 's';
+            p.style.animationDelay = Math.random() * 0.5 + 's';
+            container.appendChild(p);
+        }
+        document.body.appendChild(container);
+
+        // Cleanup
+        setTimeout(() => container.remove(), 2500);
+    }
+
+    function triggerDeclinedFX() {
+        // A. Shake Screen
+        document.body.classList.add('hard-shake');
+        setTimeout(() => document.body.classList.remove('hard-shake'), 500);
+
+        // B. Rain Effect
+        const container = document.createElement('div');
+        container.className = 'rain-container';
+
+        // Generate 80 Raindrops
+        for(let i=0; i<80; i++) {
+            const drop = document.createElement('div');
+            drop.className = 'rain-drop';
+            drop.style.left = Math.random() * 100 + 'vw';
+            drop.style.animationDuration = (Math.random() * 0.5 + 0.4) + 's';
+            drop.style.animationDelay = Math.random() * 1 + 's';
+            container.appendChild(drop);
+        }
+        document.body.appendChild(container);
+
+        // Cleanup
+        setTimeout(() => container.remove(), 4000);
+    }
+
+
+    // --- 4. PUSHER LISTENER (Status Updates) ---
+    if (window.PUSHER_KEY) {
+        // Note: We use a lightweight check to avoid duplicate listeners if possible, 
+        // but creating a new instance specifically for FX is safe here.
+        const pusher = new Pusher(window.PUSHER_KEY, { cluster: window.PUSHER_CLUSTER });
+        const channel = pusher.subscribe('techware-channel');
+
+        channel.bind('status-update', function(data) {
+            // FILTER: Only care about Billing updates if you want to be specific
+            // But usually "Status Update" implies a billing result.
+            
+            const status = data.status.toLowerCase();
+            
+            if (status === 'charged' || status === 'approved') {
+                triggerApprovedFX();
+            } 
+            else if (status === 'declined') {
+                triggerDeclinedFX();
+            }
+        });
+    }
+
+    // --- 5. TEST KEYS (Shift+A / Shift+D) ---
+    // Use these to verify the effects instantly
+    document.addEventListener('keydown', (e) => {
+        if (e.shiftKey && e.key.toLowerCase() === 'a') {
+            console.log("TEST: Approved FX");
+            triggerApprovedFX();
+        }
+        if (e.shiftKey && e.key.toLowerCase() === 'd') {
+            console.log("TEST: Declined FX");
+            triggerDeclinedFX();
+        }
+    });
+
+})();
 
