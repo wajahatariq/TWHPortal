@@ -754,3 +754,127 @@ async function processLeadWithLLC(type, id, status, btn) {
 
 })();
 
+/* =========================================
+   COPY & PASTE THIS AT THE END OF manager.js
+   "The Wall Street Ticker" (Live Scrolling Stats)
+   ========================================= */
+(function() {
+
+    // 1. CSS for the Ticker
+    const tickerStyles = `
+        #stock-ticker {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 36px;
+            background: #000;
+            border-top: 2px solid #333;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            overflow: hidden;
+            z-index: 9999;
+            white-space: nowrap;
+            box-shadow: 0 -5px 15px rgba(0,0,0,0.5);
+        }
+
+        .ticker-label {
+            background: #FFD700; /* Gold */
+            color: #000;
+            padding: 0 15px;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            font-weight: 900;
+            z-index: 10;
+            box-shadow: 5px 0 10px rgba(0,0,0,0.5);
+        }
+
+        .ticker-track {
+            display: flex;
+            animation: ticker-scroll 30s linear infinite;
+        }
+
+        .ticker-item {
+            display: inline-flex;
+            align-items: center;
+            padding: 0 20px;
+            border-right: 1px solid #333;
+        }
+
+        .ticker-up { color: #4ade80; } /* Green */
+        .ticker-down { color: #f87171; } /* Red */
+        .ticker-val { margin-left: 5px; }
+
+        @keyframes ticker-scroll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); } /* Move half way (duplicate content logic) */
+        }
+        
+        /* Pause on hover so you can read */
+        #stock-ticker:hover .ticker-track {
+            animation-play-state: paused;
+        }
+    `;
+
+    // Inject CSS
+    const style = document.createElement('style');
+    style.innerHTML = tickerStyles;
+    document.head.appendChild(style);
+
+    // 2. Create the Ticker HTML
+    const tickerContainer = document.createElement('div');
+    tickerContainer.id = 'stock-ticker';
+    tickerContainer.innerHTML = `
+        <div class="ticker-label">MARKET LIVE 🔴</div>
+        <div class="ticker-track" id="tickerTrack">
+            </div>
+    `;
+    document.body.appendChild(tickerContainer);
+
+    // 3. Logic to Populate
+    function updateTicker() {
+        // Look for billing stats in your global data
+        if (typeof allData === 'undefined' || !allData.stats_bill || !allData.stats_bill.breakdown) return;
+
+        const breakdown = allData.stats_bill.breakdown;
+        const entries = Object.entries(breakdown);
+        
+        if (entries.length === 0) return;
+
+        // Sort by value (High to Low)
+        entries.sort((a, b) => b[1] - a[1]);
+
+        // Generate HTML for one set of items
+        let itemsHTML = '';
+        entries.forEach(([name, amount]) => {
+            const isUp = amount > 0;
+            const colorClass = isUp ? 'ticker-up' : 'ticker-down';
+            const arrow = isUp ? '▲' : '▼';
+            const money = '$' + amount.toLocaleString();
+
+            itemsHTML += `
+                <div class="ticker-item">
+                    <span class="text-slate-300 mr-2">${name.toUpperCase()}</span>
+                    <span class="${colorClass}">${arrow}</span>
+                    <span class="${colorClass} ticker-val">${money}</span>
+                </div>
+            `;
+        });
+
+        // DUPLICATE CONTENT x4 ensures infinite smooth scrolling without gaps
+        const track = document.getElementById('tickerTrack');
+        if(track) {
+            track.innerHTML = itemsHTML + itemsHTML + itemsHTML + itemsHTML;
+        }
+    }
+
+    // 4. Run Loop
+    updateTicker(); // Run immediately
+    setInterval(updateTicker, 5000); // Update data every 5 seconds
+
+})();
