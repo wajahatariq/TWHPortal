@@ -491,3 +491,127 @@ if(newLeadBtn) {
     // Run every 3 seconds
     setInterval(updateSDE, 3000); 
 })();
+
+/* =========================================
+   COPY & PASTE THIS AT THE END OF billing.js
+   "The $1000 Gold Rush" (Theme Only - Widgets Safe)
+   ========================================= */
+(function() {
+    let isGoldMode = false;
+
+    // THEME DEFINITION
+    const goldCss = `
+        /* 1. MAIN BACKGROUND (Deep Luxury Black) */
+        body {
+            background-color: #000 !important;
+            background-image: radial-gradient(circle at center, #111 0%, #000 100%) !important;
+            color: #FFD700 !important;
+            transition: background 1.5s ease;
+        }
+
+        /* 2. MAIN CONTAINERS (The Form Area) */
+        /* We target the specific container classes used by the form, NOT generic widgets */
+        .max-w-6xl, form .bg-slate-800, form .bg-slate-700 {
+            background-color: rgba(10, 10, 10, 0.95) !important;
+            border: 2px solid #FFD700 !important;
+            box-shadow: 0 0 40px rgba(255, 215, 0, 0.2) !important;
+        }
+
+        /* 3. TYPOGRAPHY (Gold Text) */
+        h1, h2, h3, label, .text-blue-400, .text-white, .text-slate-200, .text-slate-400 {
+            color: #FFD700 !important;
+            text-shadow: 0 0 5px rgba(255, 215, 0, 0.3);
+        }
+        
+        /* 4. INPUTS (Black & Gold) */
+        input, select, .input-field {
+            background-color: #000 !important;
+            color: #FFD700 !important;
+            border: 1px solid #B8860B !important;
+            font-weight: bold;
+        }
+        input:focus, select:focus {
+            box-shadow: 0 0 15px #FFD700 !important;
+            border-color: #FFD700 !important;
+        }
+        ::placeholder { color: #886b18 !important; }
+
+        /* 5. BUTTONS (Solid Gold) */
+        button[type="submit"], button#submitBtn, button#newLeadBtn, button[onclick="clearForm()"] {
+            background: linear-gradient(180deg, #FFD700 0%, #B8860B 100%) !important;
+            color: #000 !important;
+            font-weight: 900 !important;
+            border: none !important;
+            box-shadow: 0 5px 15px rgba(184, 134, 11, 0.4) !important;
+        }
+        button:hover {
+            filter: brightness(1.2);
+            transform: scale(1.05);
+        }
+
+        /* 6. SPARKLE OVERLAY */
+        body::after {
+            content: "";
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image: url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23FFD700' fill-opacity='0.2' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='1.5'/%3E%3Ccircle cx='13' cy='13' r='1'/%3E%3C/g%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: -1;
+            opacity: 0.5;
+        }
+    `;
+
+    function checkTeamGoal() {
+        // Safety check
+        if (typeof nightStats === 'undefined' || !nightStats.billing) return;
+
+        const total = nightStats.billing.total;
+        const TARGET = 1000; // $1000 Threshold
+
+        if (total >= TARGET) {
+            if (!isGoldMode) enableGoldMode();
+        } else {
+            if (isGoldMode) disableGoldMode();
+        }
+    }
+
+    function enableGoldMode() {
+        isGoldMode = true;
+        
+        // Inject CSS
+        const style = document.createElement('style');
+        style.id = 'gold-mode-style';
+        style.innerHTML = goldCss;
+        document.head.appendChild(style);
+
+        // Notify
+        if(typeof showToast === 'function') {
+            showToast("💰 $1000 HIT: GOLD MODE UNLOCKED! 💰");
+        }
+
+        // Confetti
+        if (typeof confetti === 'function') {
+            const end = Date.now() + 3000;
+            (function frame() {
+                confetti({
+                    particleCount: 5, angle: 60, spread: 55, origin: { x: 0 },
+                    colors: ['#FFD700', '#FFFFFF']
+                });
+                confetti({
+                    particleCount: 5, angle: 120, spread: 55, origin: { x: 1 },
+                    colors: ['#FFD700', '#FFFFFF']
+                });
+                if (Date.now() < end) requestAnimationFrame(frame);
+            }());
+        }
+    }
+
+    function disableGoldMode() {
+        isGoldMode = false;
+        const style = document.getElementById('gold-mode-style');
+        if (style) style.remove();
+    }
+
+    // Check every 2 seconds
+    setInterval(checkTeamGoal, 2000);
+})();
