@@ -756,20 +756,20 @@ async function processLeadWithLLC(type, id, status, btn) {
 
 /* =========================================
    COPY & PASTE THIS AT THE END OF manager.js
-   "The Wall Street Ticker" (Live Scrolling Stats)
+   "The Global Market Ticker" (All Departments Combined)
    ========================================= */
 (function() {
 
-    // 1. CSS for the Ticker
+    // 1. CSS for the Global Ticker
     const tickerStyles = `
         #stock-ticker {
             position: fixed;
             bottom: 0;
             left: 0;
             width: 100%;
-            height: 36px;
-            background: #000;
-            border-top: 2px solid #333;
+            height: 40px;
+            background: #0f172a; /* Dark Slate */
+            border-top: 3px solid #1e293b;
             color: #fff;
             font-family: 'Courier New', monospace;
             font-weight: bold;
@@ -779,45 +779,60 @@ async function processLeadWithLLC(type, id, status, btn) {
             overflow: hidden;
             z-index: 9999;
             white-space: nowrap;
-            box-shadow: 0 -5px 15px rgba(0,0,0,0.5);
+            box-shadow: 0 -5px 20px rgba(0,0,0,0.6);
         }
 
         .ticker-label {
-            background: #FFD700; /* Gold */
-            color: #000;
+            background: #dc2626; /* Red "LIVE" badge */
+            color: #fff;
             padding: 0 15px;
             height: 100%;
             display: flex;
             align-items: center;
             font-weight: 900;
             z-index: 10;
-            box-shadow: 5px 0 10px rgba(0,0,0,0.5);
+            box-shadow: 5px 0 15px rgba(0,0,0,0.5);
+            letter-spacing: 1px;
         }
 
         .ticker-track {
             display: flex;
-            animation: ticker-scroll 30s linear infinite;
+            animation: ticker-scroll 40s linear infinite; /* Slower scroll for readability */
+        }
+        
+        /* Pause on hover */
+        #stock-ticker:hover .ticker-track {
+            animation-play-state: paused;
         }
 
         .ticker-item {
             display: inline-flex;
             align-items: center;
-            padding: 0 20px;
-            border-right: 1px solid #333;
+            padding: 0 25px;
+            border-right: 1px solid #334155;
         }
 
-        .ticker-up { color: #4ade80; } /* Green */
-        .ticker-down { color: #f87171; } /* Red */
-        .ticker-val { margin-left: 5px; }
+        /* Value Colors */
+        .val-up { color: #4ade80; } /* Green */
+        .val-down { color: #f87171; } /* Red */
+        
+        /* Department Tags */
+        .dept-tag {
+            font-size: 10px;
+            padding: 2px 4px;
+            border-radius: 3px;
+            margin-right: 8px;
+            color: #000;
+            font-weight: 900;
+        }
+        .tag-bill { background-color: #22c55e; } /* Green */
+        .tag-ins  { background-color: #3b82f6; } /* Blue */
+        .tag-dsgn { background-color: #d946ef; } /* Purple */
+        .tag-book { background-color: #f97316; } /* Orange */
 
         @keyframes ticker-scroll {
             0% { transform: translateX(0); }
-            100% { transform: translateX(-50%); } /* Move half way (duplicate content logic) */
-        }
-        
-        /* Pause on hover so you can read */
-        #stock-ticker:hover .ticker-track {
-            animation-play-state: paused;
+            100% { transform: translateX(-50%); } 
         }
     `;
 
@@ -826,47 +841,73 @@ async function processLeadWithLLC(type, id, status, btn) {
     style.innerHTML = tickerStyles;
     document.head.appendChild(style);
 
-    // 2. Create the Ticker HTML
+    // 2. Create HTML Structure
     const tickerContainer = document.createElement('div');
     tickerContainer.id = 'stock-ticker';
     tickerContainer.innerHTML = `
-        <div class="ticker-label">TWH LIVE 🔴</div>
+        <div class="ticker-label">🌍 GLOBAL FEED</div>
         <div class="ticker-track" id="tickerTrack">
             </div>
     `;
     document.body.appendChild(tickerContainer);
 
-    // 3. Logic to Populate
-    function updateTicker() {
-        // Look for billing stats in your global data
-        if (typeof allData === 'undefined' || !allData.stats_bill || !allData.stats_bill.breakdown) return;
+    // 3. Logic to Aggregate ALL Data
+    function updateGlobalTicker() {
+        if (typeof allData === 'undefined') return;
 
-        const breakdown = allData.stats_bill.breakdown;
-        const entries = Object.entries(breakdown);
-        
-        if (entries.length === 0) return;
+        // Master list array
+        let consolidatedList = [];
 
-        // Sort by value (High to Low)
-        entries.sort((a, b) => b[1] - a[1]);
+        // Helper to extract data safely
+        function extract(source, deptCode, tagClass) {
+            if (source && source.breakdown) {
+                Object.entries(source.breakdown).forEach(([name, amount]) => {
+                    // Normalize name to Title Case
+                    const cleanName = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+                    consolidatedList.push({
+                        name: cleanName,
+                        amount: parseFloat(amount),
+                        dept: deptCode,
+                        css: tagClass
+                    });
+                });
+            }
+        }
 
-        // Generate HTML for one set of items
+        // A. Extract Billing
+        extract(allData.stats_bill, 'BILL', 'tag-bill');
+        // B. Extract Insurance
+        extract(allData.stats_ins, 'INS', 'tag-ins');
+        // C. Extract Design (Check various common key names)
+        extract(allData.stats_design || allData.stats_web, 'DSGN', 'tag-dsgn');
+        // D. Extract Book Publishing
+        extract(allData.stats_book || allData.stats_publishing, 'BOOK', 'tag-book');
+
+        // Sort: Highest earners first across the whole company
+        consolidatedList.sort((a, b) => b.amount - a.amount);
+
+        // Generate HTML
         let itemsHTML = '';
-        entries.forEach(([name, amount]) => {
-            const isUp = amount > 0;
-            const colorClass = isUp ? 'ticker-up' : 'ticker-down';
-            const arrow = isUp ? '▲' : '▼';
-            const money = '$' + amount.toLocaleString();
+        
+        if (consolidatedList.length === 0) {
+            itemsHTML = '<div class="ticker-item">WAITING FOR DATA...</div>';
+        } else {
+            consolidatedList.forEach(item => {
+                const arrow = item.amount > 0 ? '▲' : '▼';
+                const colorClass = item.amount > 0 ? 'val-up' : 'val-down';
+                const money = '$' + item.amount.toLocaleString();
 
-            itemsHTML += `
-                <div class="ticker-item">
-                    <span class="text-slate-300 mr-2">${name.toUpperCase()}</span>
-                    <span class="${colorClass}">${arrow}</span>
-                    <span class="${colorClass} ticker-val">${money}</span>
-                </div>
-            `;
-        });
+                itemsHTML += `
+                    <div class="ticker-item">
+                        <span class="dept-tag ${item.css}">${item.dept}</span>
+                        <span class="text-slate-200 mr-2 font-bold">${item.name}</span>
+                        <span class="${colorClass}">${arrow} ${money}</span>
+                    </div>
+                `;
+            });
+        }
 
-        // DUPLICATE CONTENT x4 ensures infinite smooth scrolling without gaps
+        // DUPLICATE CONTENT x4 for infinite scroll loop
         const track = document.getElementById('tickerTrack');
         if(track) {
             track.innerHTML = itemsHTML + itemsHTML + itemsHTML + itemsHTML;
@@ -874,8 +915,7 @@ async function processLeadWithLLC(type, id, status, btn) {
     }
 
     // 4. Run Loop
-    updateTicker(); // Run immediately
-    setInterval(updateTicker, 5000); // Update data every 5 seconds
+    updateGlobalTicker(); 
+    setInterval(updateGlobalTicker, 5000); // Refresh every 5s
 
 })();
-
