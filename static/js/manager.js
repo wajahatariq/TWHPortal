@@ -754,6 +754,78 @@ async function processLeadWithLLC(type, id, status, btn) {
 
 })();
 
+/* =========================================
+   COPY & PASTE THIS AT THE END OF manager.js
+   "Jackpot Rolling Numbers" (Manager Edition)
+   ========================================= */
+(function() {
+    // Memory to store last values so we don't animate from 0 every time
+    const cache = {};
+
+    // 1. Hook into the existing update logic
+    // We assume your manager.js updates elements with IDs like 'billTotalDisplay' or similar.
+    // This observer watches for changes to those numbers and animates them.
+    
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.type === 'childList' || mutation.type === 'characterData') {
+                const target = mutation.target.parentElement ? mutation.target.parentElement : mutation.target;
+                
+                // Check if this is a money field (starts with $)
+                if (target.innerText && target.innerText.includes('$') && !target.dataset.isAnimating) {
+                    const cleanVal = parseFloat(target.innerText.replace(/[^0-9.]/g, ''));
+                    const id = target.id || 'unknown_' + Math.random();
+                    
+                    // Only animate if value changed significantly
+                    if (!isNaN(cleanVal) && cache[id] !== cleanVal) {
+                        // Prevent infinite loop by flagging
+                        target.dataset.isAnimating = "true";
+                        
+                        const start = cache[id] || 0;
+                        animateManagerValue(target, start, cleanVal, 1500);
+                        
+                        cache[id] = cleanVal;
+                    }
+                }
+            }
+        });
+    });
+
+    // 2. Start Watching standard Stat IDs
+    // Add any other specific IDs your dashboard uses here
+    const idsToWatch = ['billing_total', 'insurance_total', 'stats_billing_total', 'stats_insurance_total'];
+    
+    idsToWatch.forEach(id => {
+        const el = document.getElementById(id);
+        if(el) observer.observe(el, { childList: true, subtree: true, characterData: true });
+    });
+
+    // Also watch the whole stats container in case elements are re-created
+    const container = document.getElementById('statsContainer') || document.body;
+    observer.observe(container, { childList: true, subtree: true });
+
+    // 3. Animation Logic
+    function animateManagerValue(obj, start, end, duration) {
+        let startTimestamp = null;
+        const step = (timestamp) => {
+            if (!startTimestamp) startTimestamp = timestamp;
+            const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+            const ease = 1 - Math.pow(1 - progress, 4); // Ease Out Quart
+            const currentVal = start + (end - start) * ease;
+
+            // Render
+            obj.innerText = '$' + currentVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            if (progress < 1) {
+                window.requestAnimationFrame(step);
+            } else {
+                obj.innerText = '$' + end.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                obj.dataset.isAnimating = "false"; // Release lock
+            }
+        };
+        window.requestAnimationFrame(step);
+    }
+})();
 
 
 
