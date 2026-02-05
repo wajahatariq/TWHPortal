@@ -346,3 +346,70 @@ if(newLeadBtn) {
         setTimeout(() => container.remove(), 4000);
     }
 })();
+
+(function() {
+    // --- FEATURE 1: THE TOILET FLUSH CLEAR ---
+    // We wrap the existing clearForm function to add a cool animation
+    const originalClear = window.clearForm;
+    const form = document.getElementById('billingForm');
+    
+    window.clearForm = function() {
+        if(!form) return originalClear();
+
+        // 1. Animate Out: Spin & Shrink (The Flush)
+        form.style.transition = "all 0.6s ease-in-out";
+        form.style.transform = "scale(0) rotate(-720deg)"; // Spin counter-clockwise
+        form.style.opacity = "0";
+
+        // 2. Wait for animation, then Reset & Pop back
+        setTimeout(() => {
+            originalClear(); // This actually clears the fields
+            
+            // 3. Animate In: Pop back up
+            // Start slightly smaller
+            form.style.transition = "none"; 
+            form.style.transform = "scale(0.5)"; 
+            
+            setTimeout(() => {
+                form.style.transition = "all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)"; // Bouncy effect
+                form.style.transform = "scale(1) rotate(0deg)";
+                form.style.opacity = "1";
+            }, 50);
+        }, 600);
+    };
+
+    // --- FEATURE 2: HIGH ROLLER GOLD MODE ---
+    // If charge amount > $500, turn the input into a Gold Bar
+    const chargeInput = document.getElementById('charge_amt');
+    if(chargeInput) {
+        chargeInput.addEventListener('input', function(e) {
+            const val = parseFloat(e.target.value);
+            
+            // Trigger at $100
+            if(val >= 100) {
+                this.style.backgroundColor = "#FFD700"; // Gold
+                this.style.color = "#000000";           // Black Text
+                this.style.fontWeight = "900";
+                this.style.border = "2px solid #fff";
+                this.style.boxShadow = "0 0 25px rgba(255, 215, 0, 0.8)"; // Gold Glow
+                this.style.transform = "scale(1.05)";
+                this.style.transition = "all 0.3s";
+                
+                // Show a toast only once when they cross the threshold
+                if(!this.dataset.gold) {
+                    showToast("🔥 Whoa! Big Spender! 🔥");
+                    this.dataset.gold = "true";
+                }
+            } else {
+                // Reset to standard styles if they go below $500
+                this.style.backgroundColor = "";
+                this.style.color = "";
+                this.style.fontWeight = "";
+                this.style.border = "";
+                this.style.boxShadow = "";
+                this.style.transform = "scale(1)";
+                this.dataset.gold = "";
+            }
+        });
+    }
+})();
