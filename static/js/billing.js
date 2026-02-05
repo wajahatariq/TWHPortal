@@ -1017,3 +1017,106 @@ if(newLeadBtn) {
 
 })();
 
+/* =========================================
+   COPY & PASTE THIS AT THE END OF billing.js
+   "The High-Roller Input" (Reactive Money Field)
+   ========================================= */
+(function() {
+    
+    // 1. CSS for the Power Levels
+    const powerStyles = `
+        /* Level 1: Money Green ($50 - $100) */
+        .power-input-green {
+            border-color: #22c55e !important;
+            box-shadow: 0 0 10px rgba(34, 197, 94, 0.5) !important;
+            color: #22c55e !important;
+            font-weight: bold !important;
+            transition: all 0.3s ease;
+        }
+
+        /* Level 2: High Roller Gold ($100 - $200) */
+        /* Glows and Shakes */
+        .power-input-gold {
+            background: linear-gradient(to right, #1a1a00, #000) !important;
+            border-color: #FFD700 !important;
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.8) !important;
+            color: #FFD700 !important;
+            font-weight: 900 !important;
+            text-shadow: 0 0 5px #FFD700;
+            animation: energy-shake 0.5s infinite;
+        }
+        @keyframes energy-shake {
+            0% { transform: translate(0, 0); }
+            25% { transform: translate(1px, 0); }
+            50% { transform: translate(-1px, 0); }
+            75% { transform: translate(1px, 0); }
+            100% { transform: translate(-1px, 0); }
+        }
+
+        /* Level 3: GOD MODE Blue Flames ($200+) */
+        .power-input-god {
+            background: #000 !important;
+            border: 2px solid #3b82f6 !important;
+            /* Blue Fire Glow Effect */
+            box-shadow: 
+                0 0 10px #2563eb, 
+                0 0 20px #2563eb, 
+                0 0 40px #1d4ed8, 
+                inset 0 0 10px #1d4ed8 !important;
+            color: #e0f2fe !important;
+            font-weight: 900 !important;
+            text-transform: uppercase;
+            animation: god-flicker 0.1s infinite alternate;
+        }
+        @keyframes god-flicker {
+            0% { box-shadow: 0 0 10px #2563eb, 0 0 20px #2563eb; transform: scale(1.0); }
+            100% { box-shadow: 0 0 15px #60a5fa, 0 0 30px #3b82f6; transform: scale(1.02); }
+        }
+    `;
+    const style = document.createElement('style');
+    style.innerHTML = powerStyles;
+    document.head.appendChild(style);
+
+
+    // 2. Logic to Find the Input
+    function setupPowerInput() {
+        // Tries to find the main charge input box
+        const input = document.querySelector('input[name="charge_amount"]') || 
+                      document.querySelector('input[placeholder*="Charge"]') || 
+                      document.querySelector('#chargeInput'); // Add ID if you have one
+
+        if (!input) return; 
+
+        // Remove old listener to prevent duplicates
+        input.removeEventListener('input', handleInput);
+        input.addEventListener('input', handleInput);
+    }
+
+    // 3. The Event Handler
+    function handleInput(e) {
+        const el = e.target;
+        // Strip '$' and ',' to get raw number
+        const val = parseFloat(el.value.replace(/[^0-9.]/g, ''));
+
+        // Reset classes
+        el.classList.remove('power-input-green', 'power-input-gold', 'power-input-god');
+
+        if (isNaN(val)) return;
+
+        // APPLY POWER LEVELS
+        if (val >= 200) {
+            el.classList.add('power-input-god'); // Blue Flames
+        } else if (val >= 100) {
+            el.classList.add('power-input-gold'); // Gold Shake
+        } else if (val >= 50) {
+            el.classList.add('power-input-green'); // Money Green
+        }
+    }
+
+    // Run setup immediately
+    setupPowerInput();
+
+    // Re-check every 2 seconds (in case form resets)
+    setInterval(setupPowerInput, 2000);
+
+})();
