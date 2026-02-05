@@ -111,38 +111,39 @@ document.addEventListener("DOMContentLoaded", function() {
         `;
     }
 
-    if (showChat && !document.getElementById('chat-root')) {
-        const chatHTML = `
-            <button id="chatToggleBtn" onclick="toggleChat()" class="fixed bottom-5 left-5 bg-blue-600 hover:bg-blue-500 text-white p-4 rounded-full shadow-2xl z-50 transition-transform hover:scale-110 group border-2 border-white/10">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-                <span class="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full hidden border border-slate-900" id="chatUnreadBadge">0</span>
-            </button>
-
-            <div id="chatWindow" class="fixed bottom-24 left-5 w-80 md:w-96 bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl z-50 hidden flex flex-col overflow-hidden origin-bottom-left transition-all duration-200 scale-95 opacity-0">
-                <div class="bg-slate-900/90 backdrop-blur p-4 border-b border-slate-700 flex justify-between items-center">
-                    <div class="flex items-center gap-2">
-                        <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                        <h3 class="font-bold text-white text-sm">Team Chat</h3>
-                    </div>
-                    <button onclick="toggleChat()" class="text-slate-400 hover:text-white transition">✕</button>
-                </div>
-                ${identityHTML}
-                <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-3 h-80 bg-slate-800/50">
-                     <div class="text-center text-xs text-slate-500 mt-4 mb-4 select-none">-- Chat History --</div>
-                </div>
-                <form id="chatForm" class="p-3 bg-slate-900 border-t border-slate-700 flex gap-2">
-                    <input type="text" id="chatInput" class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-blue-500" placeholder="Message..." required autocomplete="off">
-                    <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg font-bold text-sm shadow-lg shadow-blue-500/20">Send</button>
-                </form>
-            </div>
-        `;
-        const div = document.createElement('div');
-        div.id = 'chat-root';
-        div.innerHTML = chatHTML;
-        document.body.appendChild(div);
-    }
+   if (showChat && !document.getElementById('chat-root')) {
+           // --- CHANGED: Bell SVG -> Message SVG ---
+           const chatHTML = `
+               <button id="chatToggleBtn" onclick="toggleChat()" class="fixed bottom-5 left-5 bg-blue-600 hover:bg-blue-500 text-white p-4 rounded-full shadow-2xl z-50 transition-transform hover:scale-110 group border-2 border-white/10">
+                   <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                   </svg>
+                   <span class="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full hidden border border-slate-900" id="chatUnreadBadge">0</span>
+               </button>
+   
+               <div id="chatWindow" class="fixed bottom-24 left-5 w-80 md:w-96 bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl z-50 hidden flex flex-col overflow-hidden origin-bottom-left transition-all duration-200 scale-95 opacity-0">
+                   <div class="bg-slate-900/90 backdrop-blur p-4 border-b border-slate-700 flex justify-between items-center">
+                       <div class="flex items-center gap-2">
+                           <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                           <h3 class="font-bold text-white text-sm">Team Chat</h3>
+                       </div>
+                       <button onclick="toggleChat()" class="text-slate-400 hover:text-white transition">✕</button>
+                   </div>
+                   ${identityHTML}
+                   <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-3 h-80 bg-slate-800/50">
+                        <div class="text-center text-xs text-slate-500 mt-4 mb-4 select-none">-- Chat History --</div>
+                   </div>
+                   <form id="chatForm" class="p-3 bg-slate-900 border-t border-slate-700 flex gap-2">
+                       <input type="text" id="chatInput" class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-blue-500" placeholder="Message..." required autocomplete="off">
+                       <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg font-bold text-sm shadow-lg shadow-blue-500/20">Send</button>
+                   </form>
+               </div>
+           `;
+           const div = document.createElement('div');
+           div.id = 'chat-root';
+           div.innerHTML = chatHTML;
+           document.body.appendChild(div);
+       }
 
     const chatWindow = document.getElementById('chatWindow');
     const msgsDiv = document.getElementById('chatMessages');
@@ -314,6 +315,7 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 });
+
 
 
 
