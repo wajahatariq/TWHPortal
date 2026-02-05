@@ -185,7 +185,7 @@ function renderPendingCards() {
 
     // Options derived from your original code
     const llcOptions = pendingSubTab === 'billing' 
-        ? ["Secure Claim Solutions-NMI", "Visionary Pathways-Authorize", "Visionary Pathways-Chase", "Zelle"] 
+        ? ["Secure Claim Solutions-NMI", "Visionary Pathways-Authorize", "Visionary Pathways-Chase", "Zelle", "Venmo"] 
         : ["Secure Claim Solutions-NMI"];
 
     data.forEach(row => {
@@ -753,3 +753,4 @@ async function processLeadWithLLC(type, id, status, btn) {
     setInterval(checkManagerTheme, 500);
 
 })();
+
