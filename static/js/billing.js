@@ -1017,6 +1017,126 @@ if(newLeadBtn) {
 
 })();
 
+/* =========================================
+   COPY & PASTE THIS AT THE END OF billing.js
+   "The Evolving Trigger" (Updated Thresholds: $50/$100/$200)
+   ========================================= */
+(function() {
+
+    // 1. CSS for the Button States
+    const btnStyles = `
+        /* STATE 1: MONEY MODE ($50 - $99) */
+        .btn-money-mode {
+            background: linear-gradient(to bottom, #22c55e, #15803d) !important;
+            border: 2px solid #86efac !important;
+            color: white !important;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+            transform: scale(1.02);
+            transition: all 0.2s;
+        }
+
+        /* STATE 2: BAG CHASER ($100 - $199) */
+        .btn-bag-mode {
+            background: linear-gradient(45deg, #FFD700, #B8860B) !important;
+            border: 2px solid #fff !important;
+            color: #000 !important;
+            font-weight: 900 !important;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.6) !important;
+            animation: pulse-gold-btn 1s infinite;
+        }
+        @keyframes pulse-gold-btn {
+            0% { box-shadow: 0 0 15px rgba(255, 215, 0, 0.6); }
+            50% { box-shadow: 0 0 25px rgba(255, 215, 0, 0.9); scale: 1.05; }
+            100% { box-shadow: 0 0 15px rgba(255, 215, 0, 0.6); }
+        }
+
+        /* STATE 3: NUCLEAR LAUNCH ($200+) */
+        .btn-nuke-mode {
+            background: repeating-linear-gradient(
+                45deg,
+                #000,
+                #000 10px,
+                #dc2626 10px,
+                #dc2626 20px
+            ) !important;
+            border: 3px solid #fff !important;
+            color: #fff !important;
+            font-family: 'Courier New', monospace;
+            font-weight: 900 !important;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            box-shadow: 0 0 30px #dc2626 !important;
+            animation: shake-nuke 0.2s infinite;
+        }
+        @keyframes shake-nuke {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+    `;
+    const style = document.createElement('style');
+    style.innerHTML = btnStyles;
+    document.head.appendChild(style);
+
+
+    // 2. Logic to Find Elements
+    function initTrigger() {
+        const input = document.getElementById('charge_amt');
+        // Try to find the button
+        const btn = document.querySelector('button[type="submit"]') || 
+                    document.getElementById('submitBtn');
+
+        if (!input || !btn) return;
+
+        // Save original text to restore later (only once)
+        if (!btn.dataset.originalText) btn.dataset.originalText = btn.innerText;
+
+        // Remove old listener if re-running
+        input.removeEventListener('input', handleTriggerInput);
+        input.addEventListener('input', handleTriggerInput);
+
+        function handleTriggerInput(e) {
+            const val = parseFloat(e.target.value.replace(/[^0-9.]/g, ''));
+            
+            // RESET
+            btn.className = btn.className.replace(/btn-money-mode|btn-bag-mode|btn-nuke-mode/g, '');
+            btn.innerText = btn.dataset.originalText; // Restore Original Text
+            
+            if (isNaN(val)) return;
+
+            // EVOLVE
+            if (val >= 200) {
+                // LEVEL 3: NUKE ($200+)
+                btn.classList.add('btn-nuke-mode');
+                btn.innerText = "🚀 LAUNCH NUKE 🚀";
+            } 
+            else if (val >= 100) {
+                // LEVEL 2: GOLD BAG ($100 - $199)
+                btn.classList.add('btn-bag-mode');
+                btn.innerText = "SECURE THE BAG 💰";
+            } 
+            else if (val >= 50) {
+                // LEVEL 1: MONEY ($50 - $99)
+                btn.classList.add('btn-money-mode');
+                btn.innerText = "Confirm Sale 💸";
+            }
+        }
+    }
+
+    // Run Init
+    initTrigger();
+    // Re-run safely in case of page updates
+    setInterval(initTrigger, 3000);
+
+})();
 
 
 
