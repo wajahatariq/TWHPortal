@@ -1140,29 +1140,29 @@ if(newLeadBtn) {
 
 /* =========================================
    COPY & PASTE THIS AT THE END OF billing.js
-   "The Raid Boss" (Billing Portal Edition - Target $1000)
+   "The Raid Boss" (Bottom Position Edition)
    ========================================= */
 (function() {
 
     // --- CONFIGURATION ---
-    const DAILY_TARGET = 1000; // <--- Target set to $1,000
+    const DAILY_TARGET = 1000;
 
     // 1. CSS for the Health Bar
     const bossStyles = `
         #boss-hud {
             position: fixed;
-            top: 0;
+            bottom: 0; /* LOCKED TO BOTTOM */
             left: 0;
             width: 100%;
-            height: 40px; /* Slimmer for Billing Portal */
+            height: 45px;
             background: #0f172a;
-            border-bottom: 3px solid #000;
+            border-top: 4px solid #000; /* Border moves to top */
             z-index: 99999;
             font-family: 'Courier New', monospace;
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.8);
+            box-shadow: 0 -5px 20px rgba(0,0,0,0.5); /* Shadow points up */
         }
 
         /* The Background */
@@ -1217,7 +1217,6 @@ if(newLeadBtn) {
             gap: 10px;
         }
 
-        /* Animations */
         @keyframes pulse-gold-bar {
             0% { filter: brightness(100%); }
             100% { filter: brightness(130%); }
@@ -1247,21 +1246,18 @@ if(newLeadBtn) {
             <span id="bossPercent" class="text-xs bg-slate-900 px-2 py-0.5 rounded ml-1 border border-slate-700">0%</span>
         </div>
     `;
-    document.body.prepend(hud); // Add to TOP of body
+    document.body.appendChild(hud); // Add to end of body
     
-    // Push body down slightly so it doesn't cover the nav bar
-    document.body.style.paddingTop = "40px";
+    // Add PADDING to the bottom of the page so the bar doesn't cover any footers
+    document.body.style.paddingBottom = "50px";
 
     // 3. Logic
     let lastKnownTotal = 0;
 
     function updateBossBar() {
-        // Safety Check
         if (typeof nightStats === 'undefined' || !nightStats.billing) return;
         
         const currentTotal = nightStats.billing.total || 0;
-        
-        // Calculate Percentage
         let percent = (currentTotal / DAILY_TARGET) * 100;
         const displayPercent = Math.min(percent, 100);
 
@@ -1269,37 +1265,29 @@ if(newLeadBtn) {
         const text = document.getElementById('bossTargetText');
         const pctText = document.getElementById('bossPercent');
 
-        // Update Text
         text.innerText = `$${currentTotal.toLocaleString()} / $${DAILY_TARGET.toLocaleString()}`;
         pctText.innerText = Math.floor(percent) + "%";
-
-        // Update Width
         bar.style.width = displayPercent + "%";
 
-        // Check for OVERDRIVE (Target Hit)
         if (percent >= 100) {
             bar.classList.add('overdrive');
             text.innerHTML = `🏆 GOAL SMASHED ($${currentTotal.toLocaleString()})`;
-            text.style.color = "#fef08a"; // Light yellow
+            text.style.color = "#fef08a";
         } else {
             bar.classList.remove('overdrive');
             text.style.color = "#fff";
         }
 
-        // ANIMATION: Shake if money went up
         if (currentTotal > lastKnownTotal) {
             const container = document.getElementById('boss-hud');
             container.classList.remove('shake-bar');
-            void container.offsetWidth; // Force Reflow
+            void container.offsetWidth;
             container.classList.add('shake-bar');
         }
         lastKnownTotal = currentTotal;
     }
 
-    // Run loops
     updateBossBar();
-    setInterval(updateBossBar, 2000); // Check for updates every 2s
+    setInterval(updateBossBar, 2000);
 
 })();
-
-
