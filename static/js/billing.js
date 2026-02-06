@@ -1062,16 +1062,16 @@ if(newLeadBtn) {
 
 /* =========================================
    COPY & PASTE THIS AT THE END OF billing.js
-   "The Simple Loading Bar" (Top Left Only - Robust Version)
+   "The Vertical Loading Bar" (Top Left - Robust Version)
    ========================================= */
 (function() {
 
     // --- CONFIGURATION ---
     const DAILY_TARGET = 1000;
 
-    // 1. CSS: Clean, Simple, positioned carefully
+    // 1. CSS: Vertical Layout
     const hudStyles = `
-        /* HIDE ALL OLD WIDGETS to prevent clutter/conflicts */
+        /* HIDE ALL OLD WIDGETS */
         #nightStatsContainer, 
         .night-widget-container, 
         #wall-of-shame, 
@@ -1079,60 +1079,73 @@ if(newLeadBtn) {
         #energy-core, 
         #mission-hud, 
         #rusty-anchor,
-        #the-anchor {
-            display: none !important;
+        #the-anchor,
+        #simple-hud { 
+            display: none !important; 
         }
 
-        /* --- THE LOADING BAR --- */
-        #simple-hud {
+        /* --- THE VERTICAL HUD CONTAINER --- */
+        #vertical-hud-left {
             position: fixed;
-            top: 80px; /* Sits below headers/dropdowns */
+            top: 80px; /* Safe space below headers */
             left: 20px;
-            width: 220px;
-            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-            z-index: 10000; /* High z-index to stay on top */
-            pointer-events: none; /* Let clicks pass through to items behind it */
-        }
-
-        .bar-label {
+            height: 120px; /* Height of the widget */
             display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-            font-size: 11px;
-            font-weight: 700;
-            color: #94a3b8; /* Slate Gray */
-            margin-bottom: 5px;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+            align-items: center;
+            gap: 10px;
+            font-family: 'Segoe UI', sans-serif;
+            z-index: 10000;
+            pointer-events: none;
         }
 
-        .bar-current {
-            color: #fff;
-            font-size: 14px;
-            font-weight: 800;
-        }
-
-        .bar-track {
-            width: 100%;
-            height: 8px;
-            background: rgba(15, 23, 42, 0.9); /* Dark Blue/Black */
+        /* The Vertical Track */
+        .v-track {
+            width: 10px;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.9);
             border: 1px solid #334155;
-            border-radius: 4px;
+            border-radius: 5px;
             overflow: hidden;
+            display: flex;
+            align-items: flex-end; /* Ensures it fills from bottom */
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
 
-        .bar-fill {
-            height: 100%;
-            width: 0%; /* Starts empty */
+        /* The Fill */
+        .v-fill {
+            width: 100%;
+            height: 0%; /* Starts empty */
             background: #3b82f6; /* Blue */
             box-shadow: 0 0 10px #3b82f6;
-            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        /* Gold Mode when target hit */
-        .bar-fill.gold-mode {
+        /* Gold Mode */
+        .v-fill.gold-mode {
             background: #eab308;
             box-shadow: 0 0 15px #eab308;
+        }
+
+        /* The Text Labels (Side) */
+        .v-labels {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .v-current {
+            color: #fff;
+            font-size: 16px;
+            font-weight: 800;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+        }
+
+        .v-target {
+            color: #64748b;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            margin-top: 2px;
         }
     `;
 
@@ -1142,50 +1155,46 @@ if(newLeadBtn) {
     document.head.appendChild(style);
 
 
-    // 2. HTML: Create the Bar
+    // 2. HTML: Create Vertical Structure
     const hud = document.createElement('div');
-    hud.id = 'simple-hud';
+    hud.id = 'vertical-hud-left';
     hud.innerHTML = `
-        <div class="bar-label">
-            <span class="bar-current" id="hudCurrent">$0</span>
-            <span id="hudTarget">GOAL: $${DAILY_TARGET}</span>
+        <div class="v-track">
+            <div class="v-fill" id="vFill"></div>
         </div>
-        <div class="bar-track">
-            <div class="bar-fill" id="hudFill"></div>
+        <div class="v-labels">
+            <span class="v-current" id="vCurrent">$0</span>
+            <span class="v-target">Goal: $${DAILY_TARGET}</span>
         </div>
     `;
     document.body.appendChild(hud);
 
 
     // 3. LOGIC: Robust Data Extraction
-    // We override the update function to drive this specific bar
     window.updateNightWidget = function() {
         
-        // Safety Check: Does the data object exist yet?
-        // We use optional chaining or checks to prevent "undefined" errors
-        if (typeof nightStats === 'undefined') {
-            // Data hasn't loaded yet, try again in next cycle
-            return; 
-        }
+        // Safety Check
+        if (typeof nightStats === 'undefined') return;
         
-        // Extract Data (Safety Fallback to 0 if missing)
+        // Extract Data
         const data = nightStats.billing || { total: 0 };
         const currentTotal = data.total || 0;
         
         // Calculate Percentage
-        // Math.min ensures it doesn't break the layout if you go over 100%
         let percent = (currentTotal / DAILY_TARGET) * 100;
         if (percent > 100) percent = 100;
 
-        // Update DOM Elements
-        const currentEl = document.getElementById('hudCurrent');
-        const fillEl = document.getElementById('hudFill');
+        // Update Elements
+        const currentEl = document.getElementById('vCurrent');
+        const fillEl = document.getElementById('vFill');
 
         if (currentEl && fillEl) {
             currentEl.innerText = '$' + currentTotal.toLocaleString();
-            fillEl.style.width = percent + "%";
+            
+            // IMPORTANT: Change HEIGHT for vertical bars
+            fillEl.style.height = percent + "%";
 
-            // Visual Flair: Turn Gold if target met
+            // Visual Flair
             if (currentTotal >= DAILY_TARGET) {
                 fillEl.classList.add('gold-mode');
             } else {
@@ -1195,10 +1204,7 @@ if(newLeadBtn) {
     };
     
     // 4. Execution Loop
-    // Run immediately
     setTimeout(window.updateNightWidget, 500);
-    
-    // Run every 2 seconds forever to keep it synced
     setInterval(window.updateNightWidget, 2000);
 
 })();
