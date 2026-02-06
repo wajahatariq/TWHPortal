@@ -1243,104 +1243,88 @@ if(newLeadBtn) {
 
 /* =========================================
    COPY & PASTE THIS AT THE END OF billing.js
-   "The Wall of Shame" (Vertical Roast Widget - Top Left)
+   "The Slim Roast Tag" (Thinner Top-Left Widget)
    ========================================= */
 (function() {
 
-    // 1. CSS: Hides old widget & Styles the Roast Card
+    // 1. CSS: Thinner, Compact Design
     const roastStyles = `
         /* Hide old widget containers */
         #nightStatsContainer, .night-widget-container {
             display: none !important;
         }
 
-        /* THE ROAST CARD */
+        /* THE SLIM ROAST TAG */
         #wall-of-shame {
             position: fixed;
-            top: 20px;
-            left: 20px;
-            width: 200px;
+            top: 0;
+            left: 10px;
+            width: 120px; /* Much thinner */
             background: #fff;
-            border: 4px solid #000;
-            box-shadow: 5px 5px 0px #000;
-            padding: 15px;
-            z-index: 9999;
-            transform: rotate(-2deg); /* Slightly tilted like a pinned note */
-            transition: transform 0.3s ease;
-            font-family: 'Comic Sans MS', 'Chalkboard SE', sans-serif; /* Intentionally goofy font */
+            border-left: 2px solid #000;
+            border-right: 2px solid #000;
+            border-bottom: 4px solid #000;
+            border-radius: 0 0 10px 10px;
+            padding: 10px 5px;
+            z-index: 9000; /* Behind dropdowns if needed, but visible */
+            font-family: 'Comic Sans MS', sans-serif;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            transition: transform 0.3s;
         }
 
         #wall-of-shame:hover {
-            transform: rotate(0deg) scale(1.05);
-            z-index: 100000;
+            transform: translateY(5px);
         }
 
-        /* Tape visual at the top */
+        /* "Hanging" visual */
         #wall-of-shame::before {
             content: '';
             position: absolute;
-            top: -15px;
-            left: 35%;
-            width: 60px;
-            height: 25px;
-            background: rgba(255, 255, 255, 0.4);
-            border: 1px solid rgba(0,0,0,0.1);
-            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-            transform: rotate(-3deg);
-            z-index: 10;
+            top: -5px; left: 0; right: 0; height: 5px;
+            background: #dc2626; /* Red top strip */
         }
 
         .shame-header {
             text-align: center;
-            background: #dc2626;
-            color: #fff;
+            font-size: 9px;
             font-weight: 900;
+            color: #dc2626;
             text-transform: uppercase;
-            font-size: 12px;
-            padding: 2px 0;
-            margin-bottom: 10px;
-            border: 2px solid #000;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
         }
 
         .shame-avatar {
-            width: 60px;
-            height: 60px;
-            background: #e2e8f0;
-            border: 2px solid #000;
-            border-radius: 50%;
-            margin: 0 auto 10px auto;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 30px;
+            font-size: 24px;
+            text-align: center;
+            margin-bottom: 2px;
         }
 
         .shame-name {
             text-align: center;
-            font-weight: 900;
-            font-size: 18px;
+            font-weight: 800;
+            font-size: 14px;
             color: #000;
-            line-height: 1;
-            margin-bottom: 5px;
-            text-decoration: underline decoration-wavy decoration-red-500;
+            line-height: 1.1;
+            word-wrap: break-word; /* Prevent wide text */
         }
 
         .shame-amt {
             text-align: center;
+            font-size: 11px;
             font-family: monospace;
-            font-weight: bold;
             color: #64748b;
-            margin-bottom: 10px;
+            margin-bottom: 6px;
         }
 
         .shame-quote {
-            font-size: 11px;
-            font-style: italic;
+            font-size: 10px;
+            line-height: 1.1;
             text-align: center;
             color: #dc2626;
-            line-height: 1.2;
-            border-top: 2px dashed #000;
-            padding-top: 8px;
+            font-style: italic;
+            border-top: 1px dashed #ccc;
+            padding-top: 5px;
         }
     `;
 
@@ -1349,41 +1333,30 @@ if(newLeadBtn) {
     style.innerHTML = roastStyles;
     document.head.appendChild(style);
 
-
     // 2. HTML Structure
     const card = document.createElement('div');
     card.id = 'wall-of-shame';
     card.innerHTML = `
-        <div class="shame-header">⚠️ LOWEST SALES</div>
-        <div class="shame-avatar">🤡</div>
+        <div class="shame-header">LAST PLACE</div>
+        <div class="shame-avatar">🐌</div>
         <div class="shame-name" id="shameName">...</div>
-        <div class="shame-amt" id="shameAmount">$0.00</div>
-        <div class="shame-quote" id="shameQuote">"Searching for talent..."</div>
+        <div class="shame-amt" id="shameAmount">$0</div>
+        <div class="shame-quote" id="shameQuote">"Loading..."</div>
     `;
     document.body.appendChild(card);
 
-
-    // 3. LOGIC (Replaces standard widget update)
-    // We hook into the update function to refresh this card every time data changes
-    const oldUpdate = window.updateNightWidget;
-
-    // Database of Roasts
+    // 3. LOGIC
     const roasts = [
-        "Is your keyboard unplugged?",
-        "My grandma sells faster.",
-        "Wifi: Connected. Talent: 404.",
-        "Are you waiting for a written invitation?",
-        "I've seen glaciers move faster.",
-        "Dialing 911 for this performance.",
-        "Maybe sales isn't your thing?",
-        "Have you tried turning yourself off and on?"
+        "Wake up!",
+        "Hello? Anyone?",
+        "Zero energy.",
+        "Lagging IRL.",
+        "Needs coffee.",
+        "Really?",
+        "Still at $0?"
     ];
 
-    // New Update Function
     window.updateNightWidget = function() {
-        // Run the old function if it exists (so we don't break anything else)
-        if(typeof oldUpdate === 'function') oldUpdate();
-
         if (typeof nightStats === 'undefined') return;
         
         // Find Billing Stats
@@ -1397,15 +1370,12 @@ if(newLeadBtn) {
             const loserName = entries[0][0];
             const loserAmount = entries[0][1];
 
-            // Update UI
             document.getElementById('shameName').innerText = loserName;
             document.getElementById('shameAmount').innerText = '$' + loserAmount.toLocaleString();
             
-            // Only change the quote randomly sometimes (to avoid flickering)
-            // Or just pick one based on the minute to keep it semi-stable
-            const min = new Date().getMinutes();
-            const quoteIndex = min % roasts.length;
-            document.getElementById('shameQuote').innerText = `"${roasts[quoteIndex]}"`;
+            // Random Roast
+            const idx = Math.floor(Math.random() * roasts.length);
+            document.getElementById('shameQuote').innerText = roasts[idx];
         }
     };
     
