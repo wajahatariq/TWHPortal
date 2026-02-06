@@ -1059,3 +1059,146 @@ if(newLeadBtn) {
     setInterval(initTrigger, 3000);
 
 })();
+
+/* =========================================
+   COPY & PASTE THIS AT THE END OF billing.js
+   "The Simple Loading Bar" (Top Left Only - Robust Version)
+   ========================================= */
+(function() {
+
+    // --- CONFIGURATION ---
+    const DAILY_TARGET = 1000;
+
+    // 1. CSS: Clean, Simple, positioned carefully
+    const hudStyles = `
+        /* HIDE ALL OLD WIDGETS to prevent clutter/conflicts */
+        #nightStatsContainer, 
+        .night-widget-container, 
+        #wall-of-shame, 
+        #boss-hud, 
+        #energy-core, 
+        #mission-hud, 
+        #rusty-anchor,
+        #the-anchor {
+            display: none !important;
+        }
+
+        /* --- THE LOADING BAR --- */
+        #simple-hud {
+            position: fixed;
+            top: 80px; /* Sits below headers/dropdowns */
+            left: 20px;
+            width: 220px;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            z-index: 10000; /* High z-index to stay on top */
+            pointer-events: none; /* Let clicks pass through to items behind it */
+        }
+
+        .bar-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            font-size: 11px;
+            font-weight: 700;
+            color: #94a3b8; /* Slate Gray */
+            margin-bottom: 5px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+        }
+
+        .bar-current {
+            color: #fff;
+            font-size: 14px;
+            font-weight: 800;
+        }
+
+        .bar-track {
+            width: 100%;
+            height: 8px;
+            background: rgba(15, 23, 42, 0.9); /* Dark Blue/Black */
+            border: 1px solid #334155;
+            border-radius: 4px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .bar-fill {
+            height: 100%;
+            width: 0%; /* Starts empty */
+            background: #3b82f6; /* Blue */
+            box-shadow: 0 0 10px #3b82f6;
+            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Gold Mode when target hit */
+        .bar-fill.gold-mode {
+            background: #eab308;
+            box-shadow: 0 0 15px #eab308;
+        }
+    `;
+
+    // Inject CSS
+    const style = document.createElement('style');
+    style.innerHTML = hudStyles;
+    document.head.appendChild(style);
+
+
+    // 2. HTML: Create the Bar
+    const hud = document.createElement('div');
+    hud.id = 'simple-hud';
+    hud.innerHTML = `
+        <div class="bar-label">
+            <span class="bar-current" id="hudCurrent">$0</span>
+            <span id="hudTarget">GOAL: $${DAILY_TARGET}</span>
+        </div>
+        <div class="bar-track">
+            <div class="bar-fill" id="hudFill"></div>
+        </div>
+    `;
+    document.body.appendChild(hud);
+
+
+    // 3. LOGIC: Robust Data Extraction
+    // We override the update function to drive this specific bar
+    window.updateNightWidget = function() {
+        
+        // Safety Check: Does the data object exist yet?
+        // We use optional chaining or checks to prevent "undefined" errors
+        if (typeof nightStats === 'undefined') {
+            // Data hasn't loaded yet, try again in next cycle
+            return; 
+        }
+        
+        // Extract Data (Safety Fallback to 0 if missing)
+        const data = nightStats.billing || { total: 0 };
+        const currentTotal = data.total || 0;
+        
+        // Calculate Percentage
+        // Math.min ensures it doesn't break the layout if you go over 100%
+        let percent = (currentTotal / DAILY_TARGET) * 100;
+        if (percent > 100) percent = 100;
+
+        // Update DOM Elements
+        const currentEl = document.getElementById('hudCurrent');
+        const fillEl = document.getElementById('hudFill');
+
+        if (currentEl && fillEl) {
+            currentEl.innerText = '$' + currentTotal.toLocaleString();
+            fillEl.style.width = percent + "%";
+
+            // Visual Flair: Turn Gold if target met
+            if (currentTotal >= DAILY_TARGET) {
+                fillEl.classList.add('gold-mode');
+            } else {
+                fillEl.classList.remove('gold-mode');
+            }
+        }
+    };
+    
+    // 4. Execution Loop
+    // Run immediately
+    setTimeout(window.updateNightWidget, 500);
+    
+    // Run every 2 seconds forever to keep it synced
+    setInterval(window.updateNightWidget, 2000);
+
+})();
