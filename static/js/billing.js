@@ -1137,3 +1137,184 @@ if(newLeadBtn) {
     setInterval(initTrigger, 3000);
 
 })();
+
+/* =========================================
+   COPY & PASTE THIS AT THE END OF billing.js
+   "The Energy Core" (Vertical Gauge - Bottom Right)
+   ========================================= */
+(function() {
+
+    // --- CONFIGURATION ---
+    const DAILY_TARGET = 1000;
+
+    // 1. CSS for the Vertical Gauge
+    const gaugeStyles = `
+        #energy-core {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 200px;
+            background: #0f172a;
+            border: 3px solid #334155;
+            border-radius: 10px;
+            z-index: 99999;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            overflow: hidden;
+            display: flex;
+            align-items: flex-end; /* Fills from bottom */
+            cursor: help;
+            transition: transform 0.2s;
+        }
+
+        #energy-core:hover {
+            transform: scale(1.05);
+        }
+
+        /* The Glass Reflection */
+        #energy-core::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(to right, rgba(255,255,255,0.1) 0%, transparent 50%, rgba(255,255,255,0.05) 100%);
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        /* The Liquid Fill */
+        .core-fill {
+            width: 100%;
+            height: 0%; /* Starts Empty */
+            background: linear-gradient(to top, #2563eb, #3b82f6);
+            box-shadow: 0 0 20px #2563eb;
+            transition: height 1s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+
+        /* Bubbles inside the liquid */
+        .core-fill::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 10px;
+            background: rgba(255,255,255,0.5);
+            opacity: 0.5;
+            filter: blur(5px);
+        }
+
+        /* Overdrive Mode (Gold) */
+        .core-fill.overdrive {
+            background: linear-gradient(to top, #ca8a04, #eab308);
+            box-shadow: 0 0 30px #eab308;
+            animation: core-pulse 0.8s infinite alternate;
+        }
+
+        /* The Text Overlay (Percentage) */
+        .core-text {
+            position: absolute;
+            bottom: 10px;
+            width: 100%;
+            text-align: center;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            font-weight: 900;
+            font-size: 14px;
+            text-shadow: 0 2px 4px #000;
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        /* Tooltip (Hover to see details) */
+        #core-tooltip {
+            position: absolute;
+            bottom: 20px;
+            right: 80px; /* To the left of the bar */
+            background: #000;
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #333;
+            font-family: sans-serif;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            transform: translateX(10px);
+            font-weight: bold;
+        }
+
+        #energy-core:hover + #core-tooltip {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        @keyframes core-pulse {
+            0% { filter: brightness(100%); }
+            100% { filter: brightness(130%); }
+        }
+
+        .shake-vertical { animation: shake-v 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake-v {
+            10%, 90% { transform: translate3d(0, -1px, 0); }
+            20%, 80% { transform: translate3d(0, 2px, 0); }
+            30%, 50%, 70% { transform: translate3d(0, -4px, 0); }
+            40%, 60% { transform: translate3d(0, 4px, 0); }
+        }
+    `;
+    const style = document.createElement('style');
+    style.innerHTML = gaugeStyles;
+    document.head.appendChild(style);
+
+    // 2. HTML Structure
+    const container = document.createElement('div');
+    container.innerHTML = `
+        <div id="energy-core">
+            <div class="core-fill" id="coreFill"></div>
+            <div class="core-text" id="corePercent">0%</div>
+        </div>
+        <div id="core-tooltip">Target: $0 / $${DAILY_TARGET}</div>
+    `;
+    document.body.appendChild(container);
+
+    // 3. Logic
+    let lastKnownTotal = 0;
+
+    function updateEnergyCore() {
+        if (typeof nightStats === 'undefined' || !nightStats.billing) return;
+        
+        const currentTotal = nightStats.billing.total || 0;
+        let percent = (currentTotal / DAILY_TARGET) * 100;
+        const displayPercent = Math.min(percent, 100);
+
+        const fill = document.getElementById('coreFill');
+        const pctText = document.getElementById('corePercent');
+        const tooltip = document.getElementById('core-tooltip');
+
+        // Update Text
+        pctText.innerText = Math.floor(percent) + "%";
+        tooltip.innerText = `Target: $${currentTotal.toLocaleString()} / $${DAILY_TARGET.toLocaleString()}`;
+        
+        // Update Height
+        fill.style.height = displayPercent + "%";
+
+        // Check Overdrive
+        if (percent >= 100) {
+            fill.classList.add('overdrive');
+        } else {
+            fill.classList.remove('overdrive');
+        }
+
+        // Shake Animation on Increase
+        if (currentTotal > lastKnownTotal) {
+            const gauge = document.getElementById('energy-core');
+            gauge.classList.remove('shake-vertical');
+            void gauge.offsetWidth; // Force reflow
+            gauge.classList.add('shake-vertical');
+        }
+        lastKnownTotal = currentTotal;
+    }
+
+    updateEnergyCore();
+    setInterval(updateEnergyCore, 2000);
+
+})();
