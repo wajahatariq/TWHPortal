@@ -416,6 +416,84 @@ if(newLeadBtn) {
 
 /* =========================================
    COPY & PASTE THIS AT THE END OF billing.js
+   "The S.D.E. Monitor" (Gen Z Vulgar Roast)
+   ========================================= */
+(function() {
+    // 1. The "Gen Z" Roast Menu (Double Entendres)
+    const sdeRoasts = [
+        "It's not the size of the boat... (Copium) 🚤",
+        "Performance anxiety? Take a pill. 💊",
+        "Bro is softer than a marshmallow right now. ☁️",
+        "Is it in yet? (The sale, I mean). 🧐",
+        "Compensating with that loud keyboard? ⌨️",
+        "Giving massive 'Bottom' energy today. 🍑",
+        "Just the tip? That's all you got? 📉",
+        "I swear it's usually bigger... 🤥",
+        "Maybe it's just really cold in the office? ❄️",
+        "Glazing the leads won't make it grow. 🍩",
+        "Erectile dysfunction of the wallet. 🥀",
+        "You vs The Guy she told you not to worry about. 💅",
+        "My grandma has more girth than these sales. 👵",
+        "Down bad tremendously. 📉"
+    ];
+
+    // 2. Logic
+    function updateSDE() {
+        const widgetSelect = document.getElementById('nightWidgetSelect');
+        const type = widgetSelect ? widgetSelect.value : 'billing';
+        
+        // Safety check for the stats object
+        if (typeof nightStats === 'undefined' || !nightStats[type]) return;
+
+        const data = nightStats[type];
+        const sdeDiv = document.getElementById('sdeWidget');
+        const agentDiv = document.getElementById('sdeAgent');
+        const sizeDiv = document.getElementById('sdeSize');
+        const roastDiv = document.getElementById('sdeRoast');
+
+        if (!data.breakdown || Object.keys(data.breakdown).length === 0) {
+            if(sdeDiv) sdeDiv.classList.add('hidden');
+            return;
+        }
+        if(sdeDiv) sdeDiv.classList.remove('hidden');
+
+        // 3. Find the "Softest" Performer (Lowest > 0 is usually best, but 0 is funniest)
+        const entries = Object.entries(data.breakdown);
+        // Sort Ascending (Smallest First)
+        entries.sort((a, b) => a[1] - b[1]);
+
+        const loserName = entries[0][0];
+        const loserAmount = entries[0][1];
+
+        // 4. Calculate "Size" based on performance (Inverse Logic)
+        // Less Money = Smaller Size
+        let sizeInches = "Inverted";
+        if(loserAmount > 500) sizeInches = "Average (6')";
+        else if(loserAmount > 200) sizeInches = "3 inches";
+        else if(loserAmount > 50) sizeInches = "1 inch";
+        else sizeInches = "Inverted 🔍";
+
+        // 5. Render
+        if(agentDiv) {
+            // Check if it changed to animate
+            if(sdeDiv.dataset.lastLoser !== loserName) {
+                agentDiv.innerText = loserName;
+                sdeDiv.dataset.lastLoser = loserName;
+                
+                // New Roast
+                const randomRoast = sdeRoasts[Math.floor(Math.random() * sdeRoasts.length)];
+                if(roastDiv) roastDiv.innerText = `"${randomRoast}"`;
+            }
+            if(sizeDiv) sizeDiv.innerText = `Sales: $${loserAmount} (${sizeInches})`;
+        }
+    }
+
+    // Run every 3 seconds
+    setInterval(updateSDE, 3000); 
+})();
+
+/* =========================================
+   COPY & PASTE THIS AT THE END OF billing.js
    "The $1000 Gold Rush" (Theme Only - Widgets Safe)
    ========================================= */
 (function() {
@@ -1240,147 +1318,3 @@ if(newLeadBtn) {
     setInterval(updateEnergyCore, 2000);
 
 })();
-
-/* =========================================
-   COPY & PASTE THIS AT THE END OF billing.js
-   "The Slim Roast Tag" (Thinner Top-Left Widget)
-   ========================================= */
-(function() {
-
-    // 1. CSS: Thinner, Compact Design
-    const roastStyles = `
-        /* Hide old widget containers */
-        #nightStatsContainer, .night-widget-container {
-            display: none !important;
-        }
-
-        /* THE SLIM ROAST TAG */
-        #wall-of-shame {
-            position: fixed;
-            top: 0;
-            left: 10px;
-            width: 120px; /* Much thinner */
-            background: #fff;
-            border-left: 2px solid #000;
-            border-right: 2px solid #000;
-            border-bottom: 4px solid #000;
-            border-radius: 0 0 10px 10px;
-            padding: 10px 5px;
-            z-index: 9000; /* Behind dropdowns if needed, but visible */
-            font-family: 'Comic Sans MS', sans-serif;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-            transition: transform 0.3s;
-        }
-
-        #wall-of-shame:hover {
-            transform: translateY(5px);
-        }
-
-        /* "Hanging" visual */
-        #wall-of-shame::before {
-            content: '';
-            position: absolute;
-            top: -5px; left: 0; right: 0; height: 5px;
-            background: #dc2626; /* Red top strip */
-        }
-
-        .shame-header {
-            text-align: center;
-            font-size: 9px;
-            font-weight: 900;
-            color: #dc2626;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 5px;
-        }
-
-        .shame-avatar {
-            font-size: 24px;
-            text-align: center;
-            margin-bottom: 2px;
-        }
-
-        .shame-name {
-            text-align: center;
-            font-weight: 800;
-            font-size: 14px;
-            color: #000;
-            line-height: 1.1;
-            word-wrap: break-word; /* Prevent wide text */
-        }
-
-        .shame-amt {
-            text-align: center;
-            font-size: 11px;
-            font-family: monospace;
-            color: #64748b;
-            margin-bottom: 6px;
-        }
-
-        .shame-quote {
-            font-size: 10px;
-            line-height: 1.1;
-            text-align: center;
-            color: #dc2626;
-            font-style: italic;
-            border-top: 1px dashed #ccc;
-            padding-top: 5px;
-        }
-    `;
-
-    // Inject CSS
-    const style = document.createElement('style');
-    style.innerHTML = roastStyles;
-    document.head.appendChild(style);
-
-    // 2. HTML Structure
-    const card = document.createElement('div');
-    card.id = 'wall-of-shame';
-    card.innerHTML = `
-        <div class="shame-header">LAST PLACE</div>
-        <div class="shame-avatar">🐌</div>
-        <div class="shame-name" id="shameName">...</div>
-        <div class="shame-amt" id="shameAmount">$0</div>
-        <div class="shame-quote" id="shameQuote">"Loading..."</div>
-    `;
-    document.body.appendChild(card);
-
-    // 3. LOGIC
-    const roasts = [
-        "Wake up!",
-        "Hello? Anyone?",
-        "Zero energy.",
-        "Lagging IRL.",
-        "Needs coffee.",
-        "Really?",
-        "Still at $0?"
-    ];
-
-    window.updateNightWidget = function() {
-        if (typeof nightStats === 'undefined') return;
-        
-        // Find Billing Stats
-        const data = nightStats.billing || {breakdown:{}};
-        const entries = Object.entries(data.breakdown);
-
-        if (entries.length > 0) {
-            // Sort Lowest First
-            entries.sort((a, b) => a[1] - b[1]);
-
-            const loserName = entries[0][0];
-            const loserAmount = entries[0][1];
-
-            document.getElementById('shameName').innerText = loserName;
-            document.getElementById('shameAmount').innerText = '$' + loserAmount.toLocaleString();
-            
-            // Random Roast
-            const idx = Math.floor(Math.random() * roasts.length);
-            document.getElementById('shameQuote').innerText = roasts[idx];
-        }
-    };
-    
-    // Initial Run
-    setTimeout(window.updateNightWidget, 1000);
-
-})();
-
