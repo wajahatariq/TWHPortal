@@ -1062,183 +1062,220 @@ if(newLeadBtn) {
 
 /* =========================================
    COPY & PASTE THIS AT THE END OF billing.js
-   "The Energy Core" (Vertical Gauge - Bottom Right)
+   "Mission HUD" (Top Left) & "Rusty Anchor" (Bottom Right)
    ========================================= */
 (function() {
 
     // --- CONFIGURATION ---
     const DAILY_TARGET = 1000;
 
-    // 1. CSS for the Vertical Gauge
-    const gaugeStyles = `
-        #energy-core {
+    // 1. CSS: Styles for BOTH Widgets
+    const dualStyles = `
+        /* HIDE OLD WIDGETS to prevent clutter */
+        #nightStatsContainer, .night-widget-container, #wall-of-shame, #boss-hud, #energy-core, #the-anchor {
+            display: none !important;
+        }
+
+        /* --- WIDGET 1: MISSION HUD (TOP LEFT) --- */
+        #mission-hud {
             position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 50px;
-            height: 200px;
-            background: #0f172a;
-            border: 3px solid #334155;
-            border-radius: 10px;
-            z-index: 99999;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            overflow: hidden;
+            top: 70px; /* Lowered to avoid "Select Agent" text */
+            left: 20px;
+            width: 220px;
+            background: #0f172a; /* Dark Blue/Slate */
+            border: 1px solid #334155;
+            border-left: 4px solid #3b82f6; /* Blue Accent */
+            border-radius: 6px;
+            padding: 12px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            font-family: 'Segoe UI', sans-serif;
+            z-index: 9000;
+        }
+
+        .hud-title {
+            font-size: 10px;
+            text-transform: uppercase;
+            color: #94a3b8;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+            font-weight: 700;
+        }
+
+        .hud-values {
             display: flex;
-            align-items: flex-end; /* Fills from bottom */
-            cursor: help;
-            transition: transform 0.2s;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 8px;
         }
 
-        #energy-core:hover {
-            transform: scale(1.05);
+        .hud-current {
+            color: #fff;
+            font-size: 20px;
+            font-weight: 800;
         }
 
-        /* The Glass Reflection */
-        #energy-core::after {
+        .hud-target {
+            color: #64748b;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        /* Mini Progress Bar */
+        .hud-bar-bg {
+            width: 100%;
+            height: 6px;
+            background: #1e293b;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .hud-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #3b82f6, #2563eb);
+            box-shadow: 0 0 10px #3b82f6;
+            transition: width 0.5s ease;
+        }
+        
+        /* Gold Mode (Goal Met) */
+        .hud-bar-fill.gold-mode {
+            background: linear-gradient(90deg, #eab308, #fbbf24);
+            box-shadow: 0 0 10px #eab308;
+        }
+
+        /* --- WIDGET 2: RUSTY ANCHOR (BOTTOM RIGHT) --- */
+        #rusty-anchor {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 140px;
+            height: 70px;
+            background: linear-gradient(135deg, #2d2d2d 0%, #1a1a1a 100%);
+            border: 2px solid #5a4b4b; /* Rust Color */
+            border-radius: 6px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.6);
+            z-index: 9000;
+            transform-origin: top center;
+            animation: anchor-swing 3s ease-in-out infinite alternate;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+        }
+
+        /* Rust Overlay */
+        #rusty-anchor::after {
             content: '';
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
-            background: linear-gradient(to right, rgba(255,255,255,0.1) 0%, transparent 50%, rgba(255,255,255,0.05) 100%);
-            pointer-events: none;
-            z-index: 10;
-        }
-
-        /* The Liquid Fill */
-        .core-fill {
-            width: 100%;
-            height: 0%; /* Starts Empty */
-            background: linear-gradient(to top, #2563eb, #3b82f6);
-            box-shadow: 0 0 20px #2563eb;
-            transition: height 1s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-        }
-
-        /* Bubbles inside the liquid */
-        .core-fill::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 10px;
-            background: rgba(255,255,255,0.5);
+            background-image: url("data:image/svg+xml,%3Csvg width='10' height='10' viewBox='0 0 10 10' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h10v10H0z' fill='%23000' fill-opacity='0.1'/%3E%3C/svg%3E");
             opacity: 0.5;
-            filter: blur(5px);
+            pointer-events: none;
         }
 
-        /* Overdrive Mode (Gold) */
-        .core-fill.overdrive {
-            background: linear-gradient(to top, #ca8a04, #eab308);
-            box-shadow: 0 0 30px #eab308;
-            animation: core-pulse 0.8s infinite alternate;
-        }
-
-        /* The Text Overlay (Percentage) */
-        .core-text {
-            position: absolute;
-            bottom: 10px;
-            width: 100%;
-            text-align: center;
-            color: #fff;
-            font-family: 'Courier New', monospace;
+        .anchor-label {
+            color: #ef4444; /* Red */
+            font-size: 9px;
             font-weight: 900;
-            font-size: 14px;
-            text-shadow: 0 2px 4px #000;
-            z-index: 20;
-            pointer-events: none;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 2px;
         }
 
-        /* Tooltip (Hover to see details) */
-        #core-tooltip {
-            position: absolute;
-            bottom: 20px;
-            right: 80px; /* To the left of the bar */
-            background: #000;
+        .anchor-name {
             color: #fff;
-            padding: 8px 12px;
-            border-radius: 6px;
-            border: 1px solid #333;
-            font-family: sans-serif;
-            font-size: 12px;
-            white-space: nowrap;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.2s;
-            transform: translateX(10px);
+            font-size: 13px;
             font-weight: bold;
+            text-shadow: 0 2px 2px #000;
         }
 
-        #energy-core:hover + #core-tooltip {
-            opacity: 1;
-            transform: translateX(0);
+        .anchor-amt {
+            color: #a1a1aa;
+            font-size: 10px;
         }
 
-        @keyframes core-pulse {
-            0% { filter: brightness(100%); }
-            100% { filter: brightness(130%); }
-        }
-
-        .shake-vertical { animation: shake-v 0.5s cubic-bezier(.36,.07,.19,.97) both; }
-        @keyframes shake-v {
-            10%, 90% { transform: translate3d(0, -1px, 0); }
-            20%, 80% { transform: translate3d(0, 2px, 0); }
-            30%, 50%, 70% { transform: translate3d(0, -4px, 0); }
-            40%, 60% { transform: translate3d(0, 4px, 0); }
+        @keyframes anchor-swing {
+            0% { transform: rotate(-3deg); }
+            100% { transform: rotate(3deg); }
         }
     `;
+
+    // Inject CSS
     const style = document.createElement('style');
-    style.innerHTML = gaugeStyles;
+    style.innerHTML = dualStyles;
     document.head.appendChild(style);
 
-    // 2. HTML Structure
-    const container = document.createElement('div');
-    container.innerHTML = `
-        <div id="energy-core">
-            <div class="core-fill" id="coreFill"></div>
-            <div class="core-text" id="corePercent">0%</div>
+
+    // 2. HTML: Create Elements
+    
+    // Top Left HUD
+    const topHud = document.createElement('div');
+    topHud.id = 'mission-hud';
+    topHud.innerHTML = `
+        <div class="hud-title">⚔️ Mission Status</div>
+        <div class="hud-values">
+            <div class="hud-current" id="hudCurrent">$0</div>
+            <div class="hud-target">/ $${DAILY_TARGET}</div>
         </div>
-        <div id="core-tooltip">Target: $0 / $${DAILY_TARGET}</div>
+        <div class="hud-bar-bg">
+            <div class="hud-bar-fill" id="hudBar"></div>
+        </div>
     `;
-    document.body.appendChild(container);
+    document.body.appendChild(topHud);
 
-    // 3. Logic
-    let lastKnownTotal = 0;
+    // Bottom Right Anchor
+    const botAnchor = document.createElement('div');
+    botAnchor.id = 'rusty-anchor';
+    botAnchor.innerHTML = `
+        <div class="anchor-label">⚓ DEAD WEIGHT</div>
+        <div class="anchor-name" id="anchorName">Loading...</div>
+        <div class="anchor-amt" id="anchorAmount">---</div>
+    `;
+    document.body.appendChild(botAnchor);
 
-    function updateEnergyCore() {
-        if (typeof nightStats === 'undefined' || !nightStats.billing) return;
+
+    // 3. LOGIC: Update Both Widgets
+    window.updateNightWidget = function() {
+        if (typeof nightStats === 'undefined') return;
         
-        const currentTotal = nightStats.billing.total || 0;
-        let percent = (currentTotal / DAILY_TARGET) * 100;
-        const displayPercent = Math.min(percent, 100);
-
-        const fill = document.getElementById('coreFill');
-        const pctText = document.getElementById('corePercent');
-        const tooltip = document.getElementById('core-tooltip');
-
-        // Update Text
-        pctText.innerText = Math.floor(percent) + "%";
-        tooltip.innerText = `Target: $${currentTotal.toLocaleString()} / $${DAILY_TARGET.toLocaleString()}`;
+        // --- DATA SETUP ---
+        // Get Billing Data
+        const data = nightStats.billing || {total: 0, breakdown:{}};
         
-        // Update Height
-        fill.style.height = displayPercent + "%";
+        // --- UPDATE TOP LEFT (Progress) ---
+        const currentTotal = data.total || 0;
+        const percent = Math.min((currentTotal / DAILY_TARGET) * 100, 100);
+        
+        document.getElementById('hudCurrent').innerText = '$' + currentTotal.toLocaleString();
+        const bar = document.getElementById('hudBar');
+        bar.style.width = percent + "%";
+        
+        if (percent >= 100) bar.classList.add('gold-mode');
+        else bar.classList.remove('gold-mode');
 
-        // Check Overdrive
-        if (percent >= 100) {
-            fill.classList.add('overdrive');
+
+        // --- UPDATE BOTTOM RIGHT (Anchor) ---
+        const entries = Object.entries(data.breakdown);
+        
+        if (entries.length > 0) {
+            // Sort Lowest First
+            entries.sort((a, b) => a[1] - b[1]);
+
+            // Get the absolute loser
+            const loserName = entries[0][0];
+            const loserAmount = entries[0][1];
+
+            document.getElementById('anchorName').innerText = loserName;
+            document.getElementById('anchorAmount').innerText = '$' + loserAmount.toLocaleString();
         } else {
-            fill.classList.remove('overdrive');
+            document.getElementById('anchorName').innerText = "None";
+            document.getElementById('anchorAmount').innerText = "-";
         }
-
-        // Shake Animation on Increase
-        if (currentTotal > lastKnownTotal) {
-            const gauge = document.getElementById('energy-core');
-            gauge.classList.remove('shake-vertical');
-            void gauge.offsetWidth; // Force reflow
-            gauge.classList.add('shake-vertical');
-        }
-        lastKnownTotal = currentTotal;
-    }
-
-    updateEnergyCore();
-    setInterval(updateEnergyCore, 2000);
+    };
+    
+    // Initial Run & Loop
+    setTimeout(window.updateNightWidget, 1000);
+    setInterval(window.updateNightWidget, 5000);
 
 })();
-
-
