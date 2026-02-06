@@ -1140,32 +1140,52 @@ if(newLeadBtn) {
 
 /* =========================================
    COPY & PASTE THIS AT THE END OF billing.js
-   "The Raid Boss" (Bottom Position Edition)
+   "The Raid Boss" (With Widget Compatibility Fix)
    ========================================= */
 (function() {
 
     // --- CONFIGURATION ---
     const DAILY_TARGET = 1000;
 
-    // 1. CSS for the Health Bar
+    // 1. CSS for the Health Bar & WIDGET LIFTING
     const bossStyles = `
+        /* THE BOSS BAR */
         #boss-hud {
             position: fixed;
-            bottom: 0; /* LOCKED TO BOTTOM */
+            bottom: 0;
             left: 0;
             width: 100%;
             height: 45px;
             background: #0f172a;
-            border-top: 4px solid #000; /* Border moves to top */
-            z-index: 99999;
+            border-top: 4px solid #000;
+            z-index: 99990; /* High, but below modals */
             font-family: 'Courier New', monospace;
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 -5px 20px rgba(0,0,0,0.5); /* Shadow points up */
+            box-shadow: 0 -5px 20px rgba(0,0,0,0.5);
         }
 
-        /* The Background */
+        /* --- COMPATIBILITY LAYER: LIFT WIDGETS UP --- */
+        /* This pushes the Mugshot Monitor & Chat Widgets above the bar */
+        
+        /* 1. The Mugshot Monitor */
+        #mugshotWidget {
+            bottom: 65px !important; /* 45px Bar + 20px Gap */
+            transition: bottom 0.3s ease;
+        }
+
+        /* 2. Common Chat Widgets (Intercom, Tawk.to, Zendesk) */
+        iframe[id*="intercom"], 
+        iframe[id*="tawk"], 
+        iframe[title*="chat"],
+        .fb_reset,
+        #launcher {
+            bottom: 65px !important; 
+        }
+
+        /* ------------------------------------------- */
+
         .hp-track {
             position: absolute;
             top: 0; left: 0; bottom: 0; right: 0;
@@ -1173,7 +1193,6 @@ if(newLeadBtn) {
             z-index: 1;
         }
 
-        /* The Fill (Blue Limit Break) */
         .limit-break-bar {
             position: absolute;
             top: 0; left: 0; bottom: 0;
@@ -1190,7 +1209,6 @@ if(newLeadBtn) {
             z-index: 2;
         }
 
-        /* Overdrive Mode (Target Hit) */
         .limit-break-bar.overdrive {
             background: repeating-linear-gradient(
                 45deg,
@@ -1203,7 +1221,6 @@ if(newLeadBtn) {
             animation: pulse-gold-bar 0.5s infinite alternate;
         }
 
-        /* Text Label */
         .boss-label {
             position: relative;
             z-index: 10;
@@ -1246,9 +1263,9 @@ if(newLeadBtn) {
             <span id="bossPercent" class="text-xs bg-slate-900 px-2 py-0.5 rounded ml-1 border border-slate-700">0%</span>
         </div>
     `;
-    document.body.appendChild(hud); // Add to end of body
+    document.body.appendChild(hud); 
     
-    // Add PADDING to the bottom of the page so the bar doesn't cover any footers
+    // Add padding to body
     document.body.style.paddingBottom = "50px";
 
     // 3. Logic
