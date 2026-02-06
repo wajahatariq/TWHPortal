@@ -1138,5 +1138,168 @@ if(newLeadBtn) {
 
 })();
 
+/* =========================================
+   COPY & PASTE THIS AT THE END OF billing.js
+   "The Raid Boss" (Billing Portal Edition - Target $1000)
+   ========================================= */
+(function() {
+
+    // --- CONFIGURATION ---
+    const DAILY_TARGET = 1000; // <--- Target set to $1,000
+
+    // 1. CSS for the Health Bar
+    const bossStyles = `
+        #boss-hud {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 40px; /* Slimmer for Billing Portal */
+            background: #0f172a;
+            border-bottom: 3px solid #000;
+            z-index: 99999;
+            font-family: 'Courier New', monospace;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.8);
+        }
+
+        /* The Background */
+        .hp-track {
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: #1e293b;
+            z-index: 1;
+        }
+
+        /* The Fill (Blue Limit Break) */
+        .limit-break-bar {
+            position: absolute;
+            top: 0; left: 0; bottom: 0;
+            width: 0%; 
+            background: repeating-linear-gradient(
+                45deg,
+                #3b82f6,
+                #3b82f6 10px,
+                #2563eb 10px,
+                #2563eb 20px
+            );
+            box-shadow: 0 0 15px #3b82f6;
+            transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 2;
+        }
+
+        /* Overdrive Mode (Target Hit) */
+        .limit-break-bar.overdrive {
+            background: repeating-linear-gradient(
+                45deg,
+                #eab308,
+                #eab308 10px,
+                #ca8a04 10px,
+                #ca8a04 20px
+            );
+            box-shadow: 0 0 30px #eab308;
+            animation: pulse-gold-bar 0.5s infinite alternate;
+        }
+
+        /* Text Label */
+        .boss-label {
+            position: relative;
+            z-index: 10;
+            color: #fff;
+            font-weight: 900;
+            font-size: 18px;
+            text-shadow: 2px 2px 0 #000;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Animations */
+        @keyframes pulse-gold-bar {
+            0% { filter: brightness(100%); }
+            100% { filter: brightness(130%); }
+        }
+
+        .shake-bar { animation: shake-hud 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake-hud {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+    `;
+    const style = document.createElement('style');
+    style.innerHTML = bossStyles;
+    document.head.appendChild(style);
+
+    // 2. HTML Structure
+    const hud = document.createElement('div');
+    hud.id = 'boss-hud';
+    hud.innerHTML = `
+        <div class="hp-track"></div>
+        <div class="limit-break-bar" id="limitBar"></div>
+        <div class="boss-label">
+            <span>🛡️ DAILY GOAL:</span>
+            <span id="bossTargetText">$0 / $${DAILY_TARGET.toLocaleString()}</span>
+            <span id="bossPercent" class="text-xs bg-slate-900 px-2 py-0.5 rounded ml-1 border border-slate-700">0%</span>
+        </div>
+    `;
+    document.body.prepend(hud); // Add to TOP of body
+    
+    // Push body down slightly so it doesn't cover the nav bar
+    document.body.style.paddingTop = "40px";
+
+    // 3. Logic
+    let lastKnownTotal = 0;
+
+    function updateBossBar() {
+        // Safety Check
+        if (typeof nightStats === 'undefined' || !nightStats.billing) return;
+        
+        const currentTotal = nightStats.billing.total || 0;
+        
+        // Calculate Percentage
+        let percent = (currentTotal / DAILY_TARGET) * 100;
+        const displayPercent = Math.min(percent, 100);
+
+        const bar = document.getElementById('limitBar');
+        const text = document.getElementById('bossTargetText');
+        const pctText = document.getElementById('bossPercent');
+
+        // Update Text
+        text.innerText = `$${currentTotal.toLocaleString()} / $${DAILY_TARGET.toLocaleString()}`;
+        pctText.innerText = Math.floor(percent) + "%";
+
+        // Update Width
+        bar.style.width = displayPercent + "%";
+
+        // Check for OVERDRIVE (Target Hit)
+        if (percent >= 100) {
+            bar.classList.add('overdrive');
+            text.innerHTML = `🏆 GOAL SMASHED ($${currentTotal.toLocaleString()})`;
+            text.style.color = "#fef08a"; // Light yellow
+        } else {
+            bar.classList.remove('overdrive');
+            text.style.color = "#fff";
+        }
+
+        // ANIMATION: Shake if money went up
+        if (currentTotal > lastKnownTotal) {
+            const container = document.getElementById('boss-hud');
+            container.classList.remove('shake-bar');
+            void container.offsetWidth; // Force Reflow
+            container.classList.add('shake-bar');
+        }
+        lastKnownTotal = currentTotal;
+    }
+
+    // Run loops
+    updateBossBar();
+    setInterval(updateBossBar, 2000); // Check for updates every 2s
+
+})();
 
 
