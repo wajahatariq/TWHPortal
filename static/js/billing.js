@@ -864,17 +864,12 @@ if(newLeadBtn) {
 })();
 
 /* =========================================
-   COPY & PASTE THIS AT THE END OF billing.js
-   "Cinematic Status Effects" (BILLING PORTAL ONLY)
+   COPY & PASTE AT THE END OF billing.js
+   FEATURE: "Cinematic Status Effects" (Fireworks & Rain)
    ========================================= */
 (function() {
     
-    // 1. STRICT CHECK: Only run if this is the Billing Portal
-    // (We check the body data attribute or URL)
-    const isBilling = document.body.dataset.pageType === 'billing' || window.location.pathname.includes('billing');
-    if (!isBilling) return;
-
-    // --- 2. THE VISUAL ENGINE (CSS) ---
+    // --- 1. THE VISUAL ENGINE (CSS) ---
     const fxStyles = `
         /* FIREWORKS (Approved) */
         @keyframes firework {
@@ -926,7 +921,7 @@ if(newLeadBtn) {
     const style = document.createElement('style'); style.innerHTML = fxStyles; document.head.appendChild(style);
 
 
-    // --- 3. ANIMATION LOGIC ---
+    // --- 2. ANIMATION LOGIC ---
 
     function triggerApprovedFX() {
         // A. Flash Screen Gold
@@ -980,43 +975,52 @@ if(newLeadBtn) {
     }
 
 
-    // --- 4. PUSHER LISTENER (Status Updates) ---
-    if (window.PUSHER_KEY) {
-        // Note: We use a lightweight check to avoid duplicate listeners if possible, 
-        // but creating a new instance specifically for FX is safe here.
-        const pusher = new Pusher(window.PUSHER_KEY, { cluster: window.PUSHER_CLUSTER });
-        const channel = pusher.subscribe('techware-channel');
+    // --- 3. PUSHER LISTENER (Status Updates) ---
+    // We poll briefly to find the existing 'window.channel' or 'window.pusher'
+    const findPusher = setInterval(() => {
+        let targetChannel = window.channel;
+        
+        // If not found, look for pusher instance
+        if (!targetChannel && window.pusher) {
+            targetChannel = window.pusher.channel('techware-channel');
+        }
 
-        channel.bind('status-update', function(data) {
-            // FILTER: Only care about Billing updates if you want to be specific
-            // But usually "Status Update" implies a billing result.
-            
-            const status = data.status.toLowerCase();
-            
-            if (status === 'charged' || status === 'approved') {
-                triggerApprovedFX();
-            } 
-            else if (status === 'declined') {
-                triggerDeclinedFX();
-            }
-        });
-    }
+        if (targetChannel) {
+            clearInterval(findPusher);
+            console.log("Cinematic FX: Hooked into Pusher 🎥");
 
-    // --- 5. TEST KEYS (Shift+A / Shift+D) ---
+            targetChannel.bind('status-update', function(data) {
+                // Ensure the update is for THIS agent
+                const myAgentName = document.getElementById('agent') ? document.getElementById('agent').value : '';
+                
+                // If it's my lead...
+                if (myAgentName && data.agent === myAgentName) {
+                    const status = data.status.toLowerCase();
+                    if (status === 'charged' || status === 'approved') {
+                        triggerApprovedFX();
+                    } 
+                    else if (status === 'declined' || status === 'verification') {
+                        triggerDeclinedFX();
+                    }
+                }
+            });
+        }
+    }, 1000);
+
+    // --- 4. TEST KEYS (Shift+A / Shift+D) ---
     // Use these to verify the effects instantly
     document.addEventListener('keydown', (e) => {
         if (e.shiftKey && e.key.toLowerCase() === 'a') {
             console.log("TEST: Approved FX");
             triggerApprovedFX();
         }
-        if (e.shiftKey && e.key.toLowerCase() === 'd') {
+        if (e.shiftKey && e.key.toLowerCase() === 'b') {
             console.log("TEST: Declined FX");
             triggerDeclinedFX();
         }
     });
 
 })();
-
 /* =========================================
    COPY & PASTE THIS AT THE END OF billing.js
    "The Evolving Trigger" (Updated Thresholds: $50/$100/$200)
@@ -1318,3 +1322,4 @@ if(newLeadBtn) {
     setInterval(updateEnergyCore, 2000);
 
 })();
+
