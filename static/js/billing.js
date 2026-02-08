@@ -1165,3 +1165,89 @@ if(newLeadBtn) {
 
 })();
 
+/* =========================================
+   COPY & PASTE AT THE END OF billing.js
+   FEATURE: "GTA MISSION PASSED" (Uses your EXISTING Vercel Keys)
+   ========================================= */
+(function() {
+    // 1. GTA Visuals (CSS Injection)
+    const gtaStyles = `
+        @import url('https://fonts.googleapis.com/css2?family=Pricedown&display=swap');
+        #gta-overlay {
+            position: fixed; inset: 0; z-index: 99999; pointer-events: none;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0); transition: background 0.5s; opacity: 0;
+            backdrop-filter: blur(0px);
+        }
+        #gta-overlay.active { background: rgba(0,0,0,0.6); opacity: 1; backdrop-filter: blur(2px); }
+        .gta-title {
+            font-family: 'Pricedown', 'Impact', sans-serif; color: #f0c05a;
+            font-size: 5rem; text-transform: uppercase; letter-spacing: 2px;
+            text-shadow: 3px 3px 0 #000; transform: scale(0.5); opacity: 0;
+            transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        #gta-overlay.active .gta-title { transform: scale(1); opacity: 1; }
+        .gta-subtitle {
+            font-family: 'Arial', sans-serif; font-weight: 900; color: #fff;
+            font-size: 1.5rem; text-transform: uppercase;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            margin-top: 1rem; opacity: 0; transform: translateY(20px);
+            transition: all 0.5s ease 0.5s;
+        }
+        #gta-overlay.active .gta-subtitle { opacity: 1; transform: translateY(0); }
+    `;
+    const style = document.createElement('style'); style.innerHTML = gtaStyles; document.head.appendChild(style);
+
+    const overlay = document.createElement('div');
+    overlay.id = 'gta-overlay';
+    overlay.innerHTML = `<div class="gta-title">MISSION PASSED</div><div class="gta-subtitle" id="gta-sub">RESPECT +</div>`;
+    document.body.appendChild(overlay);
+
+    // 2. Audio Engine
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playGtaSound() {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const t = audioCtx.currentTime;
+        [523.25, 659.25, 783.99, 1046.50].forEach((freq) => { 
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.type = 'sawtooth'; osc.frequency.setValueAtTime(freq, t);
+            gain.gain.setValueAtTime(0, t);
+            gain.gain.linearRampToValueAtTime(0.08, t + 0.05);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 3);
+            osc.start(t); osc.stop(t + 3);
+        });
+    }
+
+    // 3. Connect to Pusher (WAIT for the keys to load)
+    // We check every 500ms until the keys from billing.html are ready
+    const initPusher = setInterval(() => {
+        if (window.Pusher && window.PUSHER_KEY) {
+            clearInterval(initPusher);
+            console.log("GTA Module: Connected using Vercel Keys 🔌");
+
+            const pusher = new Pusher(window.PUSHER_KEY, { cluster: window.PUSHER_CLUSTER });
+            const channel = pusher.subscribe('techware-channel');
+
+            channel.bind('status-update', function(data) {
+                // Get the name currently selected in the dropdown
+                const agentDropdown = document.getElementById('agent');
+                const myAgentName = agentDropdown ? agentDropdown.value : '';
+                
+                // TRIGGER IF:
+                // 1. Status is 'Charged'
+                // 2. The Agent name matches YOUR selected name
+                if (data.status === 'Charged' && myAgentName && data.agent === myAgentName) {
+                    
+                    document.getElementById('gta-sub').innerText = `${data.client || 'LEAD'} APPROVED`;
+                    
+                    overlay.classList.add('active');
+                    playGtaSound();
+                    
+                    setTimeout(() => overlay.classList.remove('active'), 5000);
+                }
+            });
+        }
+    }, 500);
+})();
