@@ -1165,3 +1165,97 @@ if(newLeadBtn) {
 
 })();
 
+/* =========================================
+   COPY & PASTE AT THE END OF billing.js
+   FEATURE: "GTA MISSION PASSED" (Triggered by Manager Approval)
+   ========================================= */
+(function() {
+    // 1. GTA Visuals (CSS Injection)
+    const gtaStyles = `
+        @import url('https://fonts.googleapis.com/css2?family=Pricedown&display=swap');
+        #gta-overlay {
+            position: fixed; inset: 0; z-index: 99999; pointer-events: none;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0); transition: background 0.5s; opacity: 0;
+            backdrop-filter: blur(0px);
+        }
+        #gta-overlay.active { background: rgba(0,0,0,0.6); opacity: 1; backdrop-filter: blur(2px); }
+        .gta-title {
+            font-family: 'Pricedown', 'Impact', sans-serif; color: #f0c05a;
+            font-size: 5rem; text-transform: uppercase; letter-spacing: 2px;
+            text-shadow: 3px 3px 0 #000; transform: scale(0.5); opacity: 0;
+            transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        #gta-overlay.active .gta-title { transform: scale(1); opacity: 1; }
+        .gta-subtitle {
+            font-family: 'Arial', sans-serif; font-weight: 900; color: #fff;
+            font-size: 1.5rem; text-transform: uppercase;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            margin-top: 1rem; opacity: 0; transform: translateY(20px);
+            transition: all 0.5s ease 0.5s;
+        }
+        #gta-overlay.active .gta-subtitle { opacity: 1; transform: translateY(0); }
+    `;
+    const style = document.createElement('style'); style.innerHTML = gtaStyles; document.head.appendChild(style);
+
+    const overlay = document.createElement('div');
+    overlay.id = 'gta-overlay';
+    overlay.innerHTML = `<div class="gta-title">MISSION PASSED</div><div class="gta-subtitle" id="gta-sub">RESPECT +</div>`;
+    document.body.appendChild(overlay);
+
+    // 2. Audio Engine (No mp3 files needed)
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playGtaSound() {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const t = audioCtx.currentTime;
+        // The Classic GTA San Andreas "Mission Complete" Synth Hit
+        [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => { // C Major 7 Chord
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(freq, t);
+            gain.gain.setValueAtTime(0, t);
+            gain.gain.linearRampToValueAtTime(0.08, t + 0.05); // Attack
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 3); // Long Decay
+            osc.start(t); osc.stop(t + 3);
+        });
+    }
+
+    // 3. Pusher Listener (Wait for Manager Approval)
+    // We poll briefly to find the Pusher connection established by your billing.html
+    const checkPusher = setInterval(() => {
+        // Try to find the existing subscription
+        let targetChannel = window.channel;
+        
+        // If 'channel' var isn't global, try to find it via the pusher instance
+        if (!targetChannel && window.pusher) {
+            targetChannel = window.pusher.channel('techware-channel') || window.pusher.subscribe('techware-channel');
+        }
+
+        if (targetChannel) {
+            clearInterval(checkPusher);
+            console.log("GTA Module: Hooked into Pusher Stream 📡");
+
+            targetChannel.bind('status-update', function(data) {
+                // TRIGGER CONDITION:
+                // 1. Status must be "Charged" (Approved by Manager)
+                // 2. Agent Name must match the one selected in the dropdown
+                
+                const myAgentName = document.getElementById('agent') ? document.getElementById('agent').value : '';
+                
+                if (data.status === 'Charged' && myAgentName && data.agent === myAgentName) {
+                    // Update Text
+                    document.getElementById('gta-sub').innerText = `${data.client || 'LEAD'} APPROVED`;
+                    
+                    // Trigger Animation
+                    overlay.classList.add('active');
+                    playGtaSound();
+                    
+                    // Hide after 5 seconds
+                    setTimeout(() => overlay.classList.remove('active'), 5000);
+                }
+            });
+        }
+    }, 1000); // Check every second until connected
+})();
