@@ -1123,18 +1123,24 @@ document.addEventListener('keydown', (e) => {
 });
 
 /* ===========================================
-   THE SHIFT REPORT GENERATOR
+   THE SHIFT REPORT GENERATOR (Fixed Visibility)
    Creates a formatted text summary for WhatsApp/Slack
    =========================================== */
 (function() {
     // 1. Inject CSS
     const reportStyles = `
         #report-btn {
-            position: fixed; bottom: 100px; right: 24px; width: 56px; height: 56px;
-            background: #0f172a; border: 2px solid #3b82f6; border-radius: 50%;
+            position: fixed; 
+            bottom: 140px; /* Moved up to avoid Calculator overlap */
+            right: 24px; 
+            width: 56px; height: 56px;
+            background: #1e293b; /* Lighter background to stand out */
+            border: 2px solid #3b82f6; border-radius: 50%;
             color: #3b82f6; display: flex; justify-content: center; align-items: center;
-            cursor: pointer; box-shadow: 0 10px 25px rgba(59, 130, 246, 0.4);
-            z-index: 50; transition: all 0.2s;
+            cursor: pointer; 
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            z-index: 10000; /* SUPER HIGH Z-INDEX TO ENSURE VISIBILITY */
+            transition: all 0.2s;
         }
         #report-btn:hover { transform: scale(1.1) rotate(-5deg); background: #3b82f6; color: white; }
         
@@ -1171,31 +1177,36 @@ document.addEventListener('keydown', (e) => {
     document.head.appendChild(style);
 
     // 2. Create Floating Button
-    const btn = document.createElement('div');
-    btn.id = 'report-btn';
-    btn.innerHTML = `<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>`;
-    btn.onclick = generateReport;
-    document.body.appendChild(btn);
+    // Check if it already exists to prevent duplicates
+    if (!document.getElementById('report-btn')) {
+        const btn = document.createElement('div');
+        btn.id = 'report-btn';
+        btn.innerHTML = `<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>`;
+        btn.onclick = generateReport;
+        document.body.appendChild(btn);
+    }
 
     // 3. Create Modal
-    const modal = document.createElement('div');
-    modal.id = 'report-modal';
-    modal.innerHTML = `
-        <div class="report-card">
-            <div class="rc-header">
-                <div class="rc-title">📋 Shift Summary</div>
-                <div style="cursor:pointer; color:#64748b" onclick="document.getElementById('report-modal').classList.remove('open')">✕</div>
+    if (!document.getElementById('report-modal')) {
+        const modal = document.createElement('div');
+        modal.id = 'report-modal';
+        modal.innerHTML = `
+            <div class="report-card">
+                <div class="rc-header">
+                    <div class="rc-title">📋 Shift Summary</div>
+                    <div style="cursor:pointer; color:#64748b" onclick="document.getElementById('report-modal').classList.remove('open')">✕</div>
+                </div>
+                <div class="rc-body">
+                    <textarea id="report-text" class="rc-textarea" readonly></textarea>
+                </div>
+                <div class="rc-footer">
+                    <button class="btn-close" onclick="document.getElementById('report-modal').classList.remove('open')">Close</button>
+                    <button class="btn-copy" onclick="copyReport()">Copy to Clipboard</button>
+                </div>
             </div>
-            <div class="rc-body">
-                <textarea id="report-text" class="rc-textarea" readonly></textarea>
-            </div>
-            <div class="rc-footer">
-                <button class="btn-close" onclick="document.getElementById('report-modal').classList.remove('open')">Close</button>
-                <button class="btn-copy" onclick="copyReport()">Copy to Clipboard</button>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(modal);
+        `;
+        document.body.appendChild(modal);
+    }
 
     // 4. Logic
     window.copyReport = function() {
@@ -1215,16 +1226,14 @@ document.addEventListener('keydown', (e) => {
         
         // Helper to process a dataset
         const process = (key, accumulatorRef) => {
-            const data = allData[key] || [];
+            const data = (typeof allData !== 'undefined' ? allData[key] : []) || [];
             let sum = 0;
             data.forEach(r => {
                 const status = r['Status'];
-                // Only count Charged/Approved or if status is empty (Design/Ebook often default to sale)
                 if (status === 'Charged' || (!status && key !== 'billing' && key !== 'insurance')) {
                     const val = parseFloat(String(r['Charge']).replace(/[^0-9.]/g,'')) || 0;
                     sum += val;
                     
-                    // MVP Logic
                     const agent = r['Agent Name'] || 'Unknown';
                     agentScores[agent] = (agentScores[agent] || 0) + val;
                 }
@@ -1246,12 +1255,10 @@ document.addEventListener('keydown', (e) => {
             if(score > mvpScore) { mvpScore = score; mvpName = name; }
         }
 
-        // Current Date
         const now = new Date();
         const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-        // Build String
         const report = `🚀 *SHIFT UPDATE* 🚀
 📅 ${dateStr} @ ${timeStr}
 
@@ -1271,5 +1278,6 @@ document.addEventListener('keydown', (e) => {
         document.getElementById('report-modal').classList.add('open');
     };
 
-})();
+    console.log("✅ Shift Report Button Loaded at Bottom Right");
 
+})();
