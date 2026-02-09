@@ -952,165 +952,150 @@ async function processLeadWithLLC(type, id, status, btn) {
 })();
 
 /* ===========================================
-   THE GOD PROTOCOL (Command Center Mode)
-   Features: AI Voice Announcements, Holographic Alerts, Focus Mode
-   Trigger: Click the "Eye" Icon (Bottom Right)
+   SIMPLE VOICE CONTROL (Professional Mode)
+   Trigger: Click Microphone Button
+   Features: Navigation, Filtering, Search
    =========================================== */
 (function() {
-    // 1. Inject Sci-Fi Styles
-    const godStyles = `
-        /* The Holographic Alert Overlay */
-        #god-alert {
-            position: fixed; inset: 0; z-index: 999999;
-            background: rgba(0, 0, 0, 0.9); backdrop-filter: blur(10px);
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-            opacity: 0; pointer-events: none; transition: opacity 0.3s;
-        }
-        #god-alert.active { opacity: 1; pointer-events: all; }
-        
-        .god-circle {
-            width: 300px; height: 300px; border: 2px solid #3b82f6; border-radius: 50%;
-            display: flex; justify-content: center; align-items: center;
-            box-shadow: 0 0 50px #3b82f6, inset 0 0 50px #3b82f6;
-            animation: god-pulse 2s infinite; position: relative;
-        }
-        .god-circle::before {
-            content: ''; position: absolute; inset: -20px; border: 2px dashed #3b82f6; border-radius: 50%;
-            animation: god-spin 10s linear infinite;
-        }
-        
-        .god-text { color: white; font-family: 'Courier New', monospace; text-align: center; z-index: 10; }
-        .god-title { font-size: 20px; color: #3b82f6; letter-spacing: 5px; margin-bottom: 20px; }
-        .god-agent { font-size: 60px; font-weight: 900; text-transform: uppercase; text-shadow: 0 0 20px white; }
-        .god-amount { font-size: 40px; color: #22c55e; margin-top: 10px; font-weight: bold; }
-        
-        @keyframes god-pulse { 0% { opacity: 0.5; transform: scale(0.95); } 50% { opacity: 1; transform: scale(1.05); } 100% { opacity: 0.5; transform: scale(0.95); } }
-        @keyframes god-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    // 1. Check Browser Support
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        console.warn("⚠️ Voice Control not supported in this browser.");
+        return;
+    }
 
-        /* The Toggle Button - BOTTOM RIGHT POSITION */
-        #god-btn {
+    // 2. Inject CSS for Simple Button
+    const voiceStyles = `
+        #voice-btn {
             position: fixed; 
-            bottom: 150px; /* Above the calculator and other widgets */
+            bottom: 220px; /* Positioned above other widgets */
             right: 24px; 
             width: 50px; height: 50px;
-            background: #0f172a; border: 1px solid #334155; border-radius: 12px;
-            display: flex; justify-content: center; align-items: center; cursor: pointer;
-            z-index: 10000; box-shadow: 0 0 20px rgba(0,0,0,0.5); transition: all 0.3s;
+            background: #1e293b; 
+            border: 1px solid #475569; 
+            border-radius: 12px;
+            display: flex; justify-content: center; align-items: center; 
+            cursor: pointer;
+            z-index: 9999; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3); 
+            transition: all 0.3s ease;
+            color: #94a3b8;
         }
-        #god-btn:hover { background: #3b82f6; border-color: #60a5fa; transform: scale(1.1); }
-        #god-btn.active { background: #22c55e; box-shadow: 0 0 30px #22c55e; }
+        #voice-btn:hover { background: #334155; transform: scale(1.05); color: white; }
+        
+        /* Active State (Green Pulse) */
+        #voice-btn.voice-active { 
+            background: #22c55e; 
+            color: white; 
+            border-color: #16a34a;
+            box-shadow: 0 0 15px rgba(34, 197, 94, 0.4);
+            animation: mic-pulse 2s infinite;
+        }
 
-        /* Focus Mode (Darken everything but stats) */
-        body.god-mode #dashboard > nav, 
-        body.god-mode #viewStats > div:not(.grid) { opacity: 0.2; transition: opacity 0.5s; filter: grayscale(100%); }
-        body.god-mode .grid { transform: scale(1.05); transition: transform 0.5s; z-index: 50; position: relative; }
+        @keyframes mic-pulse {
+            0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+        }
     `;
     const style = document.createElement('style');
-    style.innerHTML = godStyles;
+    style.innerHTML = voiceStyles;
     document.head.appendChild(style);
 
-    // 2. Create UI Elements
-    // Button
+    // 3. Create Button
     const btn = document.createElement('div');
-    btn.id = 'god-btn';
-    btn.innerHTML = `<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>`;
-    btn.title = "Enable God Protocol (Audio & Visual Alerts)";
+    btn.id = 'voice-btn';
+    // Mic Icon
+    btn.innerHTML = `<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>`;
+    btn.title = "Toggle Voice Control";
     document.body.appendChild(btn);
 
-    // Overlay
-    const overlay = document.createElement('div');
-    overlay.id = 'god-alert';
-    overlay.innerHTML = `
-        <div class="god-circle">
-            <div class="god-text">
-                <div class="god-title">NEW TRANSACTION</div>
-                <div class="god-agent" id="god-agent-name">AGENT</div>
-                <div class="god-amount" id="god-amt">$0.00</div>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(overlay);
+    // 4. Setup Speech Recognition
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false; // We restart manually for better control
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
 
-    // 3. Logic
-    let godMode = false;
+    let isVoiceActive = false;
 
-    // Toggle Mode
+    // 5. Button Logic
     btn.addEventListener('click', () => {
-        godMode = !godMode;
-        btn.classList.toggle('active');
-        document.body.classList.toggle('god-mode');
+        isVoiceActive = !isVoiceActive;
         
-        if(godMode) {
-            speak("God Protocol Initiated. Systems Online.");
+        if (isVoiceActive) {
+            btn.classList.add('voice-active');
+            try { recognition.start(); } catch(e) {}
+            console.log("🎤 Voice Mode: ON");
         } else {
-            speak("God Protocol Deactivated.");
+            btn.classList.remove('voice-active');
+            recognition.stop();
+            console.log("🎤 Voice Mode: OFF");
         }
     });
 
-    // Voice Synthesis
-    function speak(text) {
-        if (!window.speechSynthesis) return;
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 1.0; 
-        utterance.pitch = 0.9; // Slightly deep voice
-        utterance.volume = 1.0;
-        
-        // Try to find a good English voice
-        const voices = window.speechSynthesis.getVoices();
-        const preferred = voices.find(v => v.name.includes("Google US English") || v.name.includes("Samantha"));
-        if (preferred) utterance.voice = preferred;
+    // 6. Handle Results
+    recognition.onresult = (event) => {
+        const command = event.results[0][0].transcript.toLowerCase().trim();
+        console.log("🗣️ Heard:", command);
+        processCommand(command);
+    };
 
-        window.speechSynthesis.speak(utterance);
-    }
+    // Keep listening if active
+    recognition.onend = () => {
+        if (isVoiceActive) {
+            try { recognition.start(); } catch(e) {}
+        }
+    };
 
-    // Alert Function
-    function triggerGodAlert(agent, amount) {
-        if (!godMode) return;
+    // 7. Command Processor
+    function processCommand(cmd) {
+        // --- NAVIGATION ---
+        if (cmd.includes('billing')) {
+            switchMainTab('analysis');
+            document.getElementById('analysisSheetSelector').value = 'billing';
+            renderAnalysis();
+        }
+        else if (cmd.includes('insurance')) {
+            switchMainTab('analysis');
+            document.getElementById('analysisSheetSelector').value = 'insurance';
+            renderAnalysis();
+        }
+        else if (cmd.includes('design')) {
+            switchMainTab('analysis');
+            document.getElementById('analysisSheetSelector').value = 'design';
+            renderAnalysis();
+        }
+        else if (cmd.includes('dashboard') || cmd.includes('home')) {
+            switchMainTab('stats');
+        }
+        else if (cmd.includes('pending')) {
+            switchMainTab('pending');
+        }
 
-        // 1. Audio
-        // Remove symbols for cleaner speech
-        const cleanAmt = amount.replace(/[^0-9.]/g, '');
-        speak(`New transaction verified. Agent ${agent}. Amount: ${cleanAmt} dollars.`);
-
-        // 2. Visual
-        const overlay = document.getElementById('god-alert');
-        document.getElementById('god-agent-name').innerText = agent;
-        document.getElementById('god-amt').innerText = amount;
-        
-        overlay.classList.add('active');
-        
-        // Hide after 4 seconds
-        setTimeout(() => {
-            overlay.classList.remove('active');
-        }, 4000);
-    }
-
-    // 4. Hook into Pusher
-    // We create a dedicated listener for this feature to ensure it works
-    // regardless of other scripts.
-    if (window.Pusher && window.PUSHER_KEY) {
-        const godPusher = new Pusher(window.PUSHER_KEY, { cluster: window.PUSHER_CLUSTER || 'mt1' });
-        const channel = godPusher.subscribe('techware-channel');
-        
-        channel.bind('new-lead', function(data) {
-            // Data format: { agent: "Name", amount: "$500", ... }
-            if (data && data.agent && data.amount) {
-                console.log("⚡ GOD PROTOCOL TRIGGERED:", data);
-                triggerGodAlert(data.agent, data.amount);
+        // --- FILTERS & SEARCH ---
+        else if (cmd.includes('search for') || cmd.includes('find')) {
+            const query = cmd.replace('search for', '').replace('find', '').trim();
+            if(query) {
+                switchMainTab('analysis');
+                document.getElementById('analysisSearch').value = query;
+                renderAnalysis();
             }
-        });
-        console.log("✅ God Protocol: Listening to Frequency 'techware-channel'");
-    } else {
-        console.warn("⚠️ God Protocol: Pusher not found. Audio alerts disabled.");
-    }
-
-    // Test Trigger (Hold Shift + Click Eye Button to test)
-    btn.addEventListener('click', (e) => {
-        if (e.shiftKey) {
-            e.stopPropagation(); // Don't toggle mode
-            triggerGodAlert("TEST AGENT", "$1,000.00");
         }
-    });
+        else if (cmd.includes('clear') || cmd.includes('reset')) {
+            document.getElementById('analysisSearch').value = '';
+            document.getElementById('analysisAgentSelector').value = 'all';
+            document.getElementById('analysisStatusSelector').value = 'all';
+            renderAnalysis();
+        }
+        
+        // --- ACTIONS ---
+        else if (cmd.includes('refresh') || cmd.includes('reload')) {
+            manualRefresh();
+        }
+        else if (cmd.includes('report')) {
+            // Trigger the report generator if it exists
+            if(window.generateReport) window.generateReport();
+        }
+    }
 
 })();
-
