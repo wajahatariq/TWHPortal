@@ -853,195 +853,155 @@ async function processLeadWithLLC(type, id, status, btn) {
 })();
 
 /* ===========================================
-   THE AGENT DOSSIER (RPG Stat Cards)
-   Trigger: Click any Agent Name in the Analysis Table
+   THE DASHBOARD PARKOUR (Active Game Mode)
+   Trigger: Press 'P' on keyboard to Start/Stop
    =========================================== */
 (function() {
-    // 1. Inject Styles
-    const dossierStyles = `
-        #dossier-modal {
-            position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(8px);
-            display: flex; justify-content: center; align-items: center; z-index: 10000;
-            opacity: 0; pointer-events: none; transition: opacity 0.3s;
+    // 1. Inject Styles (The Physics Engine)
+    const gameStyles = `
+        /* The Kid */
+        #parkour-kid {
+            position: fixed; font-size: 40px; z-index: 99999;
+            pointer-events: none; transition: all 0.8s cubic-bezier(0.25, 1, 0.5, 1);
+            filter: drop-shadow(0 10px 10px rgba(0,0,0,0.5));
         }
-        #dossier-modal.open { opacity: 1; pointer-events: all; }
-        .dossier-card {
-            width: 380px; background: #0f172a; border: 1px solid #334155;
-            border-radius: 16px; overflow: hidden; box-shadow: 0 0 50px rgba(59, 130, 246, 0.4);
-            transform: scale(0.9) translateY(20px); transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-            font-family: 'Segoe UI', system-ui, sans-serif; position: relative;
+        
+        /* Card Flip Animation */
+        .parkour-flip { animation: flip-360 0.8s ease-in-out; }
+        @keyframes flip-360 {
+            0% { transform: perspective(1000px) rotateY(0deg); }
+            50% { transform: perspective(1000px) rotateY(180deg); background: #3b82f6; }
+            100% { transform: perspective(1000px) rotateY(360deg); }
         }
-        #dossier-modal.open .dossier-card { transform: scale(1) translateY(0); }
-        .d-header {
-            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-            padding: 25px; text-align: center; border-bottom: 1px solid #334155;
-            position: relative;
+
+        /* Row Jump Animation */
+        .parkour-jump { animation: jump-row 0.5s ease-out; background: #1e293b !important; }
+        @keyframes jump-row {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05) translateX(10px); box-shadow: 0 5px 15px rgba(59,130,246,0.3); }
+            100% { transform: scale(1); }
         }
-        .d-avatar {
-            width: 80px; height: 80px; background: #1e293b; border-radius: 50%; margin: 0 auto 12px;
-            display: flex; justify-content: center; align-items: center; font-size: 35px;
-            border: 2px solid #3b82f6; box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+        
+        /* The Floor is Lava (Background Pulse) */
+        body.parkour-active { animation: bg-pulse 5s infinite alternate; }
+        @keyframes bg-pulse {
+            0% { background-color: #0f172a; }
+            100% { background-color: #020617; }
         }
-        .d-name { color: white; font-size: 22px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
-        .d-class { 
-            background: rgba(59, 130, 246, 0.1); color: #60a5fa; padding: 4px 12px; border-radius: 20px;
-            font-size: 11px; font-weight: 700; text-transform: uppercase; display: inline-block; margin-top: 8px; border: 1px solid rgba(59, 130, 246, 0.3);
-        }
-        .d-body { padding: 25px; }
-        .d-stat-row { display: flex; justify-content: space-between; margin-bottom: 15px; border-bottom: 1px solid #1e293b; padding-bottom: 8px; }
-        .d-stat-label { color: #94a3b8; font-size: 13px; font-weight: 600; }
-        .d-stat-val { font-weight: bold; color: white; font-family: monospace; font-size: 15px; }
-        .d-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 20px; }
-        .d-badge { 
-            font-size: 10px; padding: 4px 8px; border-radius: 4px; background: #1e293b; 
-            color: #64748b; font-weight: bold; border: 1px solid #334155; opacity: 0.5;
-        }
-        .d-badge.active { 
-            border-color: #fbbf24; color: #fbbf24; background: rgba(251, 191, 36, 0.1); 
-            opacity: 1; box-shadow: 0 0 10px rgba(251, 191, 36, 0.2);
-        }
-        .d-close { position: absolute; top: 15px; right: 15px; color: #64748b; cursor: pointer; transition: color 0.2s; }
-        .d-close:hover { color: white; }
     `;
     const style = document.createElement('style');
-    style.innerHTML = dossierStyles;
+    style.innerHTML = gameStyles;
     document.head.appendChild(style);
 
-    // 2. Create Modal DOM
-    const modal = document.createElement('div');
-    modal.id = 'dossier-modal';
-    modal.innerHTML = `
-        <div class="dossier-card">
-            <div class="d-close" onclick="document.getElementById('dossier-modal').classList.remove('open')"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12"></path></svg></div>
-            <div class="d-header">
-                <div class="d-avatar" id="d-avatar">👤</div>
-                <div class="d-name" id="d-name">Agent Name</div>
-                <div class="d-class" id="d-class">Class: Unknown</div>
-            </div>
-            <div class="d-body">
-                <div class="d-stat-row"><span class="d-stat-label">Total Revenue</span><span class="d-stat-val" id="d-rev" style="color:#4ade80">$0.00</span></div>
-                <div class="d-stat-row"><span class="d-stat-label">Win Rate (Approvals)</span><span class="d-stat-val" id="d-rate">0%</span></div>
-                <div class="d-stat-row"><span class="d-stat-label">Biggest Deal</span><span class="d-stat-val" id="d-max" style="color:#60a5fa">$0.00</span></div>
-                <div class="d-stat-row"><span class="d-stat-label">Total Volume</span><span class="d-stat-val" id="d-count">0</span></div>
-                
-                <div style="margin-top:20px; font-size:11px; color:#475569; font-weight:800; text-transform:uppercase; letter-spacing:1px;">Performance Badges</div>
-                <div class="d-badges" id="d-badges"></div>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(modal);
+    // 2. Global State
+    let isRunning = false;
+    let timer = null;
+    let kid = null;
 
-    // 3. Logic to process stats
-    function openDossier(name) {
-        const type = document.getElementById('analysisSheetSelector').value;
-        const data = allData[type] || [];
+    // 3. Game Logic
+    function spawnKid() {
+        if(document.getElementById('parkour-kid')) return;
+        kid = document.createElement('div');
+        kid.id = 'parkour-kid';
+        kid.innerHTML = '🛹'; // Skateboarder (or use 🏃)
+        document.body.appendChild(kid);
         
-        // Filter Data for this Agent
-        const agentData = data.filter(r => r['Agent Name'] === name);
-        if(agentData.length === 0) return;
-
-        // Calculate Metrics
-        let total = 0;
-        let chargedCount = 0;
-        let declinedCount = 0;
-        let maxSale = 0;
-
-        agentData.forEach(r => {
-            const val = parseFloat(String(r['Charge']).replace(/[^0-9.]/g,'')) || 0;
-            const status = r['Status'];
-
-            // Logic: Include if Charged. If blank/pending, usually ignore for stats unless specific logic
-            if(status === 'Charged' || (!status && type !== 'billing')) {
-                total += val;
-                chargedCount++;
-                if(val > maxSale) maxSale = val;
-            } else if (status === 'Declined') {
-                declinedCount++;
-            }
-        });
-
-        const totalAttempts = chargedCount + declinedCount;
-        const rate = totalAttempts ? Math.round((chargedCount / totalAttempts) * 100) : 0;
-
-        // Determine RPG Class
-        let rpgClass = "Novice";
-        let icon = "👤";
-        
-        if(total > 5000) { rpgClass = "Rainmaker"; icon = "🌧️"; }
-        else if(rate >= 90 && totalAttempts > 3) { rpgClass = "Sharpshooter"; icon = "🎯"; }
-        else if(chargedCount > 15) { rpgClass = "Machine Gunner"; icon = "🤖"; }
-        else if(maxSale >= 500) { rpgClass = "Whale Hunter"; icon = "🐳"; }
-        else if(declinedCount > chargedCount && totalAttempts > 5) { rpgClass = "Grinder"; icon = "🛡️"; }
-        else if(rate < 40 && totalAttempts > 5) { rpgClass = "Gambler"; icon = "🎲"; }
-
-        // Render Data
-        document.getElementById('d-name').innerText = name;
-        document.getElementById('d-avatar').innerText = icon;
-        document.getElementById('d-class').innerText = "CLASS: " + rpgClass;
-        document.getElementById('d-rev').innerText = '$' + total.toLocaleString('en-US', {minimumFractionDigits: 2});
-        document.getElementById('d-rate').innerText = rate + '%';
-        document.getElementById('d-max').innerText = '$' + maxSale.toLocaleString();
-        document.getElementById('d-count').innerText = chargedCount;
-
-        // Render Badges
-        const badges = [
-            { label: 'HIGH ROLLER', active: maxSale >= 300 },
-            { label: 'VETERAN', active: chargedCount >= 10 },
-            { label: 'PERFECT AIM', active: rate === 100 && chargedCount > 2 },
-            { label: 'HUSTLER', active: totalAttempts >= 15 },
-            { label: '1K CLUB', active: total >= 1000 },
-            { label: '5K CLUB', active: total >= 5000 }
-        ];
-        
-        document.getElementById('d-badges').innerHTML = badges.map(b => 
-            `<div class="d-badge ${b.active ? 'active' : ''}">${b.label}</div>`
-        ).join('');
-
-        document.getElementById('dossier-modal').classList.add('open');
+        // Start center
+        kid.style.top = '50%';
+        kid.style.left = '50%';
     }
 
-    // 4. Attach Click Listener to Table
-    // We attach to the body so it works even after table refreshes
-    const tbody = document.getElementById('analysisBody');
-    if (tbody) {
-        tbody.addEventListener('click', (e) => {
-            // Find if a cell was clicked
-            const cell = e.target.closest('td');
-            if(!cell) return;
-
-            // Find matching header to ensure we clicked the "Agent Name" column
-            const colIndex = Array.from(cell.parentNode.children).indexOf(cell);
-            const headers = document.querySelectorAll('#analysisHeader th');
-            if(!headers[colIndex]) return;
-
-            const headerName = headers[colIndex].innerText.trim().toUpperCase();
-
-            // Check column name
-            if(headerName === 'AGENT NAME') {
-                const name = cell.innerText.trim();
-                if(name && name !== '') {
-                    openDossier(name);
-                    // Visual feedback
-                    cell.style.color = '#60a5fa'; 
-                    setTimeout(() => cell.style.color = '', 500);
-                }
-            }
-        });
+    function removeKid() {
+        if(kid) kid.remove();
+        kid = null;
+        document.body.classList.remove('parkour-active');
     }
+
+    function runLoop() {
+        if(!isRunning) return;
+
+        // 1. Identify Targets (Cards + Table Rows)
+        // We look for the stats grid items and table rows
+        const cards = document.querySelectorAll('#viewAnalysis .grid > div, #viewStats .grid > div');
+        const rows = document.querySelectorAll('#analysisBody tr');
+        
+        // Combine all valid targets
+        const targets = [...cards, ...rows].filter(el => el.offsetParent !== null); // Only visible ones
+
+        if(targets.length === 0) return;
+
+        // 2. Pick Random Target
+        const target = targets[Math.floor(Math.random() * targets.length)];
+        
+        // 3. Calculate Position
+        const rect = target.getBoundingClientRect();
+        
+        // 4. Move Kid (Offset slightly so he stands ON the element)
+        if(kid) {
+            kid.style.top = (rect.top - 20) + 'px';
+            kid.style.left = (rect.left + rect.width/2 - 20) + 'px';
+            
+            // Randomize Character sometimes
+            const emojis = ['🛹', '🏃', '🤸', '🏄'];
+            kid.innerHTML = emojis[Math.floor(Math.random() * emojis.length)];
+        }
+
+        // 5. Trigger Interaction (Flip or Jump)
+        setTimeout(() => {
+            // Check if it's a card (usually divs in grid) or a row
+            if(target.tagName === 'DIV') {
+                target.classList.remove('parkour-flip');
+                void target.offsetWidth; // Trigger reflow
+                target.classList.add('parkour-flip');
+            } else if (target.tagName === 'TR') {
+                target.classList.remove('parkour-jump');
+                void target.offsetWidth;
+                target.classList.add('parkour-jump');
+            }
+        }, 600); // Wait for kid to "arrive"
+
+        // 6. Schedule Next Run
+        timer = setTimeout(runLoop, 2000); // Moves every 2 seconds
+    }
+
+    function toggleParkour() {
+        isRunning = !isRunning;
+        
+        if(isRunning) {
+            console.log("🛹 PARKOUR MODE ACTIVATED");
+            document.body.classList.add('parkour-active');
+            spawnKid();
+            runLoop();
+            
+            // Visual Banner
+            const banner = document.createElement('div');
+            banner.id = 'pk-banner';
+            banner.innerHTML = "🏃 PARKOUR MODE: ON";
+            banner.style.cssText = "position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#22c55e; color:black; font-weight:900; padding:10px 20px; border-radius:30px; z-index:99999; box-shadow:0 0 30px #22c55e;";
+            document.body.appendChild(banner);
+            setTimeout(() => banner.remove(), 2000);
+
+        } else {
+            console.log("🛑 PARKOUR MODE STOPPED");
+            clearTimeout(timer);
+            removeKid();
+            
+            // Cleanup Animations
+            document.querySelectorAll('.parkour-flip').forEach(el => el.classList.remove('parkour-flip'));
+            document.querySelectorAll('.parkour-jump').forEach(el => el.classList.remove('parkour-jump'));
+        }
+    }
+
+    // 4. Keyboard Trigger (Press 'P')
+    document.addEventListener('keydown', (e) => {
+        // Prevent triggering if typing in an input
+        if(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+        if (e.key.toLowerCase() === 'p') {
+            toggleParkour();
+        }
+    });
+
+    console.log("🏃 Press 'P' to activate Dashboard Parkour");
 
 })();
-/* ===========================================
-   CLOSE DOSSIER SHORTCUTS
-   (Click Background or Press Escape)
-   =========================================== */
-document.getElementById('dossier-modal').addEventListener('click', (e) => {
-    if (e.target.id === 'dossier-modal') {
-        e.target.classList.remove('open');
-    }
-});
-
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-        document.getElementById('dossier-modal').classList.remove('open');
-    }
-});
