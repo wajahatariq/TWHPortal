@@ -853,82 +853,6 @@ async function processLeadWithLLC(type, id, status, btn) {
 })();
 
 /* ===========================================
-   FLOATING CALCULATOR LOGIC
-   =========================================== */
-let calcExpression = "";
-
-// Toggle Calculator Visibility
-function toggleCalc() {
-    const body = document.getElementById('calc-body');
-    if (!body) return; // Safety check
-
-    if (body.classList.contains('hidden')) {
-        body.classList.remove('hidden');
-        // Small delay for animation
-        setTimeout(() => {
-            body.classList.remove('scale-95', 'opacity-0');
-        }, 10);
-    } else {
-        body.classList.add('scale-95', 'opacity-0');
-        setTimeout(() => {
-            body.classList.add('hidden');
-        }, 300);
-    }
-}
-
-// Handle Keypad Input
-function calcInput(val) {
-    const display = document.getElementById('calc-display');
-    if (!display) return;
-
-    // Prevent multiple operators in a row
-    const lastChar = calcExpression.slice(-1);
-    const operators = ['+', '-', '*', '/', '.'];
-    
-    // Don't start with an operator (except minus)
-    if (calcExpression === "" && val !== '-' && operators.includes(val)) return;
-
-    // Don't allow double operators (e.g., "++")
-    if (operators.includes(val) && operators.includes(lastChar)) return;
-    
-    calcExpression += val;
-    display.value = calcExpression;
-}
-
-// Clear Logic
-function calcClear() {
-    calcExpression = "";
-    const display = document.getElementById('calc-display');
-    const history = document.getElementById('calc-history');
-    
-    if(display) display.value = "0";
-    if(history) history.innerText = "";
-}
-
-// Calculate Result
-function calcResult() {
-    const display = document.getElementById('calc-display');
-    const history = document.getElementById('calc-history');
-    if (!display) return;
-
-    try {
-        // Security: Remove any non-math characters before evaluating
-        const cleanExpr = calcExpression.replace(/[^0-9+\-*/().]/g, '');
-        
-        if (!cleanExpr) return;
-
-        const result = eval(cleanExpr); 
-        
-        if (history) history.innerText = calcExpression + " =";
-        display.value = result;
-        calcExpression = String(result);
-    } catch (e) {
-        display.value = "Error";
-        setTimeout(calcClear, 1000);
-    }
-}
-
-/* ===========================================
    THE AGENT DOSSIER (RPG Stat Cards)
    Trigger: Click any Agent Name in the Analysis Table
    =========================================== */
@@ -1281,3 +1205,4 @@ document.addEventListener('keydown', (e) => {
     console.log("✅ Shift Report Button Loaded at Bottom Right");
 
 })();
+
