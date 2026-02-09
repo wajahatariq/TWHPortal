@@ -298,135 +298,89 @@ function renderAnalysis() {
     const dateStartVal = document.getElementById('dateStart').value;
     const dateEndVal = document.getElementById('dateEnd').value;
     
-    // Create Date Objects
+    // Create Date Objects for the Filter Range (Local Time 00:00 to 23:59)
     let dStart = new Date(dateStartVal); dStart.setHours(0,0,0,0);
     let dEnd = new Date(dateEndVal); dEnd.setHours(23,59,59,999);
 
     const data = allData[type] || [];
     
-    // 1. FILTER FOR STATS (Date + Agent + Search ONLY)
-    const statsData = data.filter(row => {
+    const filtered = data.filter(row => {
+        // 1. Create Date object from the record's timestamp
         const t = new Date(row['Timestamp']);
-        const shiftDate = new Date(t.getTime() - 21600000); // -6 Hours adjustment
         
+        // --- FIX: Apply Shift Logic (Subtract 8 Hours) ---
+        // 8 hours * 60 mins * 60 secs * 1000 ms = 28800000 ms
+        // This ensures 4 AM counts as the previous day, and 9 PM counts as today.
+        const shiftDate = new Date(t.getTime() - 21600000); 
+        // -------------------------------------------------
+
+        // 2. Compare SHIFT DATE vs Selected Range
         if(shiftDate < dStart || shiftDate > dEnd) return false;
+
+        // 3. Apply other filters (Agent, Status, Search)
         if(agentFilter !== 'all' && row['Agent Name'] !== agentFilter) return false;
+        if(statusFilter !== 'all' && row['Status'] !== statusFilter) return false;
+        
+        // Search text
         return JSON.stringify(row).toLowerCase().includes(search);
     });
 
-    // 2. CALCULATE BUCKETS (Corrected Math)
-    let sumCharged = 0;
-    let sumPending = 0;
-    let sumDeclined = 0;
-    let sumRefund = 0;
-    let netRevenue = 0;
-    let hourlyVol = {}; 
-
-    statsData.forEach(r => {
-        const raw = String(r['Charge'] || '0').replace(/[^0-9.]/g, '');
-        let val = parseFloat(raw) || 0;
-        const status = r['Status'];
-
-        // --- CORE MATH LOGIC ---
-        if(status === 'Charged') {
-            sumCharged += val;
-            netRevenue += val; // Add to Net
-            
-            // Chart Data
-            const hour = r['Timestamp'].substring(11, 13) + ":00";
-            hourlyVol[hour] = (hourlyVol[hour] || 0) + val;
-        } 
-        else if(status === 'Pending') {
-            sumPending += val;
-        }
-        else if(status === 'Declined') {
-            sumDeclined += val;
-        }
-        else if(status === 'Refund' || status === 'Charge back') {
-            sumRefund += val; // Keep this positive for display in the specific "Refund" card
-            netRevenue -= val; // SUBTRACT from Net Revenue
-        }
-        
-        // For Design/Ebook where status might be empty, assume Charged
-        if((type === 'design' || type === 'ebook') && !status) {
-            sumCharged += val;
-            netRevenue += val;
-        }
-    });
-
-    // 3. UPDATE STATS UI
-    const statsContainer = document.querySelector('#viewAnalysis .grid');
-    if(statsContainer) {
-        statsContainer.className = "grid grid-cols-2 md:grid-cols-5 gap-4"; 
-        statsContainer.innerHTML = `
-            <div class="bg-slate-800 p-3 rounded-xl border border-slate-700">
-                <div class="text-[10px] text-slate-400 uppercase font-bold">Net Revenue</div>
-                <div class="text-xl font-black text-green-400">$${netRevenue.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
-            </div>
-            <div class="bg-slate-800 p-3 rounded-xl border border-slate-700">
-                <div class="text-[10px] text-slate-400 uppercase font-bold">Pending Vol</div>
-                <div class="text-xl font-bold text-yellow-400">$${sumPending.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
-            </div>
-            <div class="bg-slate-800 p-3 rounded-xl border border-slate-700">
-                <div class="text-[10px] text-slate-400 uppercase font-bold">Declined Vol</div>
-                <div class="text-xl font-bold text-red-400">$${sumDeclined.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
-            </div>
-            <div class="bg-slate-800 p-3 rounded-xl border border-slate-700">
-                <div class="text-[10px] text-slate-400 uppercase font-bold">Refund/CB</div>
-                <div class="text-xl font-bold text-orange-500">$${sumRefund.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
-            </div>
-            <div class="bg-slate-800 p-3 rounded-xl border border-slate-700">
-                <div class="text-[10px] text-slate-400 uppercase font-bold">Total Count</div>
-                <div class="text-xl font-bold text-white">${statsData.length}</div>
-            </div>
-        `;
-    }
-
-    // 4. RENDER CHART
-    const ctx = document.getElementById('analysisChart').getContext('2d');
-    const sortedHours = Object.keys(hourlyVol).sort();
-    const values = sortedHours.map(h => hourlyVol[h]);
+    // --- Aggregation Logic (Calculations) ---
+    let total = 0; 
+    let hours = {};
     
-    if(window.myChart) window.myChart.destroy();
-    window.myChart = new Chart(ctx, { 
-        type: 'line', 
-        data: { 
-            labels: sortedHours, 
-            datasets: [{ 
-                label: 'Hourly Revenue', 
-                data: values, 
-                borderColor: '#3b82f6', 
-                backgroundColor: 'rgba(59, 130, 246, 0.1)', 
-                tension: 0.4, 
-                fill: true 
-            }] 
-        }, 
-        options: { 
-            responsive: true, 
-            maintainAspectRatio: false, 
-            plugins: { legend: { display: false } }, 
-            scales: { y: { beginAtZero: true, grid: { color: '#334155' } }, x: { grid: { display: false } } } 
-        } 
+    filtered.forEach(r => {
+        // Clean the charge amount string to a number
+        const raw = String(r['Charge']).replace(/[^0-9.]/g, '');
+        const val = parseFloat(raw) || 0;
+        
+        // Status Logic: Billing/Insurance need "Charged", others count everything
+        let shouldCount = false;
+        if(type === 'design' || type === 'ebook') shouldCount = true;
+        else if(r['Status'] === 'Charged') shouldCount = true;
+
+        if(shouldCount) {
+            total += val;
+            
+            // For the Chart: Extract the hour
+            const hour = r['Timestamp'].substring(11, 13) + ":00";
+            hours[hour] = (hours[hour] || 0) + val;
+        }
     });
 
-    // 5. FILTER FOR TABLE ROW DISPLAY
-    const tableData = statsData.filter(row => {
-        if(statusFilter !== 'all' && row['Status'] !== statusFilter) return false;
-        return true;
-    });
+    // --- Update DOM Elements ---
+    document.getElementById('anaTotal').innerText = '$' + total.toLocaleString('en-US', {minimumFractionDigits: 2});
+    document.getElementById('anaCount').innerText = filtered.length;
+    document.getElementById('anaAvg').innerText = filtered.length ? '$' + (total/filtered.length).toFixed(2) : '$0.00';
+    
+    let peak = '-'; let maxVal = 0;
+    for(const [h, val] of Object.entries(hours)) { if(val > maxVal) { maxVal = val; peak = h; } }
+    document.getElementById('anaPeak').innerText = peak;
 
-    // 6. RENDER TABLE
+    // --- Render Chart ---
+    const ctx = document.getElementById('analysisChart').getContext('2d');
+    const sortedHours = Object.keys(hours).sort();
+    const values = sortedHours.map(h => hours[h]);
+    if(myChart) myChart.destroy();
+    myChart = new Chart(ctx, { type: 'line', data: { labels: sortedHours, datasets: [{ label: 'Hourly Charged', data: values, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', tension: 0.4, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#334155' } }, x: { grid: { display: false } } } } });
+
+    // --- Render Table Columns ---
     let columns = [];
-    if (type === 'billing') columns = ["Record_ID", "Agent Name", "Name", "Phone", "Email", "Card Number", "Exp Date", "CVC", "Charge", "Status", "LLC", "Timestamp"];
-    else if (type === 'insurance') columns = ["Record_ID", "Agent Name", "Name", "Phone", "Charge", "Status", "LLC", "Timestamp"];
-    else columns = ["Record_ID", "Agent Name", "Name", "Service", "Charge", "Status", "Timestamp"];
+    if (type === 'billing') {
+        columns = ["Record_ID", "Agent Name", "Name", "Phone", "Email", "Address", "Card Number", "Exp Date", "CVC", "Charge", "Status", "LLC", "Provider", "PIN/Acc", "Timestamp"];
+    } else if (type === 'insurance') {
+        columns = ["Record_ID", "Agent Name", "Name", "Phone", "Email", "Address", "Card Number", "Exp Date", "CVC", "Charge", "Status", "LLC", "Timestamp"];
+    } else {
+        columns = ["Record_ID", "Agent Name", "Name", "Service", "Charge", "Status", "Timestamp"];
+    }
 
     const tbody = document.getElementById('analysisBody');
     const thead = document.getElementById('analysisHeader');
     thead.innerHTML = columns.map(c => `<th class="p-3 text-left text-xs font-bold text-slate-400 uppercase whitespace-nowrap">${c}</th>`).join('');
 
-    if (tableData.length > 0) {
-        tbody.innerHTML = tableData.map(row => {
+    // --- Render Table Rows ---
+    if (filtered.length > 0) {
+        tbody.innerHTML = filtered.map(row => {
             return `<tr class="border-b border-slate-800 hover:bg-slate-800 transition">
                 ${columns.map(col => {
                     let val = row[col];
@@ -435,25 +389,23 @@ function renderAnalysis() {
                         val = row[key];
                     }
                     if (!val && col === 'Name') val = row['Client Name'];
+                    if (!val && col === 'Service') val = row['Provider'] || row['provider'];
+                    if (!val && col === 'PIN/Acc') val = row['pin_code'] || row['account_number'];
+                    if (!val && col === 'Exp Date') val = row['exp_date'] || row['Expiry Date'];
                     if (!val) val = ''; 
 
                     let color = 'text-slate-300';
                     if(col === 'Status') {
                         if(val === 'Charged') color = 'text-green-400 font-bold';
                         else if(val === 'Pending') color = 'text-yellow-400';
-                        else if(val === 'Declined') color = 'text-red-400';
-                        else if(val === 'Refund') color = 'text-purple-400 font-bold'; 
-                        else if(val === 'Charge back') color = 'text-orange-500 font-bold'; 
+                        else color = 'text-red-400';
                     }
                     if(col === 'Charge') color = 'text-green-400 font-mono font-bold';
-                    
                     return `<td class="p-3 text-sm ${color} whitespace-nowrap">${val}</td>`;
                 }).join('')}
             </tr>`;
         }).join('');
-    } else { 
-        tbody.innerHTML = `<tr><td colspan="100%" class="p-8 text-center text-slate-500">No records found matching filters.</td></tr>`; 
-    }
+    } else { tbody.innerHTML = `<tr><td colspan="100%" class="p-8 text-center text-slate-500">No records found.</td></tr>`; }
 }
 
 // Updated setStatus to handle the unique identifier
@@ -998,4 +950,5 @@ async function processLeadWithLLC(type, id, status, btn) {
     console.log("🏃 Press 'P' to activate Dashboard Parkour");
 
 })();
+
 
