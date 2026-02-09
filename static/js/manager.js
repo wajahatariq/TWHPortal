@@ -305,8 +305,6 @@ function renderAnalysis() {
     const data = allData[type] || [];
     
     // 1. FILTER FOR STATS (Date + Agent + Search ONLY)
-    // We calculate stats based on this so you can see the breakdown of the Agent/Timeframe
-    // regardless of which "Status" you are currently viewing in the table.
     const statsData = data.filter(row => {
         const t = new Date(row['Timestamp']);
         const shiftDate = new Date(t.getTime() - 21600000); // -6 Hours adjustment
@@ -316,24 +314,25 @@ function renderAnalysis() {
         return JSON.stringify(row).toLowerCase().includes(search);
     });
 
-    // 2. CALCULATE BUCKETS
+    // 2. CALCULATE BUCKETS (Corrected Math)
     let sumCharged = 0;
     let sumPending = 0;
     let sumDeclined = 0;
     let sumRefund = 0;
-    let count = 0;
-    let hourlyVol = {}; // For Chart
+    let netRevenue = 0;
+    let hourlyVol = {}; 
 
     statsData.forEach(r => {
-        // Clean Amount
         const raw = String(r['Charge'] || '0').replace(/[^0-9.]/g, '');
-        const val = parseFloat(raw) || 0;
+        let val = parseFloat(raw) || 0;
         const status = r['Status'];
 
-        // Bucket Logic
+        // --- CORE MATH LOGIC ---
         if(status === 'Charged') {
             sumCharged += val;
-            // Chart Data (Only map charged for the graph)
+            netRevenue += val; // Add to Net
+            
+            // Chart Data
             const hour = r['Timestamp'].substring(11, 13) + ":00";
             hourlyVol[hour] = (hourlyVol[hour] || 0) + val;
         } 
@@ -344,23 +343,21 @@ function renderAnalysis() {
             sumDeclined += val;
         }
         else if(status === 'Refund' || status === 'Charge back') {
-            sumRefund += val;
+            sumRefund += val; // Keep this positive for display in the specific "Refund" card
+            netRevenue -= val; // SUBTRACT from Net Revenue
         }
         
         // For Design/Ebook where status might be empty, assume Charged
         if((type === 'design' || type === 'ebook') && !status) {
             sumCharged += val;
+            netRevenue += val;
         }
     });
 
-    // Net Revenue = Charged - Refunds
-    const netRevenue = sumCharged - sumRefund;
-
-    // 3. INJECT NEW STATS HTML
-    // We replace the stats grid dynamically to show the breakdown
+    // 3. UPDATE STATS UI
     const statsContainer = document.querySelector('#viewAnalysis .grid');
     if(statsContainer) {
-        statsContainer.className = "grid grid-cols-2 md:grid-cols-5 gap-4"; // Update to 5 columns
+        statsContainer.className = "grid grid-cols-2 md:grid-cols-5 gap-4"; 
         statsContainer.innerHTML = `
             <div class="bg-slate-800 p-3 rounded-xl border border-slate-700">
                 <div class="text-[10px] text-slate-400 uppercase font-bold">Net Revenue</div>
@@ -412,7 +409,7 @@ function renderAnalysis() {
         } 
     });
 
-    // 5. FILTER FOR TABLE ROW DISPLAY (Apply Status Filter Here)
+    // 5. FILTER FOR TABLE ROW DISPLAY
     const tableData = statsData.filter(row => {
         if(statusFilter !== 'all' && row['Status'] !== statusFilter) return false;
         return true;
@@ -426,17 +423,13 @@ function renderAnalysis() {
 
     const tbody = document.getElementById('analysisBody');
     const thead = document.getElementById('analysisHeader');
-    
-    // Update Header
     thead.innerHTML = columns.map(c => `<th class="p-3 text-left text-xs font-bold text-slate-400 uppercase whitespace-nowrap">${c}</th>`).join('');
 
-    // Update Body
     if (tableData.length > 0) {
         tbody.innerHTML = tableData.map(row => {
             return `<tr class="border-b border-slate-800 hover:bg-slate-800 transition">
                 ${columns.map(col => {
                     let val = row[col];
-                    // Fallbacks
                     if (!val) {
                         const key = col.toLowerCase().replace(/ /g, '_').replace(/\//g, '_').replace('.', '');
                         val = row[key];
@@ -444,14 +437,13 @@ function renderAnalysis() {
                     if (!val && col === 'Name') val = row['Client Name'];
                     if (!val) val = ''; 
 
-                    // Coloring Logic
                     let color = 'text-slate-300';
                     if(col === 'Status') {
                         if(val === 'Charged') color = 'text-green-400 font-bold';
                         else if(val === 'Pending') color = 'text-yellow-400';
                         else if(val === 'Declined') color = 'text-red-400';
-                        else if(val === 'Refund') color = 'text-purple-400 font-bold';
-                        else if(val === 'Charge back') color = 'text-orange-500 font-bold';
+                        else if(val === 'Refund') color = 'text-purple-400 font-bold'; 
+                        else if(val === 'Charge back') color = 'text-orange-500 font-bold'; 
                     }
                     if(col === 'Charge') color = 'text-green-400 font-mono font-bold';
                     
@@ -463,6 +455,7 @@ function renderAnalysis() {
         tbody.innerHTML = `<tr><td colspan="100%" class="p-8 text-center text-slate-500">No records found matching filters.</td></tr>`; 
     }
 }
+
 // Updated setStatus to handle the unique identifier
 async function setStatus(type, id, status, btnElement, rowIndex = null) {
     const card = btnElement.closest('.pending-card');
@@ -1005,3 +998,4 @@ async function processLeadWithLLC(type, id, status, btn) {
     console.log("🏃 Press 'P' to activate Dashboard Parkour");
 
 })();
+
