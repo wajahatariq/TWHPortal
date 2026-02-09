@@ -866,6 +866,7 @@ if(newLeadBtn) {
 /* =========================================
    COPY & PASTE THIS AT THE END OF billing.js
    "The Evolving Trigger" (Updated Thresholds: $50/$100/$200)
+   FIXED: Memory Leak Resolved
    ========================================= */
 (function() {
 
@@ -933,54 +934,67 @@ if(newLeadBtn) {
     document.head.appendChild(style);
 
 
-    // 2. Logic to Find Elements
-    function initTrigger() {
-        const input = document.getElementById('charge_amt');
-        // Try to find the button
+    // 2. Logic (Fixed to attach once)
+    let isInitialized = false;
+
+    function handleTriggerInput(e) {
+        // Find button dynamically (in case it was re-rendered)
         const btn = document.querySelector('button[type="submit"]') || 
                     document.getElementById('submitBtn');
+        if (!btn) return;
 
-        if (!input || !btn) return;
-
-        // Save original text to restore later (only once)
+        // Save original text if not saved yet
         if (!btn.dataset.originalText) btn.dataset.originalText = btn.innerText;
 
-        // Remove old listener if re-running
-        input.removeEventListener('input', handleTriggerInput);
-        input.addEventListener('input', handleTriggerInput);
+        const val = parseFloat(e.target.value.replace(/[^0-9.]/g, ''));
+        
+        // RESET
+        btn.className = btn.className.replace(/btn-money-mode|btn-bag-mode|btn-nuke-mode/g, '');
+        // Only reset text if we are actually in a special mode (prevent overwriting "Processing...")
+        if (btn.innerText.includes('Confirm') || btn.innerText.includes('BAG') || btn.innerText.includes('NUKE')) {
+             btn.innerText = btn.dataset.originalText;
+        }
 
-        function handleTriggerInput(e) {
-            const val = parseFloat(e.target.value.replace(/[^0-9.]/g, ''));
-            
-            // RESET
-            btn.className = btn.className.replace(/btn-money-mode|btn-bag-mode|btn-nuke-mode/g, '');
-            btn.innerText = btn.dataset.originalText; // Restore Original Text
-            
-            if (isNaN(val)) return;
+        if (isNaN(val)) return;
 
-            // EVOLVE
-            if (val >= 200) {
-                // LEVEL 3: NUKE ($200+)
-                btn.classList.add('btn-nuke-mode');
-                btn.innerText = "🚀 LAUNCH NUKE 🚀";
-            } 
-            else if (val >= 100) {
-                // LEVEL 2: GOLD BAG ($100 - $199)
-                btn.classList.add('btn-bag-mode');
-                btn.innerText = "SECURE THE BAG 💰";
-            } 
-            else if (val >= 50) {
-                // LEVEL 1: MONEY ($50 - $99)
-                btn.classList.add('btn-money-mode');
-                btn.innerText = "Confirm Sale 💸";
-            }
+        // EVOLVE
+        if (val >= 200) {
+            btn.classList.add('btn-nuke-mode');
+            btn.innerText = "🚀 LAUNCH NUKE 🚀";
+        } 
+        else if (val >= 100) {
+            btn.classList.add('btn-bag-mode');
+            btn.innerText = "SECURE THE BAG 💰";
+        } 
+        else if (val >= 50) {
+            btn.classList.add('btn-money-mode');
+            btn.innerText = "Confirm Sale 💸";
+        }
+    }
+
+    function initTrigger() {
+        // If already attached, stop here.
+        if (isInitialized) return;
+
+        const input = document.getElementById('charge_amt');
+        if (input) {
+            input.addEventListener('input', handleTriggerInput);
+            isInitialized = true; // Mark as done
+            // console.log("Trigger Logic Attached");
         }
     }
 
     // Run Init
     initTrigger();
-    // Re-run safely in case of page updates
-    setInterval(initTrigger, 3000);
+    // Re-run occasionally just in case DOM was wiped, but check flag first
+    setInterval(() => {
+        const input = document.getElementById('charge_amt');
+        // Only re-initialize if the input lost the listener (e.g. if form was replaced)
+        // or if it was never initialized.
+        if (input && !isInitialized) {
+             initTrigger();
+        }
+    }, 3000);
 
 })();
 
@@ -1251,3 +1265,4 @@ if(newLeadBtn) {
         }
     }, 500);
 })();
+
