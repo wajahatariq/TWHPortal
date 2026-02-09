@@ -148,7 +148,7 @@
                             <option value="ebook">E-Book</option>
                         </select>
                         <select id="analysisAgentSelector" onchange="renderAnalysis()" class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 text-sm outline-none"><option value="all">All Agents</option></select>
-                        <select id="analysisStatusSelector" onchange="renderAnalysis()" class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 text-sm outline-none font-bold text-yellow-400"><option value="all" class="text-white">All Statuses</option><option value="Charged" class="text-green-400">Charged</option><option value="Declined" class="text-red-400">Declined</option><option value="Pending" class="text-yellow-400">Pending</option></select>
+                        <select id="analysisStatusSelector" onchange="renderAnalysis()" class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 text-sm outline-none font-bold text-yellow-400"><option value="all" class="text-white">All Statuses</option><option value="Charged" class="text-green-400">Charged</option><option value="Declined" class="text-red-400">Declined</option><option value="Pending" class="text-yellow-400">Pending</option><option value="Refund" class="text-purple-400">Refund</option><option value="Charge back" class="text-orange-500">Charge back</option></select>
                         <input type="text" id="analysisSearch" onkeyup="renderAnalysis()" placeholder="Search..." class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 text-sm outline-none flex-grow">
                     </div>
                 </div>
@@ -257,6 +257,7 @@
     <script src="/static/js/main.js"></script>
 </body>
 </html>
+
 
 
 
