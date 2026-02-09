@@ -252,52 +252,11 @@
             <button onclick="document.getElementById('duplicateModal').classList.add('hidden')" class="mt-4 w-full bg-slate-700 hover:bg-slate-600 py-2 rounded-lg text-white">Cancel</button>
         </div>
     </div>
-
-    <div id="calc-widget" class="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-4">
-    
-    <div id="calc-body" class="hidden bg-slate-900/95 backdrop-blur-xl border border-slate-600 rounded-2xl shadow-2xl overflow-hidden w-72 transform transition-all duration-300 origin-bottom-right scale-95 opacity-0">
-        <div class="bg-slate-950 p-4 border-b border-slate-700">
-            <div id="calc-history" class="text-right text-xs text-slate-500 font-mono h-4"></div>
-            <input id="calc-display" type="text" readonly value="0" class="w-full bg-transparent text-right text-3xl font-mono text-white outline-none placeholder-slate-600">
-        </div>
-        
-        <div class="grid grid-cols-4 gap-1 p-2 bg-slate-800/50">
-            <button onclick="calcClear()" class="p-3 rounded-lg bg-red-500/10 text-red-400 font-bold hover:bg-red-500/20 transition">C</button>
-            <button onclick="calcInput('(')" class="p-3 rounded-lg bg-slate-700/50 text-blue-300 font-bold hover:bg-slate-600 transition">(</button>
-            <button onclick="calcInput(')')" class="p-3 rounded-lg bg-slate-700/50 text-blue-300 font-bold hover:bg-slate-600 transition">)</button>
-            <button onclick="calcInput('/')" class="p-3 rounded-lg bg-blue-600/20 text-blue-400 font-bold hover:bg-blue-600/30 transition">÷</button>
-
-            <button onclick="calcInput('7')" class="p-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold transition">7</button>
-            <button onclick="calcInput('8')" class="p-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold transition">8</button>
-            <button onclick="calcInput('9')" class="p-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold transition">9</button>
-            <button onclick="calcInput('*')" class="p-3 rounded-lg bg-blue-600/20 text-blue-400 font-bold hover:bg-blue-600/30 transition">×</button>
-
-            <button onclick="calcInput('4')" class="p-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold transition">4</button>
-            <button onclick="calcInput('5')" class="p-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold transition">5</button>
-            <button onclick="calcInput('6')" class="p-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold transition">6</button>
-            <button onclick="calcInput('-')" class="p-3 rounded-lg bg-blue-600/20 text-blue-400 font-bold hover:bg-blue-600/30 transition">-</button>
-
-            <button onclick="calcInput('1')" class="p-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold transition">1</button>
-            <button onclick="calcInput('2')" class="p-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold transition">2</button>
-            <button onclick="calcInput('3')" class="p-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold transition">3</button>
-            <button onclick="calcInput('+')" class="p-3 rounded-lg bg-blue-600/20 text-blue-400 font-bold hover:bg-blue-600/30 transition">+</button>
-
-            <button onclick="calcInput('0')" class="col-span-2 p-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold transition">0</button>
-            <button onclick="calcInput('.')" class="p-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold transition">.</button>
-            <button onclick="calcResult()" class="p-3 rounded-lg bg-green-500 hover:bg-green-400 text-white font-bold transition shadow-lg shadow-green-500/30">=</button>
-        </div>
-    </div>
-
-    <button onclick="toggleCalc()" class="h-14 w-14 rounded-full bg-gradient-to-br from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white shadow-2xl flex items-center justify-center transition hover:scale-110 active:scale-95 border-2 border-white/20">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-        </svg>
-    </button>
-</div>
     <script src="/static/js/manager.js"></script>
     <script src="/static/js/main.js"></script>
 </body>
 </html>
+
 
 
 
