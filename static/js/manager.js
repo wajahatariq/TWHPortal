@@ -952,23 +952,64 @@ async function processLeadWithLLC(type, id, status, btn) {
 })();
 
 /* ===========================================
-   SIMPLE VOICE CONTROL (Professional Mode)
-   Trigger: Click Microphone Button
-   Features: Navigation, Filtering, Search
+   THE MANAGER'S ASSISTANT (Combo Edition)
+   1. Sales Announcer: ALWAYS ON (Hidden)
+   2. Voice Commands: Manual Button (Bottom Right)
    =========================================== */
 (function() {
-    // 1. Check Browser Support
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-        console.warn("⚠️ Voice Control not supported in this browser.");
-        return;
+    console.log("✅ Manager Assistant Loaded");
+
+    // --- SHARED: TEXT-TO-SPEECH FUNCTION ---
+    function speak(text) {
+        if (!window.speechSynthesis) return;
+        
+        // Cancel any current speech to speak the new urgent message
+        window.speechSynthesis.cancel();
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 1.0; 
+        utterance.pitch = 1.0; 
+        utterance.volume = 1.0; // Max Volume
+        
+        // Try to select a clear English voice
+        const voices = window.speechSynthesis.getVoices();
+        const preferred = voices.find(v => v.name.includes("Google US English") || v.name.includes("Samantha"));
+        if (preferred) utterance.voice = preferred;
+
+        window.speechSynthesis.speak(utterance);
     }
 
-    // 2. Inject CSS for Simple Button
-    const voiceStyles = `
+    // ==========================================
+    // PART 1: THE SALES ANNOUNCER (ALWAYS ON)
+    // ==========================================
+    if (window.Pusher && window.PUSHER_KEY) {
+        const announcerPusher = new Pusher(window.PUSHER_KEY, { cluster: window.PUSHER_CLUSTER || 'mt1' });
+        const channel = announcerPusher.subscribe('techware-channel');
+        
+        channel.bind('new-lead', function(data) {
+            // This runs AUTOMATICALLY whenever a sale comes in
+            if (data && data.agent && data.amount) {
+                console.log("💰 New Sale Detected:", data);
+                const cleanAmt = data.amount.replace(/[^0-9.]/g, ''); // Remove symbols for clear speech
+                speak(`New sale verified. Agent ${data.agent}. ${cleanAmt} dollars.`);
+            }
+        });
+        console.log("🔈 Sales Announcer: ACTIVE (Background)");
+    }
+
+    // ==========================================
+    // PART 2: VOICE COMMAND BUTTON (FOR YOU)
+    // ==========================================
+    
+    // 1. Check Support
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    // 2. Inject Button CSS
+    const btnStyles = `
         #voice-btn {
             position: fixed; 
-            bottom: 220px; /* Positioned above other widgets */
+            bottom: 40px; /* Nice placement above calculator */
             right: 24px; 
             width: 50px; height: 50px;
             background: #1e293b; 
@@ -985,13 +1026,10 @@ async function processLeadWithLLC(type, id, status, btn) {
         
         /* Active State (Green Pulse) */
         #voice-btn.voice-active { 
-            background: #22c55e; 
-            color: white; 
-            border-color: #16a34a;
+            background: #22c55e; color: white; border-color: #16a34a;
             box-shadow: 0 0 15px rgba(34, 197, 94, 0.4);
             animation: mic-pulse 2s infinite;
         }
-
         @keyframes mic-pulse {
             0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
             70% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); }
@@ -999,23 +1037,21 @@ async function processLeadWithLLC(type, id, status, btn) {
         }
     `;
     const style = document.createElement('style');
-    style.innerHTML = voiceStyles;
+    style.innerHTML = btnStyles;
     document.head.appendChild(style);
 
     // 3. Create Button
     const btn = document.createElement('div');
     btn.id = 'voice-btn';
-    // Mic Icon
     btn.innerHTML = `<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>`;
-    btn.title = "Toggle Voice Control";
+    btn.title = "Click to Speak Commands";
     document.body.appendChild(btn);
 
-    // 4. Setup Speech Recognition
+    // 4. Setup Recognition
     const recognition = new SpeechRecognition();
-    recognition.continuous = false; // We restart manually for better control
+    recognition.continuous = false;
     recognition.lang = 'en-US';
     recognition.interimResults = false;
-
     let isVoiceActive = false;
 
     // 5. Button Logic
@@ -1025,31 +1061,28 @@ async function processLeadWithLLC(type, id, status, btn) {
         if (isVoiceActive) {
             btn.classList.add('voice-active');
             try { recognition.start(); } catch(e) {}
-            console.log("🎤 Voice Mode: ON");
+            // Only confirm via voice if user activates it manually
+            // speak("Listening."); 
         } else {
             btn.classList.remove('voice-active');
             recognition.stop();
-            console.log("🎤 Voice Mode: OFF");
         }
     });
 
-    // 6. Handle Results
     recognition.onresult = (event) => {
         const command = event.results[0][0].transcript.toLowerCase().trim();
-        console.log("🗣️ Heard:", command);
+        console.log("🗣️ Command Heard:", command);
         processCommand(command);
     };
 
-    // Keep listening if active
     recognition.onend = () => {
+        // If the user left it active, restart listening
         if (isVoiceActive) {
             try { recognition.start(); } catch(e) {}
         }
     };
 
-    // 7. Command Processor
     function processCommand(cmd) {
-        // --- NAVIGATION ---
         if (cmd.includes('billing')) {
             switchMainTab('analysis');
             document.getElementById('analysisSheetSelector').value = 'billing';
@@ -1060,19 +1093,12 @@ async function processLeadWithLLC(type, id, status, btn) {
             document.getElementById('analysisSheetSelector').value = 'insurance';
             renderAnalysis();
         }
-        else if (cmd.includes('design')) {
-            switchMainTab('analysis');
-            document.getElementById('analysisSheetSelector').value = 'design';
-            renderAnalysis();
-        }
         else if (cmd.includes('dashboard') || cmd.includes('home')) {
             switchMainTab('stats');
         }
         else if (cmd.includes('pending')) {
             switchMainTab('pending');
         }
-
-        // --- FILTERS & SEARCH ---
         else if (cmd.includes('search for') || cmd.includes('find')) {
             const query = cmd.replace('search for', '').replace('find', '').trim();
             if(query) {
@@ -1087,14 +1113,8 @@ async function processLeadWithLLC(type, id, status, btn) {
             document.getElementById('analysisStatusSelector').value = 'all';
             renderAnalysis();
         }
-        
-        // --- ACTIONS ---
         else if (cmd.includes('refresh') || cmd.includes('reload')) {
             manualRefresh();
-        }
-        else if (cmd.includes('report')) {
-            // Trigger the report generator if it exists
-            if(window.generateReport) window.generateReport();
         }
     }
 
