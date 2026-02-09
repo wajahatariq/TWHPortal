@@ -1266,3 +1266,136 @@ if(newLeadBtn) {
     }, 500);
 })();
 
+/* ===========================================
+   TECHWARE AI BRAIN (Chatbot Integration)
+   Location: Bottom Left
+   Features: Groq API Integration, Auto-UI
+   =========================================== */
+(function() {
+    console.log("🧠 AI Brain Module Loaded");
+
+    // 1. INJECT CSS STYLES
+    const chatStyles = `
+        /* Brain Button */
+        #ai-brain-btn {
+            position: fixed; bottom: 20px; left: 20px; z-index: 9999;
+            width: 60px; height: 60px;
+            background: linear-gradient(135deg, #4f46e5, #9333ea);
+            border-radius: 50%; border: 2px solid rgba(255,255,255,0.2);
+            box-shadow: 0 0 20px rgba(147, 51, 234, 0.5);
+            cursor: pointer; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            display: flex; justify-content: center; align-items: center;
+            font-size: 30px; animation: brain-pulse 3s infinite;
+        }
+        #ai-brain-btn:hover { transform: scale(1.1) rotate(10deg); box-shadow: 0 0 30px #a855f7; }
+        
+        @keyframes brain-pulse { 0% { box-shadow: 0 0 0 0 rgba(147, 51, 234, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(147, 51, 234, 0); } 100% { box-shadow: 0 0 0 0 rgba(147, 51, 234, 0); } }
+
+        /* Chat Window */
+        #ai-chat-window {
+            position: fixed; bottom: 90px; left: 20px; z-index: 9999;
+            width: 350px; height: 500px;
+            background: #0f172a; border: 1px solid #334155; border-radius: 16px;
+            display: flex; flex-direction: column; overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            transform: scale(0.9); opacity: 0; pointer-events: none;
+            transition: all 0.2s ease; transform-origin: bottom left;
+        }
+        #ai-chat-window.open { transform: scale(1); opacity: 1; pointer-events: all; }
+
+        /* Chat Components */
+        .ai-header { background: linear-gradient(90deg, #1e293b, #0f172a); padding: 15px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; color: white; font-weight: bold; }
+        .ai-messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; background: #020617; }
+        .ai-input-area { padding: 15px; background: #1e293b; border-top: 1px solid #334155; display: flex; gap: 10px; }
+        .ai-input { flex: 1; background: #334155; border: none; color: white; padding: 10px; border-radius: 8px; outline: none; }
+        .ai-send { background: #3b82f6; color: white; border: none; padding: 0 15px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .ai-send:hover { background: #2563eb; }
+
+        /* Bubbles */
+        .msg { max-width: 80%; padding: 10px 14px; border-radius: 12px; font-size: 13px; line-height: 1.4; color: #e2e8f0; }
+        .msg-user { align-self: flex-end; background: #2563eb; color: white; border-bottom-right-radius: 2px; }
+        .msg-ai { align-self: flex-start; background: #1e293b; border: 1px solid #334155; border-bottom-left-radius: 2px; }
+        .msg-ai strong { color: #a855f7; }
+    `;
+    const style = document.createElement('style');
+    style.innerHTML = chatStyles;
+    document.head.appendChild(style);
+
+    // 2. CREATE UI ELEMENTS
+    // Brain Button
+    const btn = document.createElement('div');
+    btn.id = 'ai-brain-btn';
+    btn.innerHTML = '🧠';
+    btn.title = "Ask Techware AI";
+    document.body.appendChild(btn);
+
+    // Chat Window
+    const win = document.createElement('div');
+    win.id = 'ai-chat-window';
+    win.innerHTML = `
+        <div class="ai-header">
+            <span>🤖 Techware Brain</span>
+            <span style="cursor:pointer; opacity:0.6;" onclick="toggleAiChat()">✕</span>
+        </div>
+        <div class="ai-messages" id="ai-messages">
+            <div class="msg msg-ai">Hello! I am the <strong>Techware AI</strong>. How can I assist you with billing today?</div>
+        </div>
+        <div class="ai-input-area">
+            <input type="text" id="ai-input" class="ai-input" placeholder="Ask me anything..." onkeypress="handleAiEnter(event)">
+            <button class="ai-send" onclick="sendAiMessage()">➤</button>
+        </div>
+    `;
+    document.body.appendChild(win);
+
+    // 3. LOGIC & FUNCTIONS
+    window.toggleAiChat = function() {
+        const w = document.getElementById('ai-chat-window');
+        w.classList.toggle('open');
+        if(w.classList.contains('open')) document.getElementById('ai-input').focus();
+    };
+
+    btn.onclick = toggleAiChat;
+
+    window.handleAiEnter = function(e) {
+        if(e.key === 'Enter') sendAiMessage();
+    };
+
+    window.sendAiMessage = async function() {
+        const input = document.getElementById('ai-input');
+        const list = document.getElementById('ai-messages');
+        const text = input.value.trim();
+        
+        if(!text) return;
+
+        // 1. Add User Message
+        list.innerHTML += `<div class="msg msg-user">${text}</div>`;
+        input.value = '';
+        list.scrollTop = list.scrollHeight;
+
+        // 2. Add Loading Bubble
+        const loadId = 'load-' + Date.now();
+        list.innerHTML += `<div class="msg msg-ai" id="${loadId}">Thinking...</div>`;
+        list.scrollTop = list.scrollHeight;
+
+        try {
+            // 3. Send to API
+            const res = await fetch('/api/ai_chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: text })
+            });
+
+            const data = await res.json();
+            
+            // 4. Update AI Message
+            document.getElementById(loadId).innerHTML = data.reply.replace(/\n/g, '<br>');
+
+        } catch (err) {
+            document.getElementById(loadId).innerText = "❌ Error: Could not connect to AI.";
+            console.error(err);
+        }
+        
+        list.scrollTop = list.scrollHeight;
+    };
+
+})();
