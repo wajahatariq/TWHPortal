@@ -1,3 +1,4 @@
+
 import os
 import json
 import gspread
@@ -740,67 +741,6 @@ async def get_history_totals():
         return {"status": "success", "data": history}
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
-# ==========================================
-#  AI CHATBOT ROUTE (GROQ API)
-# ==========================================
-@app.route('/api/ai_chat', methods=['POST'])
-@login_required
-def ai_chat_route():
-    try:
-        data = request.json
-        user_message = data.get('message', '')
-        
-        api_key = os.environ.get("GROQ_API_KEY")
-        if not api_key:
-            return jsonify({"reply": "⚠️ Error: GROQ_API_KEY not found in environment."}), 500
-
-# System Prompt: Strict Message Generator
-        system_instruction = (
-            "You are a strictly defined message generating assistant. "
-            "You do not answer questions or chat. You only generate a confirmation message based on the input details provided by the user. "
-            "You MUST follow this exact pattern below, replacing the specific details (Name, Amount, Card Last 4, Date) with the info given by the user:\n\n"
-            "PATTERN START:\n"
-            "Dear [Customer Name],\n\n"
-            "Thank you for choosing Xfinity.\n\n"
-            "We’re pleased to confirm that your accounts have been successfully updated through Secure Claim Solutions, an authorized Xfinity retailer.\n\n"
-            "Your monthly billing has been set to [Amount] for both accounts, with a $10.00 monthly discount applied to each account by Secure Claim Solutions for setting up Automatic Payments (AutoPay).\n\n"
-            "Automatic Payments (AutoPay) have been successfully enabled for both accounts using the card ending in [Last 4 Digits] and are scheduled to process on the [Date] of each month.\n\n"
-            "If you have any questions regarding your Xfinity services, billing, AutoPay setup, or applied discounts, our team is always here to assist you.\n\n"
-            "Thank you for choosing Xfinity. We look forward to serving you.\n\n"
-            "Warm regards,\n"
-            "Customer Support Team\n"
-            "Xfinity\n"
-            "PATTERN END"
-        )
-
-        # Call Groq API
-        response = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": "llama3-8b-8192",  # Fast & Efficient
-                "messages": [
-                    {"role": "system", "content": system_instruction},
-                    {"role": "user", "content": user_message}
-                ],
-                "temperature": 0.5,
-                "max_tokens": 200
-            }
-        )
-
-        if response.status_code == 200:
-            reply = response.json()['choices'][0]['message']['content']
-            return jsonify({"reply": reply})
-        else:
-            return jsonify({"reply": "My brain is currently offline. (API Error)"}), 500
-
-    except Exception as e:
-        print(f"AI Chat Error: {e}")
-        return jsonify({"reply": "An error occurred while processing your request."}), 500
 
 
 
