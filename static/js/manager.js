@@ -298,88 +298,105 @@ function renderAnalysis() {
     const dateStartVal = document.getElementById('dateStart').value;
     const dateEndVal = document.getElementById('dateEnd').value;
     
-    // Create Date Objects for the Filter Range
+    // Create Date Objects
     let dStart = new Date(dateStartVal); dStart.setHours(0,0,0,0);
     let dEnd = new Date(dateEndVal); dEnd.setHours(23,59,59,999);
 
     const data = allData[type] || [];
     
-    const filtered = data.filter(row => {
-        // 1. Time Shift Logic (Previous Day Shift adjustment)
+    // 1. FILTER FOR STATS (Date + Agent + Search ONLY)
+    // We calculate stats based on this so you can see the breakdown of the Agent/Timeframe
+    // regardless of which "Status" you are currently viewing in the table.
+    const statsData = data.filter(row => {
         const t = new Date(row['Timestamp']);
         const shiftDate = new Date(t.getTime() - 21600000); // -6 Hours adjustment
-
-        // 2. Date Range Check
-        if(shiftDate < dStart || shiftDate > dEnd) return false;
-
-        // 3. Filters
-        if(agentFilter !== 'all' && row['Agent Name'] !== agentFilter) return false;
-        if(statusFilter !== 'all' && row['Status'] !== statusFilter) return false;
         
-        // 4. Search
+        if(shiftDate < dStart || shiftDate > dEnd) return false;
+        if(agentFilter !== 'all' && row['Agent Name'] !== agentFilter) return false;
         return JSON.stringify(row).toLowerCase().includes(search);
     });
 
-    // --- NEW: Aggregation Logic (Net Calculation) ---
-    let total = 0; 
+    // 2. CALCULATE BUCKETS
+    let sumCharged = 0;
+    let sumPending = 0;
+    let sumDeclined = 0;
+    let sumRefund = 0;
     let count = 0;
-    let hours = {};
-    
-    filtered.forEach(r => {
+    let hourlyVol = {}; // For Chart
+
+    statsData.forEach(r => {
+        // Clean Amount
         const raw = String(r['Charge'] || '0').replace(/[^0-9.]/g, '');
         const val = parseFloat(raw) || 0;
         const status = r['Status'];
 
-        // Logic: Billing/Insurance rely on Status
-        if(type === 'billing' || type === 'insurance') {
-            if(status === 'Charged') {
-                total += val;
-                count++;
-                // Add to Chart Data
-                const hour = r['Timestamp'].substring(11, 13) + ":00";
-                hours[hour] = (hours[hour] || 0) + val;
-            } 
-            else if (status === 'Refund' || status === 'Charge back') {
-                total -= val; // SUBTRACT from total
-                count++;      // Still count the record
-            }
-            // "Pending" or "Declined" are ignored for the Total $
-        } 
-        // Logic: Design/Ebook (Assume everything listed is a sale unless marked otherwise)
-        else {
-            total += val;
-            count++;
+        // Bucket Logic
+        if(status === 'Charged') {
+            sumCharged += val;
+            // Chart Data (Only map charged for the graph)
             const hour = r['Timestamp'].substring(11, 13) + ":00";
-            hours[hour] = (hours[hour] || 0) + val;
+            hourlyVol[hour] = (hourlyVol[hour] || 0) + val;
+        } 
+        else if(status === 'Pending') {
+            sumPending += val;
+        }
+        else if(status === 'Declined') {
+            sumDeclined += val;
+        }
+        else if(status === 'Refund' || status === 'Charge back') {
+            sumRefund += val;
+        }
+        
+        // For Design/Ebook where status might be empty, assume Charged
+        if((type === 'design' || type === 'ebook') && !status) {
+            sumCharged += val;
         }
     });
 
-    // --- Update DOM ---
-    // Update Label to "Net Revenue" if refunds exist, otherwise "Total Charged"
-    const totalLabel = document.getElementById('anaTotal').previousElementSibling;
-    if(totalLabel) totalLabel.innerText = "Net Revenue";
+    // Net Revenue = Charged - Refunds
+    const netRevenue = sumCharged - sumRefund;
 
-    document.getElementById('anaTotal').innerText = '$' + total.toLocaleString('en-US', {minimumFractionDigits: 2});
-    document.getElementById('anaCount').innerText = count;
-    document.getElementById('anaAvg').innerText = count ? '$' + (total/count).toFixed(2) : '$0.00';
-    
-    // Calculate Peak Hour
-    let peak = '-'; let maxVal = 0;
-    for(const [h, val] of Object.entries(hours)) { if(val > maxVal) { maxVal = val; peak = h; } }
-    document.getElementById('anaPeak').innerText = peak;
+    // 3. INJECT NEW STATS HTML
+    // We replace the stats grid dynamically to show the breakdown
+    const statsContainer = document.querySelector('#viewAnalysis .grid');
+    if(statsContainer) {
+        statsContainer.className = "grid grid-cols-2 md:grid-cols-5 gap-4"; // Update to 5 columns
+        statsContainer.innerHTML = `
+            <div class="bg-slate-800 p-3 rounded-xl border border-slate-700">
+                <div class="text-[10px] text-slate-400 uppercase font-bold">Net Revenue</div>
+                <div class="text-xl font-black text-green-400">$${netRevenue.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+            </div>
+            <div class="bg-slate-800 p-3 rounded-xl border border-slate-700">
+                <div class="text-[10px] text-slate-400 uppercase font-bold">Pending Vol</div>
+                <div class="text-xl font-bold text-yellow-400">$${sumPending.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+            </div>
+            <div class="bg-slate-800 p-3 rounded-xl border border-slate-700">
+                <div class="text-[10px] text-slate-400 uppercase font-bold">Declined Vol</div>
+                <div class="text-xl font-bold text-red-400">$${sumDeclined.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+            </div>
+            <div class="bg-slate-800 p-3 rounded-xl border border-slate-700">
+                <div class="text-[10px] text-slate-400 uppercase font-bold">Refund/CB</div>
+                <div class="text-xl font-bold text-orange-500">$${sumRefund.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+            </div>
+            <div class="bg-slate-800 p-3 rounded-xl border border-slate-700">
+                <div class="text-[10px] text-slate-400 uppercase font-bold">Total Count</div>
+                <div class="text-xl font-bold text-white">${statsData.length}</div>
+            </div>
+        `;
+    }
 
-    // --- Render Chart ---
+    // 4. RENDER CHART
     const ctx = document.getElementById('analysisChart').getContext('2d');
-    const sortedHours = Object.keys(hours).sort();
-    const values = sortedHours.map(h => hours[h]);
+    const sortedHours = Object.keys(hourlyVol).sort();
+    const values = sortedHours.map(h => hourlyVol[h]);
     
-    if(myChart) myChart.destroy();
-    myChart = new Chart(ctx, { 
+    if(window.myChart) window.myChart.destroy();
+    window.myChart = new Chart(ctx, { 
         type: 'line', 
         data: { 
             labels: sortedHours, 
             datasets: [{ 
-                label: 'Hourly Net', 
+                label: 'Hourly Revenue', 
                 data: values, 
                 borderColor: '#3b82f6', 
                 backgroundColor: 'rgba(59, 130, 246, 0.1)', 
@@ -391,14 +408,17 @@ function renderAnalysis() {
             responsive: true, 
             maintainAspectRatio: false, 
             plugins: { legend: { display: false } }, 
-            scales: { 
-                y: { beginAtZero: true, grid: { color: '#334155' } }, 
-                x: { grid: { display: false } } 
-            } 
+            scales: { y: { beginAtZero: true, grid: { color: '#334155' } }, x: { grid: { display: false } } } 
         } 
     });
 
-    // --- Render Table ---
+    // 5. FILTER FOR TABLE ROW DISPLAY (Apply Status Filter Here)
+    const tableData = statsData.filter(row => {
+        if(statusFilter !== 'all' && row['Status'] !== statusFilter) return false;
+        return true;
+    });
+
+    // 6. RENDER TABLE
     let columns = [];
     if (type === 'billing') columns = ["Record_ID", "Agent Name", "Name", "Phone", "Email", "Card Number", "Exp Date", "CVC", "Charge", "Status", "LLC", "Timestamp"];
     else if (type === 'insurance') columns = ["Record_ID", "Agent Name", "Name", "Phone", "Charge", "Status", "LLC", "Timestamp"];
@@ -406,14 +426,17 @@ function renderAnalysis() {
 
     const tbody = document.getElementById('analysisBody');
     const thead = document.getElementById('analysisHeader');
+    
+    // Update Header
     thead.innerHTML = columns.map(c => `<th class="p-3 text-left text-xs font-bold text-slate-400 uppercase whitespace-nowrap">${c}</th>`).join('');
 
-    if (filtered.length > 0) {
-        tbody.innerHTML = filtered.map(row => {
+    // Update Body
+    if (tableData.length > 0) {
+        tbody.innerHTML = tableData.map(row => {
             return `<tr class="border-b border-slate-800 hover:bg-slate-800 transition">
                 ${columns.map(col => {
                     let val = row[col];
-                    // Fallbacks for missing keys
+                    // Fallbacks
                     if (!val) {
                         const key = col.toLowerCase().replace(/ /g, '_').replace(/\//g, '_').replace('.', '');
                         val = row[key];
@@ -427,8 +450,8 @@ function renderAnalysis() {
                         if(val === 'Charged') color = 'text-green-400 font-bold';
                         else if(val === 'Pending') color = 'text-yellow-400';
                         else if(val === 'Declined') color = 'text-red-400';
-                        else if(val === 'Refund') color = 'text-purple-400 font-bold'; // Purple for Refund
-                        else if(val === 'Charge back') color = 'text-orange-500 font-bold'; // Orange for Charge back
+                        else if(val === 'Refund') color = 'text-purple-400 font-bold';
+                        else if(val === 'Charge back') color = 'text-orange-500 font-bold';
                     }
                     if(col === 'Charge') color = 'text-green-400 font-mono font-bold';
                     
@@ -437,10 +460,9 @@ function renderAnalysis() {
             </tr>`;
         }).join('');
     } else { 
-        tbody.innerHTML = `<tr><td colspan="100%" class="p-8 text-center text-slate-500">No records found.</td></tr>`; 
+        tbody.innerHTML = `<tr><td colspan="100%" class="p-8 text-center text-slate-500">No records found matching filters.</td></tr>`; 
     }
 }
-
 // Updated setStatus to handle the unique identifier
 async function setStatus(type, id, status, btnElement, rowIndex = null) {
     const card = btnElement.closest('.pending-card');
@@ -1250,3 +1272,4 @@ document.addEventListener('keydown', (e) => {
     };
 
 })();
+
