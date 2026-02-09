@@ -1099,3 +1099,154 @@ document.addEventListener('keydown', (e) => {
         document.getElementById('dossier-modal').classList.remove('open');
     }
 });
+
+/* ===========================================
+   THE SHIFT REPORT GENERATOR
+   Creates a formatted text summary for WhatsApp/Slack
+   =========================================== */
+(function() {
+    // 1. Inject CSS
+    const reportStyles = `
+        #report-btn {
+            position: fixed; bottom: 100px; right: 24px; width: 56px; height: 56px;
+            background: #0f172a; border: 2px solid #3b82f6; border-radius: 50%;
+            color: #3b82f6; display: flex; justify-content: center; align-items: center;
+            cursor: pointer; box-shadow: 0 10px 25px rgba(59, 130, 246, 0.4);
+            z-index: 50; transition: all 0.2s;
+        }
+        #report-btn:hover { transform: scale(1.1) rotate(-5deg); background: #3b82f6; color: white; }
+        
+        #report-modal {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(5px);
+            z-index: 10001; display: flex; justify-content: center; align-items: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.2s;
+        }
+        #report-modal.open { opacity: 1; pointer-events: all; }
+        
+        .report-card {
+            width: 400px; background: #1e293b; border: 1px solid #475569; border-radius: 12px;
+            overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.5); transform: translateY(20px);
+            transition: transform 0.2s; display: flex; flex-direction: column;
+        }
+        #report-modal.open .report-card { transform: translateY(0); }
+        
+        .rc-header { background: #0f172a; padding: 15px 20px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+        .rc-title { font-weight: bold; color: white; display: flex; align-items: center; gap: 10px; }
+        .rc-body { padding: 0; background: #0f172a; position: relative; }
+        .rc-textarea {
+            width: 100%; height: 350px; background: #020617; border: none; color: #cbd5e1;
+            font-family: 'Courier New', monospace; font-size: 13px; padding: 20px; resize: none; outline: none;
+        }
+        .rc-footer { padding: 15px; background: #1e293b; border-top: 1px solid #334155; display: flex; gap: 10px; }
+        
+        .btn-copy { flex: 1; background: #22c55e; color: white; font-weight: bold; padding: 10px; border-radius: 6px; border:none; cursor: pointer; }
+        .btn-copy:hover { background: #16a34a; }
+        .btn-close { background: transparent; color: #94a3b8; font-weight: bold; padding: 10px 20px; border-radius: 6px; border: 1px solid #475569; cursor: pointer; }
+        .btn-close:hover { color: white; border-color: white; }
+    `;
+    const style = document.createElement('style');
+    style.innerHTML = reportStyles;
+    document.head.appendChild(style);
+
+    // 2. Create Floating Button
+    const btn = document.createElement('div');
+    btn.id = 'report-btn';
+    btn.innerHTML = `<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>`;
+    btn.onclick = generateReport;
+    document.body.appendChild(btn);
+
+    // 3. Create Modal
+    const modal = document.createElement('div');
+    modal.id = 'report-modal';
+    modal.innerHTML = `
+        <div class="report-card">
+            <div class="rc-header">
+                <div class="rc-title">📋 Shift Summary</div>
+                <div style="cursor:pointer; color:#64748b" onclick="document.getElementById('report-modal').classList.remove('open')">✕</div>
+            </div>
+            <div class="rc-body">
+                <textarea id="report-text" class="rc-textarea" readonly></textarea>
+            </div>
+            <div class="rc-footer">
+                <button class="btn-close" onclick="document.getElementById('report-modal').classList.remove('open')">Close</button>
+                <button class="btn-copy" onclick="copyReport()">Copy to Clipboard</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    // 4. Logic
+    window.copyReport = function() {
+        const txt = document.getElementById('report-text');
+        txt.select();
+        document.execCommand('copy');
+        const btn = document.querySelector('.btn-copy');
+        const old = btn.innerText;
+        btn.innerText = "Copied! ✅";
+        setTimeout(() => btn.innerText = old, 2000);
+    };
+
+    window.generateReport = function() {
+        // Calculate Totals based on global 'allData'
+        let billing = 0, insurance = 0, design = 0, ebook = 0;
+        let agentScores = {};
+        
+        // Helper to process a dataset
+        const process = (key, accumulatorRef) => {
+            const data = allData[key] || [];
+            let sum = 0;
+            data.forEach(r => {
+                const status = r['Status'];
+                // Only count Charged/Approved or if status is empty (Design/Ebook often default to sale)
+                if (status === 'Charged' || (!status && key !== 'billing' && key !== 'insurance')) {
+                    const val = parseFloat(String(r['Charge']).replace(/[^0-9.]/g,'')) || 0;
+                    sum += val;
+                    
+                    // MVP Logic
+                    const agent = r['Agent Name'] || 'Unknown';
+                    agentScores[agent] = (agentScores[agent] || 0) + val;
+                }
+            });
+            return sum;
+        };
+
+        billing = process('billing');
+        insurance = process('insurance');
+        design = process('design');
+        ebook = process('ebook');
+
+        const grandTotal = billing + insurance + design + ebook;
+
+        // Find MVP
+        let mvpName = "None";
+        let mvpScore = 0;
+        for(const [name, score] of Object.entries(agentScores)) {
+            if(score > mvpScore) { mvpScore = score; mvpName = name; }
+        }
+
+        // Current Date
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+        // Build String
+        const report = `🚀 *SHIFT UPDATE* 🚀
+📅 ${dateStr} @ ${timeStr}
+
+💰 *GRAND TOTAL: $${grandTotal.toLocaleString()}*
+────────────────
+💳 Billing:   $${billing.toLocaleString()}
+🛡️ Insurance: $${insurance.toLocaleString()}
+🎨 Design:    $${design.toLocaleString()}
+📚 E-Book:    $${ebook.toLocaleString()}
+────────────────
+🏆 *MVP:* ${mvpName} ($${mvpScore.toLocaleString()})
+🔥 *Status:* ${grandTotal > 1000 ? 'On Fire' : 'Building Momentum'}
+
+#TeamWork #SalesUpdate`;
+
+        document.getElementById('report-text').value = report;
+        document.getElementById('report-modal').classList.add('open');
+    };
+
+})();
