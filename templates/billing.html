@@ -150,7 +150,7 @@
 
     </script>
     <script src="/static/js/main.js"></script>
-    <button onclick="toggleAIWindow()" class="fixed bottom-5 left-5 bg-purple-600 hover:bg-purple-500 text-white p-4 rounded-full shadow-2xl z-50 transition-transform hover:scale-110 group border-2 border-white/10 flex items-center justify-center" title="AI Generator">
+    <button onclick="toggleAIWindow()" class="fixed bottom-5 right-24 bg-purple-600 hover:bg-purple-500 text-white p-4 rounded-full shadow-2xl z-[9999] transition-transform hover:scale-110 group border-2 border-white/10 flex items-center justify-center" title="AI Generator">
         <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M9.5 2A2.5 12.15 0 0 1 12 4.15 2.5 12.15 0 0 1 14.5 2c1.38 0 2.5 5.54 2.5 10.15 0 4.61-1.12 6.85-2.5 6.85a2.5 12.15 0 0 1-2.5-2.15 2.5 12.15 0 0 1-2.5 2.15c-1.38 0-2.5-2.24-2.5-6.85 0-4.61 1.12-10.15 2.5-10.15z"></path>
             <path d="M12 4.15c-.6 2.5-1.5 5-2.5 6.85"></path>
@@ -158,7 +158,7 @@
         </svg>
     </button>
 
-    <div id="aiWindow" class="fixed bottom-24 left-5 w-80 bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl z-50 hidden flex flex-col overflow-hidden origin-bottom-left transition-all duration-200 scale-95 opacity-0">
+    <div id="aiWindow" class="fixed bottom-24 right-24 w-80 bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl z-[9999] hidden flex flex-col overflow-hidden origin-bottom-right transition-all duration-200 scale-95 opacity-0">
         <div class="bg-slate-900/90 backdrop-blur p-4 border-b border-slate-700 flex justify-between items-center">
             <h3 class="font-bold text-white text-sm flex items-center gap-2">🧠 AI Composer</h3>
             <button onclick="toggleAIWindow()" class="text-slate-400 hover:text-white transition">✕</button>
@@ -183,7 +183,6 @@
             const w = document.getElementById('aiWindow');
             if (w.classList.contains('hidden')) {
                 w.classList.remove('hidden');
-                // Small delay to allow display:block to apply before transition
                 setTimeout(() => w.classList.remove('scale-95', 'opacity-0'), 10);
                 document.getElementById('aiInput').focus();
             } else {
@@ -200,7 +199,6 @@
             
             if(!input.trim()) return alert("Please enter details first!");
             
-            // UI Loading State
             const originalText = btn.innerText;
             btn.innerText = "Thinking...";
             btn.disabled = true;
