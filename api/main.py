@@ -1,4 +1,3 @@
-
 import os
 import json
 import gspread
@@ -742,9 +741,56 @@ async def get_history_totals():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+# ==========================================
+# APPEND THIS TO THE END OF api/main.py
+# ==========================================
 
+from pydantic import BaseModel
+from litellm import completion
+import os
 
+class AIRequest(BaseModel):
+    details: str
 
+@app.post("/api/ai/generate")
+async def generate_message(request: AIRequest):
+    # Ensure GROQ_API_KEY is in your environment variables (vercel.json or .env)
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        return {"status": "error", "message": "GROQ_API_KEY not found."}
 
+    prompt = f"""
+    You are a billing support assistant. Generate a customer confirmation email based strictly on these details provided by the agent:
+    {request.details}
 
+    You must strictly follow this EXACT pattern below. Do not add any conversational filler before or after the email. Fill in the bracketed placeholders [ ] with the information provided. If a specific detail (like Retailer Name) is missing, just ignore it then.If something else out of placeholders are written adjust it in there somewhere
 
+    PATTERN:
+    Dear [Client Name],
+
+    Thank you for choosing [Provider Name].
+
+    We’re pleased to confirm that your accounts have been successfully updated through [Retailer Name/LLC], an authorized [Provider Name] retailer.
+
+    Your monthly billing has been set to [Amount] for both accounts, with a [Discount] monthly discount applied to each account by [Retailer Name/LLC] for setting up Automatic Payments (AutoPay).
+
+    Automatic Payments (AutoPay) have been successfully enabled for both accounts using the card ending in [Last 4 Digits] and are scheduled to process on the [Date] of each month.
+
+    If you have any questions regarding your [Provider Name] services, billing, AutoPay setup, or applied discounts, our team is always here to assist you.
+
+    Thank you for choosing [Provider Name]. We look forward to serving you.
+
+    Warm regards,
+    Customer Support Team
+    [Provider Name]
+    """
+    
+    try:
+        response = completion(
+            model="groq/llama3-8b-8192", 
+            messages=[{"role": "user", "content": prompt}],
+            api_key=api_key
+        )
+        return {"status": "success", "message": response.choices[0].message.content}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
