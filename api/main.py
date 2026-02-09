@@ -148,11 +148,11 @@ def calculate_mongo_stats(collection, dept_type):
         # LOGIC: 8 PM to 6 AM = 10 Hours exactly
         end_time = start_time + timedelta(hours=10)
         
+        # --- UPDATE START ---
         # Status Rules:
-        # Billing/Insurance -> Count 'Charged' only
-        # Design/Ebook      -> Count ALL (Pending, Declined, etc.)
+        # Billing/Insurance -> Include Charged, Refund, and Charge back
         if dept_type in ['billing', 'insurance']:
-            status_filter = {"status": "Charged"}
+            status_filter = {"status": {"$in": ["Charged", "Refund", "Charge back"]}}
         else:
             status_filter = {} 
 
@@ -161,28 +161,41 @@ def calculate_mongo_stats(collection, dept_type):
             **status_filter
         }
 
+        # Aggregation Pipeline with Logic to Subtract Refunds
         pipeline = [
             {"$match": match_query},
-            {"$group": {"_id": "$agent", "total": {"$sum": "$charge_amount"}}}
+            {"$group": {
+                "_id": "$agent", 
+                "total": {
+                    "$sum": {
+                        "$cond": [
+                            # If status is Refund or Charge back, multiply amount by -1
+                            {"$in": ["$status", ["Refund", "Charge back"]]},
+                            {"$multiply": ["$charge_amount", -1]}, 
+                            # Else (Charged), keep positive
+                            "$charge_amount"
+                        ]
+                    }
+                }
+            }}
         ]
+        # --- UPDATE END ---
+
         results = list(collection.aggregate(pipeline))
         
         total = sum(r["total"] for r in results)
         
-        # --- FIX: Initialize breakdown with ALL agents set to 0 ---
+        # Initialize breakdown with 0.0 default
         target_agents = []
         if dept_type == 'billing': target_agents = AGENTS_BILLING
         elif dept_type == 'insurance': target_agents = AGENTS_INSURANCE
         elif dept_type == 'design': target_agents = AGENTS_DESIGN
         elif dept_type == 'ebook': target_agents = AGENTS_EBOOK
         
-        # Create dictionary with 0.0 default for everyone
         breakdown = {agent: 0.0 for agent in target_agents}
         
-        # Update with actual values from database
         for r in results:
             breakdown[r["_id"]] = r["total"]
-        # -----------------------------------------------------------
 
         return {
             "total": round(total, 2),
@@ -740,6 +753,7 @@ async def get_history_totals():
         return {"status": "success", "data": history}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
