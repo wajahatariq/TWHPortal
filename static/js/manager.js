@@ -951,4 +951,166 @@ async function processLeadWithLLC(type, id, status, btn) {
 
 })();
 
+/* ===========================================
+   THE GOD PROTOCOL (Command Center Mode)
+   Features: AI Voice Announcements, Holographic Alerts, Focus Mode
+   Trigger: Click the "Eye" Icon (Bottom Right)
+   =========================================== */
+(function() {
+    // 1. Inject Sci-Fi Styles
+    const godStyles = `
+        /* The Holographic Alert Overlay */
+        #god-alert {
+            position: fixed; inset: 0; z-index: 999999;
+            background: rgba(0, 0, 0, 0.9); backdrop-filter: blur(10px);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.3s;
+        }
+        #god-alert.active { opacity: 1; pointer-events: all; }
+        
+        .god-circle {
+            width: 300px; height: 300px; border: 2px solid #3b82f6; border-radius: 50%;
+            display: flex; justify-content: center; align-items: center;
+            box-shadow: 0 0 50px #3b82f6, inset 0 0 50px #3b82f6;
+            animation: god-pulse 2s infinite; position: relative;
+        }
+        .god-circle::before {
+            content: ''; position: absolute; inset: -20px; border: 2px dashed #3b82f6; border-radius: 50%;
+            animation: god-spin 10s linear infinite;
+        }
+        
+        .god-text { color: white; font-family: 'Courier New', monospace; text-align: center; z-index: 10; }
+        .god-title { font-size: 20px; color: #3b82f6; letter-spacing: 5px; margin-bottom: 20px; }
+        .god-agent { font-size: 60px; font-weight: 900; text-transform: uppercase; text-shadow: 0 0 20px white; }
+        .god-amount { font-size: 40px; color: #22c55e; margin-top: 10px; font-weight: bold; }
+        
+        @keyframes god-pulse { 0% { opacity: 0.5; transform: scale(0.95); } 50% { opacity: 1; transform: scale(1.05); } 100% { opacity: 0.5; transform: scale(0.95); } }
+        @keyframes god-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* The Toggle Button - BOTTOM RIGHT POSITION */
+        #god-btn {
+            position: fixed; 
+            bottom: 150px; /* Above the calculator and other widgets */
+            right: 24px; 
+            width: 50px; height: 50px;
+            background: #0f172a; border: 1px solid #334155; border-radius: 12px;
+            display: flex; justify-content: center; align-items: center; cursor: pointer;
+            z-index: 10000; box-shadow: 0 0 20px rgba(0,0,0,0.5); transition: all 0.3s;
+        }
+        #god-btn:hover { background: #3b82f6; border-color: #60a5fa; transform: scale(1.1); }
+        #god-btn.active { background: #22c55e; box-shadow: 0 0 30px #22c55e; }
+
+        /* Focus Mode (Darken everything but stats) */
+        body.god-mode #dashboard > nav, 
+        body.god-mode #viewStats > div:not(.grid) { opacity: 0.2; transition: opacity 0.5s; filter: grayscale(100%); }
+        body.god-mode .grid { transform: scale(1.05); transition: transform 0.5s; z-index: 50; position: relative; }
+    `;
+    const style = document.createElement('style');
+    style.innerHTML = godStyles;
+    document.head.appendChild(style);
+
+    // 2. Create UI Elements
+    // Button
+    const btn = document.createElement('div');
+    btn.id = 'god-btn';
+    btn.innerHTML = `<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>`;
+    btn.title = "Enable God Protocol (Audio & Visual Alerts)";
+    document.body.appendChild(btn);
+
+    // Overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'god-alert';
+    overlay.innerHTML = `
+        <div class="god-circle">
+            <div class="god-text">
+                <div class="god-title">NEW TRANSACTION</div>
+                <div class="god-agent" id="god-agent-name">AGENT</div>
+                <div class="god-amount" id="god-amt">$0.00</div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    // 3. Logic
+    let godMode = false;
+
+    // Toggle Mode
+    btn.addEventListener('click', () => {
+        godMode = !godMode;
+        btn.classList.toggle('active');
+        document.body.classList.toggle('god-mode');
+        
+        if(godMode) {
+            speak("God Protocol Initiated. Systems Online.");
+        } else {
+            speak("God Protocol Deactivated.");
+        }
+    });
+
+    // Voice Synthesis
+    function speak(text) {
+        if (!window.speechSynthesis) return;
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 1.0; 
+        utterance.pitch = 0.9; // Slightly deep voice
+        utterance.volume = 1.0;
+        
+        // Try to find a good English voice
+        const voices = window.speechSynthesis.getVoices();
+        const preferred = voices.find(v => v.name.includes("Google US English") || v.name.includes("Samantha"));
+        if (preferred) utterance.voice = preferred;
+
+        window.speechSynthesis.speak(utterance);
+    }
+
+    // Alert Function
+    function triggerGodAlert(agent, amount) {
+        if (!godMode) return;
+
+        // 1. Audio
+        // Remove symbols for cleaner speech
+        const cleanAmt = amount.replace(/[^0-9.]/g, '');
+        speak(`New transaction verified. Agent ${agent}. Amount: ${cleanAmt} dollars.`);
+
+        // 2. Visual
+        const overlay = document.getElementById('god-alert');
+        document.getElementById('god-agent-name').innerText = agent;
+        document.getElementById('god-amt').innerText = amount;
+        
+        overlay.classList.add('active');
+        
+        // Hide after 4 seconds
+        setTimeout(() => {
+            overlay.classList.remove('active');
+        }, 4000);
+    }
+
+    // 4. Hook into Pusher
+    // We create a dedicated listener for this feature to ensure it works
+    // regardless of other scripts.
+    if (window.Pusher && window.PUSHER_KEY) {
+        const godPusher = new Pusher(window.PUSHER_KEY, { cluster: window.PUSHER_CLUSTER || 'mt1' });
+        const channel = godPusher.subscribe('techware-channel');
+        
+        channel.bind('new-lead', function(data) {
+            // Data format: { agent: "Name", amount: "$500", ... }
+            if (data && data.agent && data.amount) {
+                console.log("⚡ GOD PROTOCOL TRIGGERED:", data);
+                triggerGodAlert(data.agent, data.amount);
+            }
+        });
+        console.log("✅ God Protocol: Listening to Frequency 'techware-channel'");
+    } else {
+        console.warn("⚠️ God Protocol: Pusher not found. Audio alerts disabled.");
+    }
+
+    // Test Trigger (Hold Shift + Click Eye Button to test)
+    btn.addEventListener('click', (e) => {
+        if (e.shiftKey) {
+            e.stopPropagation(); // Don't toggle mode
+            triggerGodAlert("TEST AGENT", "$1,000.00");
+        }
+    });
+
+})();
 
