@@ -1265,3 +1265,107 @@ if(newLeadBtn) {
         }
     }, 500);
 })();
+
+/* =========================================
+   APPEND THIS TO THE END OF static/js/main.js
+   AI MESSAGE GENERATOR (Billing Only)
+   ========================================= */
+(function() {
+    // 1. Only run on Billing Page
+    if (document.body.dataset.pageType !== 'billing') return;
+
+    // 2. Inject Brain Button (Next to Chat Button)
+    // Positioned at left-24 (approx 6rem) to sit next to the existing chat button
+    const btn = document.createElement('button');
+    btn.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9.5 2A2.5 12.15 0 0 1 12 4.15 2.5 12.15 0 0 1 14.5 2c1.38 0 2.5 5.54 2.5 10.15 0 4.61-1.12 6.85-2.5 6.85a2.5 12.15 0 0 1-2.5-2.15 2.5 12.15 0 0 1-2.5 2.15c-1.38 0-2.5-2.24-2.5-6.85 0-4.61 1.12-10.15 2.5-10.15z"></path>
+            <path d="M12 4.15c-.6 2.5-1.5 5-2.5 6.85"></path>
+            <path d="M12 4.15c.6 2.5 1.5 5 2.5 6.85"></path>
+        </svg>
+    `;
+    btn.className = "fixed bottom-5 left-24 bg-purple-600 hover:bg-purple-500 text-white p-4 rounded-full shadow-2xl z-50 transition-transform hover:scale-110 group border-2 border-white/10";
+    btn.title = "AI Generator";
+    btn.onclick = toggleAIWindow;
+    document.body.appendChild(btn);
+
+    // 3. Inject AI Window
+    const win = document.createElement('div');
+    win.id = 'aiWindow';
+    win.className = "fixed bottom-24 left-24 w-80 bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl z-50 hidden flex flex-col overflow-hidden origin-bottom-left transition-all duration-200 scale-95 opacity-0";
+    win.innerHTML = `
+        <div class="bg-slate-900/90 backdrop-blur p-4 border-b border-slate-700 flex justify-between items-center">
+            <h3 class="font-bold text-white text-sm flex items-center gap-2">🧠 AI Composer</h3>
+            <button onclick="toggleAIWindow()" class="text-slate-400 hover:text-white transition">✕</button>
+        </div>
+        <div class="p-4 space-y-3">
+            <textarea id="aiInput" class="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white text-xs h-24 focus:border-purple-500 outline-none resize-none" placeholder="Enter details...&#10;Ex: Bilal, Xfinity, $80, Card 2061, 10th date"></textarea>
+            <button onclick="generateAIMessage()" id="aiGenBtn" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 rounded-lg text-sm shadow-lg shadow-purple-500/20 transition-all">Generate Message</button>
+            <textarea id="aiOutput" class="w-full bg-slate-700/50 border border-slate-600 rounded-lg p-3 text-white text-xs h-40 outline-none font-mono hidden" readonly></textarea>
+            <button onclick="copyAIText()" id="aiCopyBtn" class="w-full bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-1 rounded text-xs hidden">Copy to Clipboard</button>
+        </div>
+    `;
+    document.body.appendChild(win);
+
+    // 4. Toggle Logic
+    window.toggleAIWindow = function() {
+        const w = document.getElementById('aiWindow');
+        if (w.classList.contains('hidden')) {
+            w.classList.remove('hidden');
+            setTimeout(() => w.classList.remove('scale-95', 'opacity-0'), 10);
+            document.getElementById('aiInput').focus();
+        } else {
+            w.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => w.classList.add('hidden'), 200);
+        }
+    };
+
+    // 5. Generate Logic
+    window.generateAIMessage = async function() {
+        const input = document.getElementById('aiInput').value;
+        const out = document.getElementById('aiOutput');
+        const btn = document.getElementById('aiGenBtn');
+        const copyBtn = document.getElementById('aiCopyBtn');
+        
+        if(!input.trim()) return alert("Please enter details first!");
+        
+        btn.innerText = "Thinking...";
+        btn.disabled = true;
+        out.classList.add('hidden');
+        copyBtn.classList.add('hidden');
+        
+        try {
+            const res = await fetch('/api/ai/generate', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ details: input })
+            });
+            const data = await res.json();
+            
+            if(data.status === 'success') {
+                out.value = data.message;
+                out.classList.remove('hidden');
+                copyBtn.classList.remove('hidden');
+            } else {
+                alert("Error: " + data.message);
+            }
+        } catch(e) {
+            console.error(e);
+            alert("Network Error: Could not reach AI.");
+        } finally {
+            btn.innerText = "Generate Message";
+            btn.disabled = false;
+        }
+    };
+
+    // 6. Copy Logic
+    window.copyAIText = function() {
+        const out = document.getElementById('aiOutput');
+        out.select();
+        document.execCommand('copy');
+        const copyBtn = document.getElementById('aiCopyBtn');
+        const original = copyBtn.innerText;
+        copyBtn.innerText = "Copied! ✅";
+        setTimeout(() => copyBtn.innerText = original, 2000);
+    };
+})();
