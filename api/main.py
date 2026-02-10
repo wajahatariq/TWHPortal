@@ -771,10 +771,11 @@ async def generate_message(request: AIRequest):
 
     STRUCTURAL SEQUENCE:
     1. Greeting
-    2. Provider/Retailer Confirmation
-    3. Payment/Billing Breakdown (including AutoPay discounts)
-    4. AutoPay Schedule and Method
-    5. Support Offer & Sign-off
+    2. Discount by LLC eg. Secure Claim Solutions or Visionary Pathways(as given by user)
+    3. Provider/Retailer Confirmation
+    4. Payment/Billing Breakdown (including AutoPay discounts)
+    5. AutoPay Schedule and Method
+    6. Support Offer & Sign-off
 
     EXAMPLE FOR ALIGNMENT:
     Dear Angel Shackelford,
@@ -807,6 +808,7 @@ async def generate_message(request: AIRequest):
         return {"status": "success", "message": response.choices[0].message.content}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
