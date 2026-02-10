@@ -787,11 +787,12 @@ async def generate_message(request: AIRequest):
     
     try:
         response = completion(
-            model="groq/llama-3.1-70b-versatile", 
+            model="groq/llama-3.3-70b-versatile", 
             messages=[{"role": "user", "content": prompt}],
             api_key=api_key
         )
         return {"status": "success", "message": response.choices[0].message.content}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
