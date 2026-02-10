@@ -760,29 +760,42 @@ async def generate_message(request: AIRequest):
         return {"status": "error", "message": "GROQ_API_KEY not found."}
 
     prompt = f"""
-    You are a billing support assistant. Generate a customer confirmation email based strictly on these details provided by the agent:
+    You are a billing support assistant. Generate a professional customer confirmation email based strictly on these details provided by the agent:
     {request.details}
 
-    You must strictly follow this EXACT pattern below. Do not add any conversational filler before or after the email. Fill in the bracketed placeholders [ ] with the information provided. If a specific detail (like Retailer Name) is missing, just ignore it then.If something else out of placeholders are written adjust it in there somewhere
+    INSTRUCTIONS:
+    - Use a professional, natural tone.
+    - Follow the structural sequence of the provided example but do not copy it word-for-word if the data differs.
+    - Incorporate ONLY the information provided by the agent. If a detail is missing, omit that section gracefully.
+    - Provide the email text only. No conversational filler before or after the email.
 
-    PATTERN:
-    Dear [Client Name],
+    STRUCTURAL SEQUENCE:
+    1. Greeting
+    2. Provider/Retailer Confirmation
+    3. Payment/Billing Breakdown (including AutoPay discounts)
+    4. AutoPay Schedule and Method
+    5. Support Offer & Sign-off
 
-    Thank you for choosing [Provider Name].
+    EXAMPLE FOR ALIGNMENT:
+    Dear Angel Shackelford,
 
-    We’re pleased to confirm that your accounts have been successfully updated through [Retailer Name/LLC], an authorized [Provider Name] retailer.
+    Thank you for choosing Xfinity.
 
-    Your monthly billing has been set to [Amount] for both accounts, with a [Discount] monthly discount applied to each account by [Retailer Name/LLC] for setting up Automatic Payments (AutoPay).
+    We’re pleased to confirm that your account has been successfully updated through Secure Claim Solutions, an authorized Xfinity retailer.
 
-    Automatic Payments (AutoPay) have been successfully enabled for both accounts using the card ending in [Last 4 Digits] and are scheduled to process on the [Date] of each month.
+    Your first payment of $65.00 has been successfully processed using the card ending in 2782.
 
-    If you have any questions regarding your [Provider Name] services, billing, AutoPay setup, or applied discounts, our team is always here to assist you.
+    Beginning next month, your regular monthly bill will be $50.00, which includes your $10.00 monthly AutoPay discount applied by Secure Claim Solutions for setting up AutoPay with Xfinity.
 
-    Thank you for choosing [Provider Name]. We look forward to serving you.
+    Automatic Payments (AutoPay) have been successfully enabled using the card ending in 2782 and are scheduled to process on the 10th of each month.
+
+    If you have any questions regarding your Xfinity service, billing, AutoPay setup, or applied discount, our team is always here to assist you.
+
+    Thank you for choosing Xfinity. We look forward to serving you.
 
     Warm regards,
     Customer Support Team
-    [Provider Name]
+    Xfinity
     """
     
     try:
@@ -794,6 +807,7 @@ async def generate_message(request: AIRequest):
         return {"status": "success", "message": response.choices[0].message.content}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
