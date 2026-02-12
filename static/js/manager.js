@@ -953,130 +953,119 @@ async function processLeadWithLLC(type, id, status, btn) {
 
 /* =========================================
    COPY & PASTE THIS AT THE END OF manager.js
-   "Single-Click Copy Badges" (Zero File Modification)
+   "Magic Copy Button for Bookmarklet"
    ========================================= */
 (function() {
-    // 1. CSS for the Glowing Copy Badges
     const style = document.createElement('style');
     style.innerHTML = `
-        .copy-badge {
-            margin-left: 12px;
-            background: rgba(59, 130, 246, 0.1);
-            border: 1px solid rgba(59, 130, 246, 0.3);
-            color: #60a5fa;
-            border-radius: 6px;
-            padding: 2px 8px;
-            font-size: 11px;
+        .magic-copy-btn {
+            background: linear-gradient(135deg, #8b5cf6, #d946ef);
+            color: white;
             font-weight: bold;
-            text-transform: uppercase;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 13px;
             cursor: pointer;
-            transition: all 0.2s ease;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            height: 22px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-align: center;
+            display: block;
+            width: 100%;
+            margin-bottom: 12px;
+            border: 1px solid #c084fc;
+            box-shadow: 0 4px 10px rgba(217, 70, 239, 0.2);
         }
-        .copy-badge:hover {
-            background: rgba(59, 130, 246, 0.3);
-            border-color: #3b82f6;
-            color: #ffffff;
-            box-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
-            transform: scale(1.05);
-        }
-        .copy-badge.copied {
-            background: rgba(34, 197, 94, 0.2);
-            border-color: #22c55e;
-            color: #4ade80;
-            box-shadow: 0 0 10px rgba(34, 197, 94, 0.4);
+        .magic-copy-btn:hover {
+            transform: scale(1.02);
+            box-shadow: 0 0 15px rgba(217, 70, 239, 0.5);
         }
     `;
     document.head.appendChild(style);
 
-    // 2. The Injection Logic
-    function injectCopyBadges() {
-        // Find all pending cards
+    function injectMagicButtons() {
         const cards = document.querySelectorAll('.pending-card');
-        
         cards.forEach(card => {
-            const rows = card.querySelectorAll('.flex');
-            
-            rows.forEach(row => {
-                // Prevent double-adding badges to the same row
-                if (row.classList.contains('copy-injected')) return;
+            if (card.querySelector('.magic-copy-btn')) return; // Prevent duplicates
 
-                const labelSpan = row.querySelector('span:first-child');
-                const valueSpan = row.querySelector('span:nth-child(2)');
+            const btn = document.createElement('button');
+            btn.className = 'magic-copy-btn';
+            btn.innerHTML = '✨ Copy for Magic Bookmarklet';
+
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
                 
-                if (labelSpan && valueSpan) {
-                    const labelText = labelSpan.innerText.trim();
-                    
-                    // Added Phone, Email, and Address to the target fields
-                    const targetFields = [
-                        'Card Number:', 'Expiry Date:', 'Charge:', 'CVC:', 
-                        'Card Name:', 'Phone:', 'Email:', 'Address:'
-                    ];
-                    
-                    if (targetFields.includes(labelText)) {
-                        
-                        // Create the badge
-                        const badge = document.createElement('button');
-                        badge.className = 'copy-badge';
-                        badge.innerHTML = 'Copy';
-                        badge.title = 'Click to copy to clipboard';
-                        
-                        // Force flex items to align nicely vertically
-                        row.style.alignItems = 'center';
-
-                        // Click Event
-                        badge.addEventListener('click', (e) => {
-                            e.preventDefault();
-                            
-                            let textToCopy = valueSpan.innerText.trim();
-                            
-                            // UX FIX: Gateways usually hate the $ sign, so we strip it during the copy process
-                            if (labelText === 'Charge:') {
-                                textToCopy = textToCopy.replace('$', ''); 
-                            }
-                            
-                            navigator.clipboard.writeText(textToCopy).then(() => {
-                                // Visual feedback
-                                badge.innerHTML = 'Copied!';
-                                badge.classList.add('copied');
-                                
-                                setTimeout(() => {
-                                    badge.innerHTML = 'Copy';
-                                    badge.classList.remove('copied');
-                                }, 1500);
-                            });
-                        });
-
-                        // Append to the row and mark as injected
-                        row.appendChild(badge);
-                        row.classList.add('copy-injected');
+                // Helper to extract text from the card
+                const getText = (label) => {
+                    const rows = card.querySelectorAll('.flex');
+                    for (let row of rows) {
+                        const spans = row.querySelectorAll('span');
+                        if (spans.length >= 2 && spans[0].innerText.includes(label)) {
+                            return spans[1].innerText.trim();
+                        }
                     }
+                    return '';
+                };
+
+                // Format Name
+                const rawName = getText('Card Name:');
+                let fName = rawName, lName = '';
+                if (rawName.includes(' ')) {
+                    const parts = rawName.split(' ');
+                    fName = parts[0];
+                    lName = parts.slice(1).join(' ');
                 }
+
+                // Format Expiry
+                const rawExp = getText('Expiry Date:');
+                let expMonth = '', expYear = '';
+                if (rawExp.includes('/')) {
+                    const parts = rawExp.split('/');
+                    expMonth = parts[0];
+                    expYear = parts[1];
+                }
+
+                // Package all data into a JSON object
+                const magicData = {
+                    magic_flag: "TWH_MAGIC", // Security check for the bookmarklet
+                    card: getText('Card Number:').replace(/\s/g, ''),
+                    exp: rawExp,
+                    expMonth: expMonth,
+                    expYear: expYear,
+                    cvc: getText('CVC:'),
+                    amount: getText('Charge:').replace('$', ''),
+                    name: rawName,
+                    firstName: fName,
+                    lastName: lName,
+                    phone: getText('Phone:'),
+                    email: getText('Email:'),
+                    address: getText('Address:')
+                };
+
+                // Copy to clipboard
+                navigator.clipboard.writeText(JSON.stringify(magicData)).then(() => {
+                    const originalText = btn.innerHTML;
+                    btn.innerHTML = '✅ Data Ready! Click Bookmarklet.';
+                    btn.style.background = '#22c55e';
+                    setTimeout(() => {
+                        btn.innerHTML = originalText;
+                        btn.style.background = '';
+                    }, 2500);
+                });
             });
+
+            // Insert the button right above the Approve/Decline buttons
+            const grid = card.querySelector('.grid.grid-cols-2');
+            if (grid) {
+                grid.parentNode.insertBefore(btn, grid);
+            }
         });
     }
 
-    // 3. MutationObserver to automatically inject when you switch to the "Pending" tab
-    const observer = new MutationObserver((mutations) => {
-        let shouldInject = false;
-        for (let mutation of mutations) {
-            if (mutation.addedNodes.length > 0) {
-                shouldInject = true;
-                break;
-            }
-        }
-        if (shouldInject) injectCopyBadges();
-    });
-
-    // 4. Attach Observer as soon as the container is available
+    const observer = new MutationObserver(() => { injectMagicButtons(); });
     const initInterval = setInterval(() => {
         const container = document.getElementById('pendingContainer');
         if (container) {
             observer.observe(container, { childList: true, subtree: true });
-            injectCopyBadges(); // Run once initially
+            injectMagicButtons();
             clearInterval(initInterval);
         }
     }, 1000);
