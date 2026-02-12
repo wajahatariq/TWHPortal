@@ -114,7 +114,7 @@ AGENTS_DESIGN = ["Taha", "Osama"]
 AGENTS_EBOOK = ["Huzaifa","Asad"]
 
 PROVIDERS = ["Spectrum", "Insurance", "Xfinity", "Frontier", "Optimum"]
-LLC_SPEC = ["Secure Claim Solutions", "Visionary Pathways"]
+LLC_SPEC = ["Secure Claim Solutions", "Visionary Pathways", "TS"]
 LLC_INS = ["Secure Claim Solutions"]
 
 # --- UTILS ---
@@ -808,6 +808,7 @@ async def generate_message(request: AIRequest):
         return {"status": "success", "message": response.choices[0].message.content}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
