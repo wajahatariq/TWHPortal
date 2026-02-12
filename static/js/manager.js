@@ -185,7 +185,7 @@ function renderPendingCards() {
 
     // Options derived from your original code
     const llcOptions = pendingSubTab === 'billing' 
-        ? ["Secure Claim Solutions-NMI", "Visionary Pathways-Authorize", "Visionary Pathways-Chase", "Zelle", "Venmo"] 
+        ? ["Secure Claim Solutions-NMI", "Visionary Pathways-Authorize", "Visionary Pathways-Chase", "TS", "Zelle", "Venmo"] 
         : ["Secure Claim Solutions-NMI"];
 
     data.forEach(row => {
@@ -950,3 +950,4 @@ async function processLeadWithLLC(type, id, status, btn) {
     console.log("🏃 Press 'P' to activate Dashboard Parkour");
 
 })();
+
