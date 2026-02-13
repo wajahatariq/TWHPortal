@@ -108,7 +108,7 @@ def get_worksheet(sheet_type):
     return None
 
 # --- CONSTANTS ---
-AGENTS_BILLING = ["Arham Kaleem", "Arham Ali", "Haziq", "Anus", "Hasnain", "Daniyal"]
+AGENTS_BILLING = ["Arham Kaleem", "Arham Ali", "Haziq", "Hasnain", "Daniyal"]
 AGENTS_INSURANCE = ["Saad"]
 AGENTS_DESIGN = ["Taha"]
 AGENTS_EBOOK = ["Huzaifa","Asad"]
@@ -808,6 +808,7 @@ async def generate_message(request: AIRequest):
         return {"status": "success", "message": response.choices[0].message.content}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
 
