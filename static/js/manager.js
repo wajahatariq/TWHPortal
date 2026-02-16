@@ -163,13 +163,7 @@ function switchPendingSubTab(tab) {
 }
 
 /* =========================================
-   REPLACE "renderPendingCards" IN manager.js
-   (Ensures Unique ID is hidden in the card)
-   ========================================= */
-
-/* =========================================
-   1. RESTORED: renderPendingCards
-   (Back to the version you liked)
+   RESTORED: renderPendingCards
    ========================================= */
 
 function renderPendingCards() {
@@ -239,16 +233,13 @@ function renderPendingCards() {
 }
 
 /* =========================================
-   2. FIXED: validateAndSetStatus
-   (Smart Logic: Finds dropdown inside the card)
+   FIXED: validateAndSetStatus
    ========================================= */
 
 async function validateAndSetStatus(type, id, status, btnElement) {
     const card = btnElement.closest('.pending-card');
     
-    // --- THE FIX ---
-    // Instead of looking for ID="llc_select_123" (which fails on duplicates),
-    // we just find the <select> tag closest to the button you clicked.
+    // Find the <select> tag closest to the button you clicked.
     const llcSelect = card.querySelector('select'); 
     const selectedLLC = llcSelect ? llcSelect.value : null;
     
@@ -308,11 +299,8 @@ function renderAnalysis() {
         // 1. Create Date object from the record's timestamp
         const t = new Date(row['Timestamp']);
         
-        // --- FIX: Apply Shift Logic (Subtract 8 Hours) ---
-        // 8 hours * 60 mins * 60 secs * 1000 ms = 28800000 ms
-        // This ensures 4 AM counts as the previous day, and 9 PM counts as today.
+        // Shift Logic (Subtract 8 Hours)
         const shiftDate = new Date(t.getTime() - 21600000); 
-        // -------------------------------------------------
 
         // 2. Compare SHIFT DATE vs Selected Range
         if(shiftDate < dStart || shiftDate > dEnd) return false;
@@ -485,6 +473,13 @@ async function searchForEdit(specificRowIndex = null) {
             
             // Populate hidden row_index for unique identification
             document.getElementById('e_row_index').value = d['row_index'] || '';
+            
+            // --- NEW: Set Original Timestamp and Reset Action ---
+            document.getElementById('e_original_timestamp').value = d['Timestamp'] || d['timestamp_str'] || '';
+            // Default to "Keep Original" when loading
+            const radioKeep = document.querySelector('input[name="timestamp_mode"][value="keep"]');
+            if(radioKeep) radioKeep.checked = true;
+            // ----------------------------------------------------
 
             const recId = d['Record_ID'] || d['record_id'] || d['Order ID'] || d['order_id'] || id;
             if(type === 'billing') {
@@ -503,7 +498,7 @@ async function searchForEdit(specificRowIndex = null) {
     }
 }
 
-// --- NEW: Duplicate Selection Modal Logic ---
+// --- Duplicate Selection Modal Logic ---
 function showManagerDuplicateSelection(candidates) {
     const modal = document.getElementById('duplicateModal');
     const list = document.getElementById('duplicateList');
@@ -632,7 +627,6 @@ async function processLeadWithLLC(type, id, status, btn) {
 }
 
 /* =========================================
-   COPY & PASTE THIS AT THE END OF manager.js
    "The Global Market Ticker" (All Departments Combined)
    ========================================= */
 (function() {
@@ -952,7 +946,6 @@ async function processLeadWithLLC(type, id, status, btn) {
 })();
 
 /* =========================================
-   COPY & PASTE THIS AT THE END OF manager.js
    "Magic Copy Button for Bookmarklet"
    ========================================= */
 (function() {
