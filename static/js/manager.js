@@ -1206,3 +1206,150 @@ async function loadRecentChargebacks() {
         } else { container.innerHTML = '<div class="text-slate-500 italic">No recent chargebacks.</div>'; }
     } catch(e) {}
 }
+
+/* =========================================
+   CHARGEBACK MANAGER (ANALYSIS LOGIC)
+   ========================================= */
+
+window.switchMainTab = function(tab) {
+    const tabs = ['viewStats', 'viewPending', 'viewAnalysis', 'viewEdit', 'viewDaily', 'viewChargebacks'];
+    const navs = ['navStats', 'navPending', 'navAnalysis', 'navEdit', 'navDaily', 'navChargebacks'];
+
+    tabs.forEach(id => { const el = document.getElementById(id); if(el) el.classList.add('hidden'); });
+    navs.forEach(id => { 
+        const el = document.getElementById(id); 
+        if(el) {
+            el.classList.remove('bg-blue-600', 'bg-red-600', 'text-white'); 
+            el.classList.add('text-slate-400');
+            if(id === 'navChargebacks') el.classList.add('text-red-400');
+        }
+    });
+
+    const viewId = 'view' + tab.charAt(0).toUpperCase() + tab.slice(1);
+    const navId = 'nav' + tab.charAt(0).toUpperCase() + tab.slice(1);
+    
+    document.getElementById(viewId).classList.remove('hidden');
+    const navEl = document.getElementById(navId);
+
+    if(tab === 'chargebacks') {
+        navEl.classList.add('bg-red-600', 'text-white');
+        updateCbAgentSelector();
+        renderChargebacks();
+    } else {
+        navEl.classList.add('bg-blue-600', 'text-white');
+    }
+
+    if(tab === 'pending') renderPendingCards();
+    if(tab === 'analysis') { updateAgentSelector(); renderAnalysis(); }
+    if(tab === 'daily') updateDepartmentTotals(); 
+};
+
+// 1. DYNAMIC AGENT SELECTOR (Exactly like Analysis)
+function updateCbAgentSelector() {
+    const type = document.getElementById('cbSheetSelector').value;
+    const data = allData[type] || [];
+    // Extract Unique Agents
+    const agents = [...new Set(data.map(item => item['Agent Name'] || item['agent']))].filter(Boolean).sort();
+    
+    const selector = document.getElementById('cbAgentSelector');
+    selector.innerHTML = '<option value="all">All Agents</option>';
+    agents.forEach(agent => { 
+        const opt = document.createElement('option'); 
+        opt.value = agent; 
+        opt.innerText = agent; 
+        selector.appendChild(opt); 
+    });
+}
+
+// 2. RENDER TABLE (Logic copied from renderAnalysis with Shift Adjustment)
+function renderChargebacks() {
+    const type = document.getElementById('cbSheetSelector').value;
+    const agentFilter = document.getElementById('cbAgentSelector').value;
+    const search = document.getElementById('cbSearch').value.toLowerCase();
+    
+    // Date Logic
+    const dateStartVal = document.getElementById('cbDateStart').value;
+    const timeStartVal = document.getElementById('cbTimeStart').value;
+    const dateEndVal = document.getElementById('cbDateEnd').value;
+    const timeEndVal = document.getElementById('cbTimeEnd').value;
+
+    let dStart = new Date(`${dateStartVal}T${timeStartVal}`);
+    let dEnd = new Date(`${dateEndVal}T${timeEndVal}`);
+
+    const data = allData[type] || [];
+    const tbody = document.getElementById('cbTableBody');
+
+    // Filter Logic
+    const filtered = data.filter(row => {
+        // A. Filter out items that are ALREADY Chargebacks
+        if(row['Status'] === 'Charge Back') return false;
+
+        // B. Date Shift Logic (Subtract 8 Hours to match Analysis)
+        const t = new Date(row['Timestamp']);
+        const shiftDate = new Date(t.getTime() - (8 * 60 * 60 * 1000)); // 8 hours in ms
+
+        if(shiftDate < dStart || shiftDate > dEnd) return false;
+
+        // C. Agent Filter
+        const rowAgent = row['Agent Name'] || row['agent'];
+        if(agentFilter !== 'all' && rowAgent !== agentFilter) return false;
+
+        // D. Search Filter
+        return JSON.stringify(row).toLowerCase().includes(search);
+    });
+
+    if(filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-slate-500">No records found.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = filtered.map(row => {
+        const id = row['Record_ID'] || row['record_id'] || row['_id'];
+        const amt = row['Charge'] || row['charge_str'] || '$0.00';
+        const client = row['Name'] || row['Client Name'] || 'Unknown';
+        const agent = row['Agent Name'] || row['agent'] || 'Unknown';
+        const date = row['Timestamp'] || '';
+
+        return `
+        <tr class="border-b border-slate-700 hover:bg-red-900/10 transition group">
+            <td class="p-4 text-slate-300 whitespace-nowrap">${date}</td>
+            <td class="p-4 font-bold text-white">${agent}</td>
+            <td class="p-4">
+                <div class="text-white font-bold">${client}</div>
+                <div class="text-xs text-slate-500 font-mono">${id}</div>
+            </td>
+            <td class="p-4 font-mono font-bold text-green-400">${amt}</td>
+            <td class="p-4 text-center">
+                <button onclick="executeMarkChargeback('${id}', '${type}')" 
+                        class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg font-bold shadow-lg shadow-red-900/30 transition text-xs flex items-center gap-2 mx-auto">
+                    <span>📉 MARK CB</span>
+                </button>
+            </td>
+        </tr>
+        `;
+    }).join('');
+}
+
+// 3. EXECUTE ACTION (With $35 Penalty Logic)
+async function executeMarkChargeback(id, dept) {
+    if(!confirm(`⚠️ CONFIRM CHARGEBACK?\n\nThis will:\n1. Change status to 'Charge Back'.\n2. Deduct the $35 PENALTY from the agent.\n3. Deduct the principal (if from previous month).\n\nProceed?`)) return;
+
+    const formData = new FormData();
+    formData.append('record_id', id);
+    formData.append('dept', dept);
+
+    try {
+        const res = await fetch('/api/manager/mark_chargeback', { method: 'POST', body: formData });
+        const json = await res.json();
+
+        if(json.status === 'success') {
+            alert("SUCCESS: " + json.message);
+            // Refresh Data to update stats and remove item from list
+            fetchData(); 
+        } else {
+            alert("Error: " + json.message);
+        }
+    } catch(e) {
+        alert("Action Failed");
+    }
+}
