@@ -742,140 +742,83 @@ async def get_history_totals():
         return {"status": "error", "message": str(e)}
 
 # ==========================================
-# APPEND THIS TO THE END OF api/main.py
+# TWH CHARGEBACK SYSTEM (STANDALONE)
 # ==========================================
 
-from pydantic import BaseModel
-from litellm import completion
-import os
+# 1. New Collection
+twh_cb_col = db["twh_chargebacks"]
 
-class AIRequest(BaseModel):
-    details: str
-
-@app.post("/api/ai/generate")
-async def generate_message(request: AIRequest):
-    # Ensure GROQ_API_KEY is in your environment variables (vercel.json or .env)
-    api_key = os.environ.get("GROQ_API_KEY")
-    if not api_key:
-        return {"status": "error", "message": "GROQ_API_KEY not found."}
-
-    prompt = f"""
-    You are a billing support assistant. Generate a professional customer confirmation email based strictly on these details provided by the agent:
-    {request.details}
-
-    INSTRUCTIONS:
-    - Use a professional, natural tone.
-    - Follow the structural sequence of the provided example but do not copy it word-for-word if the data differs.
-    - Incorporate ONLY the information provided by the agent. If a detail is missing, omit that section gracefully.
-    - Provide the email text only. No conversational filler before or after the email.
-
-    STRUCTURAL SEQUENCE:
-    1. Greeting
-    2. Discount by our LLC eg. Secure Claim Solutions or Visionary Pathways(as given by user)
-    3. Provider/Retailer Confirmation
-    4. Payment/Billing Breakdown (including AutoPay discounts)
-    5. AutoPay Schedule and Method
-    6. Support(Xfinity, Spectrum, Optimum as provided by user) Offer & Sign-off
-
-    EXAMPLE FOR ALIGNMENT:
-    Dear Angel Shackelford,
-
-    Thank you for choosing Xfinity.
-
-    We’re pleased to confirm that your account has been successfully updated through Secure Claim Solutions, an authorized Xfinity retailer.
-
-    Your first payment of $65.00 has been successfully processed using the card ending in 2782.
-
-    Beginning next month, your regular monthly bill will be $50.00, which includes your $10.00 monthly AutoPay discount applied by Secure Claim Solutions for setting up AutoPay with Xfinity.
-
-    Automatic Payments (AutoPay) have been successfully enabled using the card ending in 2782 and are scheduled to process on the 10th of each month.
-
-    If you have any questions regarding your Xfinity service, billing, AutoPay setup, or applied discount, our team is always here to assist you.
-
-    Thank you for choosing Xfinity. We look forward to serving you.
-
-    Warm regards,
-    Customer Support Team
-    Xfinity
-    """
-    
+# 2. Endpoint to Mark (Copy to TWH_Chargebacks + Update Status)
+@app.post("/api/manager/mark_twh_chargeback")
+async def mark_twh_chargeback(
+    record_id: str = Form(...),
+    dept: str = Form(...)
+):
     try:
-        response = completion(
-            model="groq/llama-3.3-70b-versatile", 
-            messages=[{"role": "user", "content": prompt}],
-            api_key=api_key
-        )
-        return {"status": "success", "message": response.choices[0].message.content}
+        # Select Source Collection
+        col = None
+        if dept == 'billing': col = billing_col
+        elif dept == 'insurance': col = insurance_col
+        elif dept == 'design': col = design_col
+        elif dept == 'ebook': col = ebook_col
+
+        # Find Record
+        sale = col.find_one({"record_id": record_id})
+        if not sale:
+            # Try ObjectId fallback
+            try: sale = col.find_one({"_id": ObjectId(record_id)})
+            except: pass
+            
+        if not sale:
+            return {"status": "error", "message": "Record not found"}
+
+        # COPY to twh_chargebacks (Simple Copy, No Penalty Logic)
+        date_str, _, ts_obj = get_timestamp()
+        
+        # We store the exact amount of the sale
+        amount = float(sale.get('charge_amount', 0))
+        
+        cb_doc = {
+            "original_record_id": str(sale.get('record_id', record_id)),
+            "agent": sale.get('agent'),
+            "client_name": sale.get('client_name'),
+            "amount": amount,
+            "dept": dept,
+            "created_at": ts_obj, # Timestamp is NOW (for shift calculation)
+            "date_str": date_str,
+            "original_date": sale.get('date_str') # Keep reference to old date
+        }
+        twh_cb_col.insert_one(cb_doc)
+
+        # Update Original Status (Standard Practice)
+        col.update_one({"_id": sale["_id"]}, {"$set": {"status": "Charge Back"}})
+
+        # Notify
+        pusher_client.trigger('techware-channel', 'status-update', {
+            'id': record_id, 'status': 'Charge Back', 'type': dept,
+            'agent': sale.get('agent'), 'message': "⚠️ Marked as Chargeback"
+        })
+
+        return {"status": "success", "message": "Copied to Chargebacks Database"}
+
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-      
-# ==========================================
-# UPDATED DATA FETCHER (INCLUDES CHARGEBACKS)
-# ==========================================
-
-@app.get("/api/manager/data")
-async def get_manager_data(token: str):
+# 3. Endpoint to Get Chargeback Data (For the Analysis-Style Tab)
+@app.get("/api/manager/twh_chargebacks")
+async def get_twh_chargebacks():
     try:
-        def clean_docs(cursor):
-            docs = []
-            for d in cursor:
-                d['_id'] = str(d['_id'])
-                d['Agent Name'] = d.get('agent')
-                d['Client Name'] = d.get('client_name')
-                d['Name'] = d.get('client_name')
-                d['Charge'] = d.get('charge_str')
-                d['Status'] = d.get('status')
-                d['Timestamp'] = d.get('timestamp_str')
-                d['Record_ID'] = d.get('record_id')
-                d['LLC'] = d.get('llc')
-                d['Provider'] = d.get('provider')
-                d['Service'] = d.get('provider', '')
-                docs.append(d)
-            return docs
-
-        # 1. Fetch Standard Data
-        bill_data = clean_docs(billing_col.find().sort("created_at", -1).limit(1000))
-        ins_data = clean_docs(insurance_col.find().sort("created_at", -1).limit(1000))
-        design_data = clean_docs(design_col.find().sort("created_at", -1).limit(1000))
-        ebook_data = clean_docs(ebook_col.find().sort("created_at", -1).limit(1000))
-        
-        # 2. Fetch Stats
-        stats_bill = calculate_mongo_stats(billing_col, 'billing')
-        stats_ins = calculate_mongo_stats(insurance_col, 'insurance')
-        stats_design = calculate_mongo_stats(design_col, 'design')
-        stats_ebook = calculate_mongo_stats(ebook_col, 'ebook')
-        
-        # 3. Fetch Pending Counts
-        p_bill = billing_col.count_documents({"status": "Pending"})
-        p_ins = insurance_col.count_documents({"status": "Pending"})
-        p_design = design_col.count_documents({"status": "Pending"})
-        p_ebook = ebook_col.count_documents({"status": "Pending"})
-
-        # 4. FETCH TODAY'S CHARGEBACKS (For the new Stats Panel)
-        start_time = get_shift_start_time()
-        end_time = start_time + timedelta(hours=10)
-        
-        cb_cursor = chargeback_col.find({"created_at": {"$gte": start_time, "$lte": end_time}})
-        cb_list = []
-        for d in cb_cursor:
+        # Fetch all chargebacks (sorted newest first)
+        cursor = twh_cb_col.find().sort("created_at", -1).limit(2000)
+        results = []
+        for d in cursor:
             d['_id'] = str(d['_id'])
+            # Normalize fields for the frontend
             d['Agent Name'] = d.get('agent')
-            d['dept'] = d.get('dept')
-            d['amount'] = d.get('amount')
-            cb_list.append(d)
-
-        return {
-            "billing": bill_data, 
-            "insurance": ins_data,
-            "design": design_data,
-            "ebook": ebook_data,
-            "chargebacks": cb_list,  # <--- NEW DATA FIELD
-            "stats_bill": {**stats_bill, "pending": p_bill}, 
-            "stats_ins": {**stats_ins, "pending": p_ins},
-            "stats_design": {**stats_design, "pending": p_design},
-            "stats_ebook": {**stats_ebook, "pending": p_ebook}
-        }
+            d['Charge'] = f"${d.get('amount', 0)}"
+            d['Timestamp'] = d.get('created_at').strftime("%Y-%m-%d %H:%M:%S") if d.get('created_at') else ""
+            results.append(d)
+            
+        return {"status": "success", "data": results}
     except Exception as e:
-        print(f"Manager Data Error: {e}")
-        return JSONResponse({"status": "error", "message": "Data sync failed"}, 500)
+        return {"status": "error", "message": str(e)}
