@@ -1208,10 +1208,10 @@ async function loadRecentChargebacks() {
 }
 
 /* =========================================
-   TWH CHARGEBACK MANAGER (STANDALONE)
+   TWH CHARGEBACK MANAGER (MANUAL DATE LOGIC)
    ========================================= */
 
-let twhCbData = []; // Store separate chargeback data
+let twhCbData = [];
 
 window.switchMainTab = function(tab) {
     const tabs = ['viewStats', 'viewPending', 'viewAnalysis', 'viewEdit', 'viewDaily', 'viewChargebacks'];
@@ -1235,7 +1235,7 @@ window.switchMainTab = function(tab) {
 
     if(tab === 'chargebacks') {
         navEl.classList.add('bg-red-600', 'text-white');
-        fetchChargebackData(); // Fetch the separate DB data
+        fetchChargebackData();
     } else {
         navEl.classList.add('bg-blue-600', 'text-white');
     }
@@ -1245,7 +1245,7 @@ window.switchMainTab = function(tab) {
     if(tab === 'daily') updateDepartmentTotals(); 
 };
 
-// 1. FETCH DATA (twh_chargebacks)
+// 1. FETCH DATA
 async function fetchChargebackData() {
     try {
         const res = await fetch('/api/manager/twh_chargebacks');
@@ -1258,7 +1258,7 @@ async function fetchChargebackData() {
     } catch(e) { console.error(e); }
 }
 
-// 2. SEARCH & MARK FUNCTION
+// 2. SEARCH & MARK (With Date Input)
 async function searchSaleToMark() {
     const dept = document.getElementById('cbSearchDept').value;
     const id = document.getElementById('cbSearchInput').value.trim();
@@ -1271,75 +1271,100 @@ async function searchSaleToMark() {
     
     if(json.status === 'success' || json.status === 'multiple') {
         const list = json.status === 'multiple' ? json.data : [json.data];
+        
+        // Get current local time in ISO format for the default value (YYYY-MM-DDTHH:MM)
+        const now = new Date();
+        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+        const defaultDate = now.toISOString().slice(0,16);
+
         body.innerHTML = list.map(d => {
              const recId = d['Record_ID'] || d['record_id'] || id;
              const amt = d['Charge'] || d['Charge Amount'] || '$0.00';
+             // Unique ID for the date input
+             const dateInputId = `cb_date_${recId}`;
+
              return `
-                <tr class="border-b border-slate-800">
+                <tr class="border-b border-slate-800 hover:bg-slate-800/50">
                     <td class="p-3 text-white font-bold">${d['Agent Name'] || d['Agent']}</td>
                     <td class="p-3 text-slate-400">${d['Name'] || d['Client']}</td>
                     <td class="p-3 text-green-400 font-mono">${amt}</td>
                     <td class="p-3">
-                        <button onclick="markAsCb('${recId}', '${dept}')" class="bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-1 rounded">MARK</button>
+                        <input type="datetime-local" id="${dateInputId}" value="${defaultDate}" 
+                               class="bg-slate-700 text-white text-xs p-1 rounded border border-slate-600 outline-none w-full">
+                    </td>
+                    <td class="p-3">
+                        <button onclick="markAsCb('${recId}', '${dept}', '${dateInputId}')" 
+                                class="bg-red-600 hover:bg-red-500 text-white text-xs px-4 py-2 rounded font-bold transition">
+                            COPY
+                        </button>
                     </td>
                 </tr>
              `;
         }).join('');
     } else {
-        body.innerHTML = '<tr><td colspan="4" class="p-3 text-center text-slate-500">Not Found</td></tr>';
+        body.innerHTML = '<tr><td colspan="5" class="p-3 text-center text-slate-500">Not Found</td></tr>';
     }
 }
 
-async function markAsCb(id, dept) {
-    if(!confirm("Copy to Chargeback Database?")) return;
+async function markAsCb(id, dept, dateInputId) {
+    const dateVal = document.getElementById(dateInputId).value;
+    
+    if(!dateVal) {
+        alert("⚠️ Please select a Date/Timestamp first.");
+        return;
+    }
+
+    if(!confirm("Copy to Chargeback Database? (Original will NOT be touched)")) return;
+
     const fd = new FormData();
     fd.append('record_id', id);
     fd.append('dept', dept);
+    fd.append('cb_date', dateVal); // Send the selected date
     
-    await fetch('/api/manager/mark_twh_chargeback', { method: 'POST', body: fd });
-    alert("Done");
-    document.getElementById('cbSearchResults').classList.add('hidden');
-    document.getElementById('cbSearchInput').value = '';
-    fetchChargebackData(); // Refresh list
+    try {
+        const res = await fetch('/api/manager/mark_twh_chargeback', { method: 'POST', body: fd });
+        const json = await res.json();
+        
+        if(json.status === 'success') {
+            alert("✅ Copied successfully.");
+            document.getElementById('cbSearchResults').classList.add('hidden');
+            document.getElementById('cbSearchInput').value = '';
+            fetchChargebackData();
+        } else {
+            alert("Error: " + json.message);
+        }
+    } catch(e) {
+        alert("Failed to connect");
+    }
 }
 
-// 3. RENDER ANALYSIS (The Viewer)
+// 3. RENDER ANALYSIS (Standard Logic + 8-6 Shift)
 function renderCbAnalysis() {
-    const dateVal = document.getElementById('cbFilterDate').value; // YYYY-MM-DD
+    const dStartVal = document.getElementById('cbDateStart').value;
+    const tStartVal = document.getElementById('cbTimeStart').value;
+    const dEndVal = document.getElementById('cbDateEnd').value;
+    const tEndVal = document.getElementById('cbTimeEnd').value;
     const agentVal = document.getElementById('cbFilterAgent').value;
     
-    // Shift Logic: 8PM previous day to 8PM this day is the window?
-    // User said "9-5 or 8-6 shift coded in".
-    // I will use a simplified 8PM start logic for "Today" based on the selected date.
-    
+    const dStart = new Date(`${dStartVal}T${tStartVal}`);
+    const dEnd = new Date(`${dEndVal}T${tEndVal}`);
+
     let total = 0;
     let count = 0;
     const tbody = document.getElementById('cbAnalysisBody');
 
-    // Create Date Boundaries for the selected "Shift Day"
-    // Shift Start: Selected Date at 8:00 PM (Actually, usually it's previous day 8pm)
-    // Let's stick to strict Day Matching for now unless specified otherwise,
-    // OR filter purely by the date string if that's easier.
-    
     const filtered = twhCbData.filter(row => {
-        // Simple Date String Match first
-        const rowDate = row.created_at ? row.created_at.split('T')[0] : '';
-        // Or if your timestamp format is diff, parse it.
-        // Assuming row['Timestamp'] is YYYY-MM-DD HH:MM:SS
         const t = new Date(row['Timestamp']);
-        
-        // Let's use the exact same shift offset as your Analysis Tab
-        // (Timestamp - 8 hours) to see which "Shift Day" it belongs to
-        const shiftDate = new Date(t.getTime() - (8 * 60 * 60 * 1000));
-        const shiftDateStr = shiftDate.toISOString().split('T')[0];
-        
-        if (shiftDateStr !== dateVal) return false;
+        // 8-6 Shift Logic (Subtract 6 hours)
+        const shiftDate = new Date(t.getTime() - 21600000); 
+
+        if (shiftDate < dStart || shiftDate > dEnd) return false;
         if (agentVal !== 'all' && row['Agent Name'] !== agentVal) return false;
         return true;
     });
 
     if(filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-slate-500">No chargebacks found for this shift.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-slate-500">No chargebacks found in this range.</td></tr>';
         document.getElementById('cbStatTotal').innerText = '$0.00';
         document.getElementById('cbStatCount').innerText = '0';
         return;
@@ -1352,7 +1377,7 @@ function renderCbAnalysis() {
         
         return `
             <tr class="border-b border-slate-700 hover:bg-slate-700/50">
-                <td class="p-3 text-slate-400 text-xs">${row.Timestamp}</td>
+                <td class="p-3 text-slate-400 text-xs font-mono">${row.Timestamp}</td>
                 <td class="p-3 font-bold text-white">${row['Agent Name']}</td>
                 <td class="p-3 text-slate-400 text-xs uppercase">${row.dept}</td>
                 <td class="p-3 text-slate-300">${row.client_name}</td>
