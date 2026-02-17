@@ -108,7 +108,7 @@ def get_worksheet(sheet_type):
     return None
 
 # --- CONSTANTS ---
-AGENTS_BILLING = ["Arham Kaleem", "Arham Ali", "Haziq", "Hasnain", "Daniyal"]
+AGENTS_BILLING = ["Arham Kaleem", "Arham Ali", "Haziq", "Hasnain"]
 AGENTS_INSURANCE = ["Saad"]
 AGENTS_DESIGN = ["Taha"]
 AGENTS_EBOOK = ["Huzaifa","Asad"]
@@ -742,10 +742,10 @@ async def get_history_totals():
         return {"status": "error", "message": str(e)}
 
 # ==========================================
-# TWH CHARGEBACK SYSTEM (STANDALONE)
+# TWH CHARGEBACK SYSTEM (STANDALONE WITH SHIFT LOGIC)
 # ==========================================
 
-# 1. New Collection
+# 1. New Separate Collection
 twh_cb_col = db["twh_chargebacks"]
 
 # 2. Endpoint to Mark (Copy to TWH_Chargebacks + Update Status)
@@ -762,21 +762,23 @@ async def mark_twh_chargeback(
         elif dept == 'design': col = design_col
         elif dept == 'ebook': col = ebook_col
 
-        # Find Record
+        # Find Record (Try ID string first, then ObjectId)
         sale = col.find_one({"record_id": record_id})
         if not sale:
-            # Try ObjectId fallback
             try: sale = col.find_one({"_id": ObjectId(record_id)})
             except: pass
             
         if not sale:
             return {"status": "error", "message": "Record not found"}
 
-        # COPY to twh_chargebacks (Simple Copy, No Penalty Logic)
+        # COPY to twh_chargebacks (Exact Copy, No Auto-Penalty)
         date_str, _, ts_obj = get_timestamp()
         
         # We store the exact amount of the sale
-        amount = float(sale.get('charge_amount', 0))
+        try:
+            amount = float(sale.get('charge_amount', 0))
+        except:
+            amount = 0.0
         
         cb_doc = {
             "original_record_id": str(sale.get('record_id', record_id)),
@@ -784,13 +786,13 @@ async def mark_twh_chargeback(
             "client_name": sale.get('client_name'),
             "amount": amount,
             "dept": dept,
-            "created_at": ts_obj, # Timestamp is NOW (for shift calculation)
+            "created_at": ts_obj, # Timestamp is NOW
             "date_str": date_str,
-            "original_date": sale.get('date_str') # Keep reference to old date
+            "original_date": sale.get('date_str')
         }
         twh_cb_col.insert_one(cb_doc)
 
-        # Update Original Status (Standard Practice)
+        # Update Original Status in Main DB (Standard Practice)
         col.update_one({"_id": sale["_id"]}, {"$set": {"status": "Charge Back"}})
 
         # Notify
@@ -804,7 +806,7 @@ async def mark_twh_chargeback(
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# 3. Endpoint to Get Chargeback Data (For the Analysis-Style Tab)
+# 3. Endpoint to Get Chargeback Data
 @app.get("/api/manager/twh_chargebacks")
 async def get_twh_chargebacks():
     try:
