@@ -1206,3 +1206,108 @@ async function loadRecentChargebacks() {
         } else { container.innerHTML = '<div class="text-slate-500 italic">No recent chargebacks.</div>'; }
     } catch(e) {}
 }
+
+/* =========================================
+   VISUAL CHARGEBACK LOGIC
+   ========================================= */
+
+window.switchMainTab = function(tab) {
+    const tabs = ['viewStats', 'viewPending', 'viewAnalysis', 'viewEdit', 'viewDaily', 'viewChargebacks'];
+    const navs = ['navStats', 'navPending', 'navAnalysis', 'navEdit', 'navDaily', 'navChargebacks'];
+
+    tabs.forEach(id => { const el = document.getElementById(id); if(el) el.classList.add('hidden'); });
+    navs.forEach(id => { 
+        const el = document.getElementById(id); 
+        if(el) {
+            el.classList.remove('bg-blue-600', 'bg-red-600', 'text-white'); 
+            el.classList.add('text-slate-400');
+            if(id === 'navChargebacks') el.classList.add('text-red-400');
+        }
+    });
+
+    const viewId = 'view' + tab.charAt(0).toUpperCase() + tab.slice(1);
+    const navId = 'nav' + tab.charAt(0).toUpperCase() + tab.slice(1);
+    
+    document.getElementById(viewId).classList.remove('hidden');
+    const navEl = document.getElementById(navId);
+    
+    if(tab === 'chargebacks') {
+        navEl.classList.add('bg-red-600', 'text-white');
+        loadChargebackTable();
+    } else {
+        navEl.classList.add('bg-blue-600', 'text-white');
+    }
+    
+    if(tab === 'pending') renderPendingCards();
+    if(tab === 'analysis') { updateAgentSelector(); renderAnalysis(); }
+    if(tab === 'daily') updateDepartmentTotals(); 
+};
+
+async function loadChargebackTable() {
+    const dept = document.getElementById('cb_filter_dept').value;
+    const agent = document.getElementById('cb_filter_agent').value;
+    const date = document.getElementById('cb_filter_date').value;
+    const tbody = document.getElementById('cb_table_body');
+
+    tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-slate-500">Loading...</td></tr>';
+
+    try {
+        const url = `/api/manager/search_sales?dept=${dept}&agent=${agent}&date_str=${date}`;
+        const res = await fetch(url);
+        const json = await res.json();
+
+        tbody.innerHTML = '';
+        
+        if(json.data && json.data.length > 0) {
+            json.data.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-red-900/10 transition";
+                
+                // Determine Amount
+                const amt = row.charge_amount || row['Charge Amount'] || 0;
+                
+                tr.innerHTML = `
+                    <td class="p-4 text-slate-300">${row.date_str || row.created_at}</td>
+                    <td class="p-4 font-bold text-white">${row.agent}</td>
+                    <td class="p-4 text-slate-400">${row.client_name || row['Name']}</td>
+                    <td class="p-4 font-mono text-green-400">$${amt}</td>
+                    <td class="p-4 text-center">
+                        <button onclick="executeMarkChargeback('${row.record_id}', '${dept}')" 
+                                class="bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white px-4 py-2 rounded border border-red-600/50 transition text-xs font-bold">
+                            MARK CB
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } else {
+            tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-slate-500">No records found matching filters.</td></tr>';
+        }
+    } catch(e) {
+        console.error(e);
+        tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-red-500">Error loading data.</td></tr>';
+    }
+}
+
+async function executeMarkChargeback(id, dept) {
+    if(!confirm("Are you sure you want to mark this as a Chargeback?\n\nThis will apply the penalty logic immediately.")) return;
+
+    const formData = new FormData();
+    formData.append('record_id', id);
+    formData.append('dept', dept);
+
+    try {
+        const res = await fetch('/api/manager/mark_chargeback', { method: 'POST', body: formData });
+        const json = await res.json();
+
+        if(json.status === 'success') {
+            alert(json.message);
+            loadChargebackTable(); // Refresh list to remove the item
+            fetchData(); // Refresh dashboard stats
+        } else {
+            alert("Error: " + json.message);
+        }
+    } catch(e) {
+        alert("Action Failed");
+    }
+}
