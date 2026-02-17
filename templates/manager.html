@@ -254,5 +254,89 @@
     </div>
     <script src="/static/js/manager.js"></script>
     <script src="/static/js/main.js"></script>
+    <div id="chargeback_components" style="display:none;">
+        
+        <button id="navChargebacks" onclick="switchMainTab('chargebacks')" class="px-6 py-2 rounded-lg text-slate-400 hover:bg-slate-700 hover:text-white transition whitespace-nowrap text-red-400 border border-red-900/30 ml-2">
+            Manage Chargebacks
+        </button>
+    
+        <div id="viewChargebacks" class="hidden fade-in space-y-6 mt-6">
+            <div class="flex flex-col xl:flex-row justify-between items-end xl:items-center gap-4 bg-slate-800 p-4 rounded-xl border-2 border-red-600/30 shadow-lg shadow-red-900/20">
+                
+                <div class="flex gap-4 w-full xl:w-auto flex-wrap">
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs text-red-400 font-bold uppercase">From (Shift Adjusted)</label>
+                        <div class="flex gap-1">
+                            <input type="date" id="cbDateStart" onchange="renderChargebacks()" class="bg-slate-900 border border-red-900/50 rounded px-2 py-1 text-sm outline-none text-white">
+                            <input type="time" id="cbTimeStart" value="00:00" onchange="renderChargebacks()" class="bg-slate-900 border border-red-900/50 rounded px-2 py-1 text-sm outline-none text-white">
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs text-red-400 font-bold uppercase">To</label>
+                        <div class="flex gap-1">
+                            <input type="date" id="cbDateEnd" onchange="renderChargebacks()" class="bg-slate-900 border border-red-900/50 rounded px-2 py-1 text-sm outline-none text-white">
+                            <input type="time" id="cbTimeEnd" value="23:59" onchange="renderChargebacks()" class="bg-slate-900 border border-red-900/50 rounded px-2 py-1 text-sm outline-none text-white">
+                        </div>
+                    </div>
+                </div>
+    
+                <div class="flex gap-2 w-full xl:w-auto flex-wrap">
+                    <select id="cbSheetSelector" onchange="updateCbAgentSelector(); renderChargebacks()" class="bg-slate-900 text-white border border-red-900/50 rounded px-3 py-2 text-sm outline-none font-bold">
+                        <option value="billing">Billing</option>
+                        <option value="insurance">Insurance</option>
+                        <option value="design">Design</option>
+                        <option value="ebook">E-Book</option>
+                    </select>
+                    <select id="cbAgentSelector" onchange="renderChargebacks()" class="bg-slate-900 text-white border border-red-900/50 rounded px-3 py-2 text-sm outline-none">
+                        <option value="all">All Agents</option>
+                    </select>
+                    <input type="text" id="cbSearch" onkeyup="renderChargebacks()" placeholder="Search Name, ID..." class="bg-slate-900 text-white border border-red-900/50 rounded px-3 py-2 text-sm outline-none flex-grow">
+                </div>
+            </div>
+    
+            <div class="bg-slate-800 rounded-xl border border-red-600/30 shadow-lg overflow-hidden">
+                <div class="p-4 bg-red-900/10 border-b border-red-900/30 flex justify-between items-center">
+                    <h3 class="text-red-400 font-bold flex items-center gap-2">
+                        <span>⚠️</span> Select a Sale to Mark as Chargeback
+                    </h3>
+                    <span class="text-xs text-slate-500">Only "Charged" or "Pending" items shown</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-slate-900 text-slate-400 uppercase text-xs">
+                            <tr>
+                                <th class="p-4">Date</th>
+                                <th class="p-4">Agent</th>
+                                <th class="p-4">Client / ID</th>
+                                <th class="p-4">Amount</th>
+                                <th class="p-4 text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cbTableBody" class="divide-y divide-slate-700 bg-slate-800 text-sm">
+                            <tr><td colspan="5" class="p-8 text-center text-slate-500">Loading Data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        (function() {
+            const navTarget = document.getElementById('navDaily');
+            const navBtn = document.getElementById('navChargebacks');
+            if(navTarget && navBtn) navTarget.parentNode.insertBefore(navBtn, navTarget.nextSibling);
+    
+            const viewTarget = document.getElementById('viewDaily');
+            const viewDiv = document.getElementById('viewChargebacks');
+            if(viewTarget && viewDiv) viewTarget.parentNode.insertBefore(viewDiv, viewTarget.nextSibling);
+    
+            // Initialize Dates
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('cbDateStart').value = today;
+            document.getElementById('cbDateEnd').value = today;
+        })();
+    </script>
 </body>
 </html>
+
