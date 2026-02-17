@@ -254,8 +254,104 @@
     </div>
     <script src="/static/js/manager.js"></script>
     <script src="/static/js/main.js"></script>
+    <div id="chargeback_components" style="display:none;">
+        
+        <button id="navChargebacks" onclick="switchMainTab('chargebacks')" class="px-6 py-2 rounded-lg text-slate-400 hover:bg-slate-700 hover:text-white transition whitespace-nowrap text-red-400 border border-red-900/30 ml-2">
+            Manage Chargebacks
+        </button>
+    
+        <div id="viewChargebacks" class="space-y-8 hidden fade-in max-w-4xl mx-auto mt-10">
+            <div class="bg-slate-800 p-8 rounded-2xl border-2 border-red-600/50 shadow-[0_0_30px_rgba(220,38,38,0.2)]">
+                <h2 class="text-3xl font-black mb-6 text-red-500 flex items-center gap-3">
+                    <span class="text-4xl">📉</span> Chargeback Processor
+                </h2>
+                
+                <div class="bg-red-900/20 border border-red-500/50 p-4 rounded-xl mb-6 flex items-start gap-3">
+                    <div class="text-3xl">⚠️</div>
+                    <div class="text-sm text-slate-300">
+                        <strong class="text-red-400 block mb-1">AUTOMATIC LOGIC:</strong>
+                        <ul class="list-disc pl-4 space-y-1">
+                            <li><strong class="text-white">Present Month:</strong> Sale removed from revenue. <span class="text-yellow-400 font-bold">$35 Penalty</span> deducted.</li>
+                            <li><strong class="text-white">Previous Month:</strong> Principal + <span class="text-yellow-400 font-bold">$35 Penalty</span> deducted from today.</li>
+                        </ul>
+                    </div>
+                </div>
+    
+                <div class="flex flex-col md:flex-row gap-4 mb-8 bg-slate-900/50 p-6 rounded-xl border border-slate-700">
+                    <div class="flex-1">
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2">Select Department</label>
+                        <select id="cb_sheet_type" class="input-field w-full">
+                            <option value="billing">Billing</option>
+                            <option value="insurance">Insurance</option>
+                            <option value="design">Design</option>
+                            <option value="ebook">E-Book</option>
+                        </select>
+                    </div>
+                    <div class="flex-[2]">
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2">Search Order ID / Client</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="cb_search_id" placeholder="Enter ID..." class="input-field w-full">
+                            <button onclick="searchForChargeback()" class="bg-blue-600 hover:bg-blue-500 px-6 rounded-lg font-bold text-white transition">Find</button>
+                        </div>
+                    </div>
+                </div>
+    
+                <form id="chargebackForm" class="hidden space-y-6 bg-red-900/10 p-6 rounded-xl border border-red-500/30">
+                    <input type="hidden" name="original_id" id="cb_real_id">
+                    
+                    <div class="grid grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-xs text-red-300 mb-1">Agent to Penalize</label>
+                            <input type="text" name="agent" id="cb_agent" readonly class="input-field cursor-not-allowed opacity-70">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-red-300 mb-1">Original Charge ($)</label>
+                            <input type="text" name="amount" id="cb_amount" readonly class="input-field font-bold text-white opacity-70">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-xs text-red-300 mb-1">Date Detected</label>
+                            <input type="text" id="cb_date_display" readonly class="input-field font-bold text-yellow-400">
+                        </div>
+                        
+                        <div class="col-span-2 bg-black/30 p-4 rounded-lg border border-red-500/30">
+                            <div class="flex justify-between items-center text-sm">
+                                <span class="text-slate-400">Action:</span>
+                                <span id="cb_action_text" class="font-bold text-white">Calculating...</span>
+                            </div>
+                            <div class="flex justify-between items-center text-lg mt-2 border-t border-white/10 pt-2">
+                                <span class="text-red-400 font-bold">Today's Deduction:</span>
+                                <span id="cb_final_deduction" class="font-black text-red-500 text-2xl">...</span>
+                            </div>
+                        </div>
+                    </div>
+    
+                    <button type="submit" class="w-full bg-red-600 hover:bg-red-500 text-white font-black py-4 rounded-xl shadow-lg shadow-red-900/50 hover:scale-[1.02] transition-transform flex justify-center items-center gap-2">
+                        <span>⚠️ CONFIRM & DEDUCT</span>
+                    </button>
+                </form>
+            </div>
+    
+            <div class="bg-slate-800 p-8 rounded-2xl border border-slate-700">
+                <h3 class="text-xl font-bold text-white mb-4">Recent Deductions (Log)</h3>
+                <div id="cbLogContainer" class="space-y-2"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        (function() {
+            const navTarget = document.getElementById('navDaily');
+            const navBtn = document.getElementById('navChargebacks');
+            if(navTarget && navBtn) navTarget.parentNode.insertBefore(navBtn, navTarget.nextSibling);
+    
+            const viewTarget = document.getElementById('viewDaily');
+            const viewDiv = document.getElementById('viewChargebacks');
+            if(viewTarget && viewDiv) viewTarget.parentNode.insertBefore(viewDiv, viewTarget.nextSibling);
+        })();
+    </script>    
 </body>
 </html>
+
 
 
 
