@@ -257,77 +257,71 @@
     <div id="chargeback_components" style="display:none;">
         
         <button id="navChargebacks" onclick="switchMainTab('chargebacks')" class="px-6 py-2 rounded-lg text-slate-400 hover:bg-slate-700 hover:text-white transition whitespace-nowrap text-red-400 border border-red-900/30 ml-2">
-            Manage Chargebacks
+            Chargebacks
         </button>
     
-        <div id="viewChargebacks" class="hidden fade-in space-y-6 mt-6">
+        <div id="viewChargebacks" class="hidden fade-in space-y-8 mt-6">
             
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div class="bg-slate-800 p-4 rounded-xl border border-red-600/30 shadow-lg shadow-red-900/10">
-                    <div class="text-xs text-red-400 uppercase font-bold mb-1">Total Deducted (Today)</div>
-                    <div id="cbTotal" class="text-3xl font-black text-red-500">$0.00</div>
-                </div>
-                <div class="bg-slate-800 p-4 rounded-xl border border-red-600/30 shadow-lg shadow-red-900/10">
-                    <div class="text-xs text-red-400 uppercase font-bold mb-1">Count</div>
-                    <div id="cbCount" class="text-3xl font-bold text-white">0</div>
-                </div>
-                 <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
-                    <div class="text-xs text-slate-400 uppercase font-bold mb-1">Current Filter</div>
-                    <div id="cbFilterDisplay" class="text-lg font-bold text-blue-400">All Agents</div>
-                </div>
-            </div>
-    
-            <div class="flex flex-col xl:flex-row justify-between items-end xl:items-center gap-4 bg-slate-800 p-4 rounded-xl border border-slate-700">
-                <div class="flex gap-4 w-full xl:w-auto flex-wrap">
-                    <div class="flex flex-col gap-1">
-                        <label class="text-xs text-slate-500 font-bold uppercase">From (Shift Adjusted)</label>
-                        <div class="flex gap-1">
-                            <input type="date" id="cbDateStart" onchange="renderChargebacks()" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none text-white">
-                            <input type="time" id="cbTimeStart" value="00:00" onchange="renderChargebacks()" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none text-white">
-                        </div>
-                    </div>
-                    <div class="flex flex-col gap-1">
-                        <label class="text-xs text-slate-500 font-bold uppercase">To</label>
-                        <div class="flex gap-1">
-                            <input type="date" id="cbDateEnd" onchange="renderChargebacks()" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none text-white">
-                            <input type="time" id="cbTimeEnd" value="23:59" onchange="renderChargebacks()" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none text-white">
-                        </div>
-                    </div>
-                </div>
-    
-                <div class="flex gap-2 w-full xl:w-auto flex-wrap">
-                    <select id="cbSheetSelector" onchange="updateCbAgentSelector(); renderChargebacks()" class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 text-sm outline-none font-bold">
+            <div class="bg-slate-800 p-6 rounded-xl border border-red-600/30 shadow-lg">
+                <h3 class="text-red-400 font-bold mb-4 flex items-center gap-2">
+                    <span>🔍</span> Search & Mark New Chargeback
+                </h3>
+                <div class="flex gap-2">
+                    <select id="cbSearchDept" class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 outline-none">
                         <option value="billing">Billing</option>
                         <option value="insurance">Insurance</option>
                         <option value="design">Design</option>
                         <option value="ebook">E-Book</option>
                     </select>
-                    <select id="cbAgentSelector" onchange="renderChargebacks()" class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 text-sm outline-none">
-                        <option value="all">All Agents</option>
-                    </select>
-                    <input type="text" id="cbSearch" onkeyup="renderChargebacks()" placeholder="Search Name, ID..." class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 text-sm outline-none flex-grow">
+                    <input type="text" id="cbSearchInput" placeholder="Enter Order ID..." class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 w-full outline-none">
+                    <button onclick="searchSaleToMark()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 rounded shadow-lg">Find</button>
+                </div>
+                <div id="cbSearchResults" class="mt-4 hidden">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-slate-900 text-slate-400 text-xs uppercase">
+                            <tr><th class="p-3">Agent</th><th class="p-3">Client</th><th class="p-3">Amount</th><th class="p-3">Action</th></tr>
+                        </thead>
+                        <tbody id="cbSearchBody" class="bg-slate-900/30 text-sm"></tbody>
+                    </table>
                 </div>
             </div>
     
-            <div class="bg-slate-800 rounded-xl border border-red-600/30 shadow-lg overflow-hidden">
-                <div class="p-4 bg-red-900/10 border-b border-red-900/30 flex justify-between items-center">
-                    <h3 class="text-red-400 font-bold flex items-center gap-2">
-                        <span>⚠️</span> Select Sale to Chargeback
-                    </h3>
+            <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-2xl">
+                <div class="flex justify-between items-center mb-6 border-b border-slate-700 pb-4">
+                    <h2 class="text-2xl font-bold text-white">Chargeback Database</h2>
+                    
+                    <div class="flex gap-2 flex-wrap justify-end">
+                        <input type="date" id="cbFilterDate" onchange="renderCbAnalysis()" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm text-white">
+                        <select id="cbFilterAgent" onchange="renderCbAnalysis()" class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-1 text-sm">
+                            <option value="all">All Agents</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
+    
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-slate-900/50 p-4 rounded-lg border border-red-500/30">
+                        <div class="text-xs text-red-400 uppercase font-bold">Total CB Amount</div>
+                        <div id="cbStatTotal" class="text-2xl font-black text-red-500">$0.00</div>
+                    </div>
+                    <div class="bg-slate-900/50 p-4 rounded-lg border border-slate-700">
+                        <div class="text-xs text-slate-400 uppercase font-bold">Count</div>
+                        <div id="cbStatCount" class="text-2xl font-bold text-white">0</div>
+                    </div>
+                </div>
+    
+                <div class="overflow-x-auto rounded-lg border border-slate-700">
+                    <table class="w-full text-left">
                         <thead class="bg-slate-900 text-slate-400 uppercase text-xs">
                             <tr>
-                                <th class="p-4">Date</th>
-                                <th class="p-4">Agent</th>
-                                <th class="p-4">Client / ID</th>
-                                <th class="p-4">Amount</th>
-                                <th class="p-4 text-center">Action</th>
+                                <th class="p-3">Timestamp</th>
+                                <th class="p-3">Agent</th>
+                                <th class="p-3">Dept</th>
+                                <th class="p-3">Client</th>
+                                <th class="p-3 text-right">Amount</th>
                             </tr>
                         </thead>
-                        <tbody id="cbTableBody" class="divide-y divide-slate-700 bg-slate-800 text-sm">
-                            <tr><td colspan="5" class="p-8 text-center text-slate-500">Loading Data...</td></tr>
+                        <tbody id="cbAnalysisBody" class="divide-y divide-slate-700 bg-slate-800/50 text-sm">
+                            <tr><td colspan="5" class="p-8 text-center text-slate-500">Loading...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -345,12 +339,9 @@
             const viewDiv = document.getElementById('viewChargebacks');
             if(viewTarget && viewDiv) viewTarget.parentNode.insertBefore(viewDiv, viewTarget.nextSibling);
     
-            const today = new Date().toISOString().split('T')[0];
-            document.getElementById('cbDateStart').value = today;
-            document.getElementById('cbDateEnd').value = today;
+            // Set Default Date
+            document.getElementById('cbFilterDate').value = new Date().toISOString().split('T')[0];
         })();
     </script>
 </body>
 </html>
-
-
