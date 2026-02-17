@@ -809,170 +809,73 @@ async def generate_message(request: AIRequest):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+      
 # ==========================================
-# CHARGEBACK MANAGER (ANALYSIS STYLE)
+# UPDATED DATA FETCHER (INCLUDES CHARGEBACKS)
 # ==========================================
 
-# 1. Initialize Collection
-chargeback_col = db["chargebacks"]
-
-# 2. Overwrite Stats Calculation 
-# (Strictly excludes 'Charge Back' status from Revenue & subtracts Penalties)
-def calculate_mongo_stats(collection, dept_type):
+@app.get("/api/manager/data")
+async def get_manager_data(token: str):
     try:
+        def clean_docs(cursor):
+            docs = []
+            for d in cursor:
+                d['_id'] = str(d['_id'])
+                d['Agent Name'] = d.get('agent')
+                d['Client Name'] = d.get('client_name')
+                d['Name'] = d.get('client_name')
+                d['Charge'] = d.get('charge_str')
+                d['Status'] = d.get('status')
+                d['Timestamp'] = d.get('timestamp_str')
+                d['Record_ID'] = d.get('record_id')
+                d['LLC'] = d.get('llc')
+                d['Provider'] = d.get('provider')
+                d['Service'] = d.get('provider', '')
+                docs.append(d)
+            return docs
+
+        # 1. Fetch Standard Data
+        bill_data = clean_docs(billing_col.find().sort("created_at", -1).limit(1000))
+        ins_data = clean_docs(insurance_col.find().sort("created_at", -1).limit(1000))
+        design_data = clean_docs(design_col.find().sort("created_at", -1).limit(1000))
+        ebook_data = clean_docs(ebook_col.find().sort("created_at", -1).limit(1000))
+        
+        # 2. Fetch Stats
+        stats_bill = calculate_mongo_stats(billing_col, 'billing')
+        stats_ins = calculate_mongo_stats(insurance_col, 'insurance')
+        stats_design = calculate_mongo_stats(design_col, 'design')
+        stats_ebook = calculate_mongo_stats(ebook_col, 'ebook')
+        
+        # 3. Fetch Pending Counts
+        p_bill = billing_col.count_documents({"status": "Pending"})
+        p_ins = insurance_col.count_documents({"status": "Pending"})
+        p_design = design_col.count_documents({"status": "Pending"})
+        p_ebook = ebook_col.count_documents({"status": "Pending"})
+
+        # 4. FETCH TODAY'S CHARGEBACKS (For the new Stats Panel)
         start_time = get_shift_start_time()
         end_time = start_time + timedelta(hours=10)
         
-        # A. Calculate Positive Revenue (Exclude Charge Backs)
-        if dept_type in ['billing', 'insurance']:
-            status_filter = {"status": "Charged"}
-        else:
-            status_filter = {"status": {"$ne": "Charge Back"}} 
-
-        match_query = {
-            "created_at": {"$gte": start_time, "$lte": end_time},
-            **status_filter
-        }
-
-        pipeline = [
-            {"$match": match_query},
-            {"$group": {"_id": "$agent", "total": {"$sum": "$charge_amount"}}}
-        ]
-        results = list(collection.aggregate(pipeline))
-        
-        # B. Calculate Negative Chargebacks (The Deductions)
-        # We query the chargeback_col for records created TODAY (Shift Window)
-        cb_query = {
-            "created_at": {"$gte": start_time, "$lte": end_time},
-            "dept": dept_type
-        }
-        cb_pipeline = [
-            {"$match": cb_query},
-            {"$group": {"_id": "$agent", "total": {"$sum": "$amount"}}}
-        ]
-        cb_results = list(chargeback_col.aggregate(cb_pipeline))
-
-        # C. Merge & Calculate Totals
-        target_agents = []
-        if dept_type == 'billing': target_agents = AGENTS_BILLING
-        elif dept_type == 'insurance': target_agents = AGENTS_INSURANCE
-        elif dept_type == 'design': target_agents = AGENTS_DESIGN
-        elif dept_type == 'ebook': target_agents = AGENTS_EBOOK
-        
-        # Initialize with 0.0
-        breakdown = {agent: 0.0 for agent in target_agents}
-        
-        # Add Revenue (Positive)
-        total_revenue = 0
-        for r in results:
-            breakdown[r["_id"]] = breakdown.get(r["_id"], 0) + r["total"]
-            total_revenue += r["total"]
-
-        # Subtract Chargebacks (Negative)
-        total_cb = 0
-        for r in cb_results:
-            agent = r["_id"]
-            amount = r["total"]
-            
-            # If agent exists in list, subtract. If not, add them (negative).
-            breakdown[agent] = breakdown.get(agent, 0) - amount
-            total_cb += amount
-
-        final_total = total_revenue - total_cb
+        cb_cursor = chargeback_col.find({"created_at": {"$gte": start_time, "$lte": end_time}})
+        cb_list = []
+        for d in cb_cursor:
+            d['_id'] = str(d['_id'])
+            d['Agent Name'] = d.get('agent')
+            d['dept'] = d.get('dept')
+            d['amount'] = d.get('amount')
+            cb_list.append(d)
 
         return {
-            "total": round(final_total, 2),
-            "breakdown": breakdown,
-            "today": round(final_total, 2), 
-            "night": round(final_total, 2)
+            "billing": bill_data, 
+            "insurance": ins_data,
+            "design": design_data,
+            "ebook": ebook_data,
+            "chargebacks": cb_list,  # <--- NEW DATA FIELD
+            "stats_bill": {**stats_bill, "pending": p_bill}, 
+            "stats_ins": {**stats_ins, "pending": p_ins},
+            "stats_design": {**stats_design, "pending": p_design},
+            "stats_ebook": {**stats_ebook, "pending": p_ebook}
         }
-
     except Exception as e:
-        print(f"Stats Error ({dept_type}): {e}")
-        return {"total": 0, "breakdown": {}, "today": 0, "night": 0}
-
-# 3. Chargeback Action Endpoint
-@app.post("/api/manager/mark_chargeback")
-async def mark_chargeback(
-    record_id: str = Form(...),
-    dept: str = Form(...)
-):
-    try:
-        # Select Collection
-        col = None
-        if dept == 'billing': col = billing_col
-        elif dept == 'insurance': col = insurance_col
-        elif dept == 'design': col = design_col
-        elif dept == 'ebook': col = ebook_col
-
-        # Get Original Record
-        # Try finding by ID string first, then ObjectId if needed
-        sale = col.find_one({"record_id": record_id})
-        if not sale:
-            try:
-                sale = col.find_one({"_id": ObjectId(record_id)})
-            except:
-                pass
-        
-        if not sale:
-            return {"status": "error", "message": "Record not found"}
-
-        # Calculate Deduction Logic
-        now = datetime.now(TZ_KARACHI)
-        
-        # Get Original Date (handle string or datetime object)
-        orig_date = sale.get('created_at', now)
-        if isinstance(orig_date, str):
-            try:
-                orig_date = datetime.strptime(orig_date, "%Y-%m-%d %H:%M:%S")
-            except:
-                orig_date = now
-
-        is_current_month = (orig_date.month == now.month and orig_date.year == now.year)
-
-        amount = float(sale.get('charge_amount', 0))
-        penalty = 35.0
-        deduction = 0.0
-        note = ""
-
-        if is_current_month:
-            # SCENARIO 1: CURRENT MONTH
-            # Sale is removed from revenue by status change.
-            # We only deduct the $35 penalty in the negative register.
-            deduction = penalty
-            note = f"Present Month: Sale Removed. Penalty (-$35) Applied."
-        else:
-            # SCENARIO 2: PREVIOUS MONTH
-            # Sale was already paid out. We deduct (Sale + $35) from today.
-            deduction = amount + penalty
-            note = f"Previous Month: Sale (-${amount}) + Penalty (-$35) Deducted."
-
-        # 1. Create Chargeback Record (The Negative Entry)
-        date_str, _, ts_obj = get_timestamp()
-        
-        cb_doc = {
-            "original_record_id": str(sale.get('record_id', record_id)),
-            "agent": sale.get('agent'),
-            "client_name": sale.get('client_name'),
-            "amount": deduction,
-            "dept": dept,
-            "note": note,
-            "created_at": ts_obj,
-            "date_str": date_str
-        }
-        chargeback_col.insert_one(cb_doc)
-
-        # 2. Update Original Status to 'Charge Back'
-        col.update_one({"_id": sale["_id"]}, {"$set": {"status": "Charge Back"}})
-
-        # 3. Notify
-        pusher_client.trigger('techware-channel', 'status-update', {
-            'id': record_id, 'status': 'Charge Back', 'type': dept,
-            'agent': sale.get('agent'), 'message': f"⚠️ {note}"
-        })
-
-        return {"status": "success", "message": note}
-
-    except Exception as e:
-        print(f"CB Error: {e}")
-        return {"status": "error", "message": str(e)}
+        print(f"Manager Data Error: {e}")
+        return JSONResponse({"status": "error", "message": "Data sync failed"}, 500)
