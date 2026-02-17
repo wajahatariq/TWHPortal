@@ -1208,8 +1208,13 @@ async function loadRecentChargebacks() {
 }
 
 /* =========================================
-   CHARGEBACK MANAGER (ANALYSIS LOGIC)
+   CHARGEBACK MANAGER (WITH LIVE STATS)
    ========================================= */
+
+// 1. Update allData structure
+if(typeof allData !== 'undefined') {
+    allData.chargebacks = []; // Initialize
+}
 
 window.switchMainTab = function(tab) {
     const tabs = ['viewStats', 'viewPending', 'viewAnalysis', 'viewEdit', 'viewDaily', 'viewChargebacks'];
@@ -1244,11 +1249,10 @@ window.switchMainTab = function(tab) {
     if(tab === 'daily') updateDepartmentTotals(); 
 };
 
-// 1. DYNAMIC AGENT SELECTOR (Exactly like Analysis)
+// 2. DYNAMIC AGENT SELECTOR
 function updateCbAgentSelector() {
     const type = document.getElementById('cbSheetSelector').value;
     const data = allData[type] || [];
-    // Extract Unique Agents
     const agents = [...new Set(data.map(item => item['Agent Name'] || item['agent']))].filter(Boolean).sort();
     
     const selector = document.getElementById('cbAgentSelector');
@@ -1261,40 +1265,52 @@ function updateCbAgentSelector() {
     });
 }
 
-// 2. RENDER TABLE (Logic copied from renderAnalysis with Shift Adjustment)
+// 3. RENDER FUNCTION (Updates Table AND Stats)
 function renderChargebacks() {
     const type = document.getElementById('cbSheetSelector').value;
     const agentFilter = document.getElementById('cbAgentSelector').value;
     const search = document.getElementById('cbSearch').value.toLowerCase();
     
-    // Date Logic
-    const dateStartVal = document.getElementById('cbDateStart').value;
-    const timeStartVal = document.getElementById('cbTimeStart').value;
-    const dateEndVal = document.getElementById('cbDateEnd').value;
-    const timeEndVal = document.getElementById('cbTimeEnd').value;
+    const dStart = new Date(`${document.getElementById('cbDateStart').value}T${document.getElementById('cbTimeStart').value}`);
+    const dEnd = new Date(`${document.getElementById('cbDateEnd').value}T${document.getElementById('cbTimeEnd').value}`);
 
-    let dStart = new Date(`${dateStartVal}T${timeStartVal}`);
-    let dEnd = new Date(`${dateEndVal}T${timeEndVal}`);
+    // --- PART A: CALCULATE STATS (The "Chargeback Amount" you asked for) ---
+    // We look at the separate 'chargebacks' list which contains processed deductions
+    const cbData = allData.chargebacks || [];
+    let totalDeduction = 0;
+    let countDeduction = 0;
 
-    const data = allData[type] || [];
+    cbData.forEach(cb => {
+        // Filter Stats by Type and Agent
+        if(cb.dept !== type) return;
+        if(agentFilter !== 'all' && cb['Agent Name'] !== agentFilter) return;
+        
+        // Sum it up
+        totalDeduction += (cb.amount || 0);
+        countDeduction++;
+    });
+
+    // Update Stats DOM
+    document.getElementById('cbTotal').innerText = '$' + totalDeduction.toLocaleString('en-US', {minimumFractionDigits: 2});
+    document.getElementById('cbCount').innerText = countDeduction;
+    document.getElementById('cbFilterDisplay').innerText = agentFilter === 'all' ? 'All Agents' : agentFilter;
+
+
+    // --- PART B: RENDER WORK TABLE (Sales to be marked) ---
+    const salesData = allData[type] || [];
     const tbody = document.getElementById('cbTableBody');
 
-    // Filter Logic
-    const filtered = data.filter(row => {
-        // A. Filter out items that are ALREADY Chargebacks
-        if(row['Status'] === 'Charge Back') return false;
+    const filtered = salesData.filter(row => {
+        if(row['Status'] === 'Charge Back') return false; // Hide already marked
 
-        // B. Date Shift Logic (Subtract 8 Hours to match Analysis)
         const t = new Date(row['Timestamp']);
-        const shiftDate = new Date(t.getTime() - (8 * 60 * 60 * 1000)); // 8 hours in ms
+        const shiftDate = new Date(t.getTime() - (8 * 60 * 60 * 1000)); // Shift Adjust
 
         if(shiftDate < dStart || shiftDate > dEnd) return false;
 
-        // C. Agent Filter
         const rowAgent = row['Agent Name'] || row['agent'];
         if(agentFilter !== 'all' && rowAgent !== agentFilter) return false;
 
-        // D. Search Filter
         return JSON.stringify(row).toLowerCase().includes(search);
     });
 
@@ -1330,9 +1346,8 @@ function renderChargebacks() {
     }).join('');
 }
 
-// 3. EXECUTE ACTION (With $35 Penalty Logic)
 async function executeMarkChargeback(id, dept) {
-    if(!confirm(`⚠️ CONFIRM CHARGEBACK?\n\nThis will:\n1. Change status to 'Charge Back'.\n2. Deduct the $35 PENALTY from the agent.\n3. Deduct the principal (if from previous month).\n\nProceed?`)) return;
+    if(!confirm(`⚠️ CONFIRM CHARGEBACK?\n\nIncludes $35 Penalty.\nLogic will auto-detect Present/Previous month.\n\nProceed?`)) return;
 
     const formData = new FormData();
     formData.append('record_id', id);
@@ -1344,8 +1359,7 @@ async function executeMarkChargeback(id, dept) {
 
         if(json.status === 'success') {
             alert("SUCCESS: " + json.message);
-            // Refresh Data to update stats and remove item from list
-            fetchData(); 
+            fetchData(); // This will refresh allData and re-run renderChargebacks automatically
         } else {
             alert("Error: " + json.message);
         }
