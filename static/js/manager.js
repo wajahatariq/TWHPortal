@@ -1208,13 +1208,10 @@ async function loadRecentChargebacks() {
 }
 
 /* =========================================
-   CHARGEBACK MANAGER (WITH LIVE STATS)
+   TWH CHARGEBACK MANAGER (STANDALONE)
    ========================================= */
 
-// 1. Update allData structure
-if(typeof allData !== 'undefined') {
-    allData.chargebacks = []; // Initialize
-}
+let twhCbData = []; // Store separate chargeback data
 
 window.switchMainTab = function(tab) {
     const tabs = ['viewStats', 'viewPending', 'viewAnalysis', 'viewEdit', 'viewDaily', 'viewChargebacks'];
@@ -1238,8 +1235,7 @@ window.switchMainTab = function(tab) {
 
     if(tab === 'chargebacks') {
         navEl.classList.add('bg-red-600', 'text-white');
-        updateCbAgentSelector();
-        renderChargebacks();
+        fetchChargebackData(); // Fetch the separate DB data
     } else {
         navEl.classList.add('bg-blue-600', 'text-white');
     }
@@ -1249,121 +1245,137 @@ window.switchMainTab = function(tab) {
     if(tab === 'daily') updateDepartmentTotals(); 
 };
 
-// 2. DYNAMIC AGENT SELECTOR
-function updateCbAgentSelector() {
-    const type = document.getElementById('cbSheetSelector').value;
-    const data = allData[type] || [];
-    const agents = [...new Set(data.map(item => item['Agent Name'] || item['agent']))].filter(Boolean).sort();
-    
-    const selector = document.getElementById('cbAgentSelector');
-    selector.innerHTML = '<option value="all">All Agents</option>';
-    agents.forEach(agent => { 
-        const opt = document.createElement('option'); 
-        opt.value = agent; 
-        opt.innerText = agent; 
-        selector.appendChild(opt); 
-    });
+// 1. FETCH DATA (twh_chargebacks)
+async function fetchChargebackData() {
+    try {
+        const res = await fetch('/api/manager/twh_chargebacks');
+        const json = await res.json();
+        if(json.status === 'success') {
+            twhCbData = json.data;
+            updateCbFilterAgents();
+            renderCbAnalysis();
+        }
+    } catch(e) { console.error(e); }
 }
 
-// 3. RENDER FUNCTION (Updates Table AND Stats)
-function renderChargebacks() {
-    const type = document.getElementById('cbSheetSelector').value;
-    const agentFilter = document.getElementById('cbAgentSelector').value;
-    const search = document.getElementById('cbSearch').value.toLowerCase();
+// 2. SEARCH & MARK FUNCTION
+async function searchSaleToMark() {
+    const dept = document.getElementById('cbSearchDept').value;
+    const id = document.getElementById('cbSearchInput').value.trim();
+    if(!id) return alert("Enter ID");
+
+    const res = await fetch(`/api/get-lead?type=${dept}&id=${id}`);
+    const json = await res.json();
+    const body = document.getElementById('cbSearchBody');
+    document.getElementById('cbSearchResults').classList.remove('hidden');
     
-    const dStart = new Date(`${document.getElementById('cbDateStart').value}T${document.getElementById('cbTimeStart').value}`);
-    const dEnd = new Date(`${document.getElementById('cbDateEnd').value}T${document.getElementById('cbTimeEnd').value}`);
+    if(json.status === 'success' || json.status === 'multiple') {
+        const list = json.status === 'multiple' ? json.data : [json.data];
+        body.innerHTML = list.map(d => {
+             const recId = d['Record_ID'] || d['record_id'] || id;
+             const amt = d['Charge'] || d['Charge Amount'] || '$0.00';
+             return `
+                <tr class="border-b border-slate-800">
+                    <td class="p-3 text-white font-bold">${d['Agent Name'] || d['Agent']}</td>
+                    <td class="p-3 text-slate-400">${d['Name'] || d['Client']}</td>
+                    <td class="p-3 text-green-400 font-mono">${amt}</td>
+                    <td class="p-3">
+                        <button onclick="markAsCb('${recId}', '${dept}')" class="bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-1 rounded">MARK</button>
+                    </td>
+                </tr>
+             `;
+        }).join('');
+    } else {
+        body.innerHTML = '<tr><td colspan="4" class="p-3 text-center text-slate-500">Not Found</td></tr>';
+    }
+}
 
-    // --- PART A: CALCULATE STATS (The "Chargeback Amount" you asked for) ---
-    // We look at the separate 'chargebacks' list which contains processed deductions
-    const cbData = allData.chargebacks || [];
-    let totalDeduction = 0;
-    let countDeduction = 0;
+async function markAsCb(id, dept) {
+    if(!confirm("Copy to Chargeback Database?")) return;
+    const fd = new FormData();
+    fd.append('record_id', id);
+    fd.append('dept', dept);
+    
+    await fetch('/api/manager/mark_twh_chargeback', { method: 'POST', body: fd });
+    alert("Done");
+    document.getElementById('cbSearchResults').classList.add('hidden');
+    document.getElementById('cbSearchInput').value = '';
+    fetchChargebackData(); // Refresh list
+}
 
-    cbData.forEach(cb => {
-        // Filter Stats by Type and Agent
-        if(cb.dept !== type) return;
-        if(agentFilter !== 'all' && cb['Agent Name'] !== agentFilter) return;
-        
-        // Sum it up
-        totalDeduction += (cb.amount || 0);
-        countDeduction++;
-    });
+// 3. RENDER ANALYSIS (The Viewer)
+function renderCbAnalysis() {
+    const dateVal = document.getElementById('cbFilterDate').value; // YYYY-MM-DD
+    const agentVal = document.getElementById('cbFilterAgent').value;
+    
+    // Shift Logic: 8PM previous day to 8PM this day is the window?
+    // User said "9-5 or 8-6 shift coded in".
+    // I will use a simplified 8PM start logic for "Today" based on the selected date.
+    
+    let total = 0;
+    let count = 0;
+    const tbody = document.getElementById('cbAnalysisBody');
 
-    // Update Stats DOM
-    document.getElementById('cbTotal').innerText = '$' + totalDeduction.toLocaleString('en-US', {minimumFractionDigits: 2});
-    document.getElementById('cbCount').innerText = countDeduction;
-    document.getElementById('cbFilterDisplay').innerText = agentFilter === 'all' ? 'All Agents' : agentFilter;
-
-
-    // --- PART B: RENDER WORK TABLE (Sales to be marked) ---
-    const salesData = allData[type] || [];
-    const tbody = document.getElementById('cbTableBody');
-
-    const filtered = salesData.filter(row => {
-        if(row['Status'] === 'Charge Back') return false; // Hide already marked
-
+    // Create Date Boundaries for the selected "Shift Day"
+    // Shift Start: Selected Date at 8:00 PM (Actually, usually it's previous day 8pm)
+    // Let's stick to strict Day Matching for now unless specified otherwise,
+    // OR filter purely by the date string if that's easier.
+    
+    const filtered = twhCbData.filter(row => {
+        // Simple Date String Match first
+        const rowDate = row.created_at ? row.created_at.split('T')[0] : '';
+        // Or if your timestamp format is diff, parse it.
+        // Assuming row['Timestamp'] is YYYY-MM-DD HH:MM:SS
         const t = new Date(row['Timestamp']);
-        const shiftDate = new Date(t.getTime() - (8 * 60 * 60 * 1000)); // Shift Adjust
-
-        if(shiftDate < dStart || shiftDate > dEnd) return false;
-
-        const rowAgent = row['Agent Name'] || row['agent'];
-        if(agentFilter !== 'all' && rowAgent !== agentFilter) return false;
-
-        return JSON.stringify(row).toLowerCase().includes(search);
+        
+        // Let's use the exact same shift offset as your Analysis Tab
+        // (Timestamp - 8 hours) to see which "Shift Day" it belongs to
+        const shiftDate = new Date(t.getTime() - (8 * 60 * 60 * 1000));
+        const shiftDateStr = shiftDate.toISOString().split('T')[0];
+        
+        if (shiftDateStr !== dateVal) return false;
+        if (agentVal !== 'all' && row['Agent Name'] !== agentVal) return false;
+        return true;
     });
 
     if(filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-slate-500">No records found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-slate-500">No chargebacks found for this shift.</td></tr>';
+        document.getElementById('cbStatTotal').innerText = '$0.00';
+        document.getElementById('cbStatCount').innerText = '0';
         return;
     }
 
     tbody.innerHTML = filtered.map(row => {
-        const id = row['Record_ID'] || row['record_id'] || row['_id'];
-        const amt = row['Charge'] || row['charge_str'] || '$0.00';
-        const client = row['Name'] || row['Client Name'] || 'Unknown';
-        const agent = row['Agent Name'] || row['agent'] || 'Unknown';
-        const date = row['Timestamp'] || '';
-
+        const amountVal = parseFloat(String(row.amount || row.Charge).replace(/[^0-9.]/g, '')) || 0;
+        total += amountVal;
+        count++;
+        
         return `
-        <tr class="border-b border-slate-700 hover:bg-red-900/10 transition group">
-            <td class="p-4 text-slate-300 whitespace-nowrap">${date}</td>
-            <td class="p-4 font-bold text-white">${agent}</td>
-            <td class="p-4">
-                <div class="text-white font-bold">${client}</div>
-                <div class="text-xs text-slate-500 font-mono">${id}</div>
-            </td>
-            <td class="p-4 font-mono font-bold text-green-400">${amt}</td>
-            <td class="p-4 text-center">
-                <button onclick="executeMarkChargeback('${id}', '${type}')" 
-                        class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg font-bold shadow-lg shadow-red-900/30 transition text-xs flex items-center gap-2 mx-auto">
-                    <span>📉 MARK CB</span>
-                </button>
-            </td>
-        </tr>
+            <tr class="border-b border-slate-700 hover:bg-slate-700/50">
+                <td class="p-3 text-slate-400 text-xs">${row.Timestamp}</td>
+                <td class="p-3 font-bold text-white">${row['Agent Name']}</td>
+                <td class="p-3 text-slate-400 text-xs uppercase">${row.dept}</td>
+                <td class="p-3 text-slate-300">${row.client_name}</td>
+                <td class="p-3 text-right font-mono text-red-400">-$${amountVal.toFixed(2)}</td>
+            </tr>
         `;
     }).join('');
+
+    document.getElementById('cbStatTotal').innerText = '$' + total.toFixed(2);
+    document.getElementById('cbStatCount').innerText = count;
 }
 
-async function executeMarkChargeback(id, dept) {
-    if(!confirm(`⚠️ CONFIRM CHARGEBACK?\n\nIncludes $35 Penalty.\nLogic will auto-detect Present/Previous month.\n\nProceed?`)) return;
-
-    const formData = new FormData();
-    formData.append('record_id', id);
-    formData.append('dept', dept);
-
-    try {
-        const res = await fetch('/api/manager/mark_chargeback', { method: 'POST', body: formData });
-        const json = await res.json();
-
-        if(json.status === 'success') {
-            alert("SUCCESS: " + json.message);
-            fetchData(); // This will refresh allData and re-run renderChargebacks automatically
-        } else {
-            alert("Error: " + json.message);
+function updateCbFilterAgents() {
+    const sel = document.getElementById('cbFilterAgent');
+    const agents = [...new Set(twhCbData.map(d => d['Agent Name']))].sort();
+    const current = sel.value;
+    sel.innerHTML = '<option value="all">All Agents</option>';
+    agents.forEach(a => {
+        if(a) {
+            const opt = document.createElement('option');
+            opt.value = a; opt.innerText = a;
+            sel.appendChild(opt);
         }
-    } catch(e) {
-        alert("Action Failed");
-    }
+    });
+    sel.value = current;
 }
