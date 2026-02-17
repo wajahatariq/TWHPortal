@@ -810,6 +810,166 @@ async def generate_message(request: AIRequest):
         return {"status": "error", "message": str(e)}
 
 
+# ==========================================
+# CHARGEBACK MANAGER EXTENSION (FINAL)
+# ==========================================
+
+# 1. Initialize Collection
+chargeback_col = db["chargebacks"]
+
+# 2. Overwrite Stats Calculation 
+# (Strictly excludes 'Charge Back' status from Revenue to prevent double counting)
+def calculate_mongo_stats(collection, dept_type):
+    try:
+        start_time = get_shift_start_time()
+        end_time = start_time + timedelta(hours=10)
+        
+        # A. Calculate Positive Revenue
+        # We EXCLUDE any record marked as "Charge Back" from the positive sum
+        if dept_type in ['billing', 'insurance']:
+            status_filter = {"status": "Charged"}
+        else:
+            status_filter = {"status": {"$ne": "Charge Back"}} 
+
+        match_query = {
+            "created_at": {"$gte": start_time, "$lte": end_time},
+            **status_filter
+        }
+
+        pipeline = [
+            {"$match": match_query},
+            {"$group": {"_id": "$agent", "total": {"$sum": "$charge_amount"}}}
+        ]
+        results = list(collection.aggregate(pipeline))
+        
+        # B. Calculate Negative Chargebacks (The Deductions)
+        # We query the chargeback_col for records created TODAY
+        cb_query = {
+            "created_at": {"$gte": start_time, "$lte": end_time},
+            "dept": dept_type
+        }
+        cb_pipeline = [
+            {"$match": cb_query},
+            {"$group": {"_id": "$agent", "total": {"$sum": "$amount"}}}
+        ]
+        cb_results = list(chargeback_col.aggregate(cb_pipeline))
+
+        # C. Merge & Calculate Totals
+        target_agents = []
+        if dept_type == 'billing': target_agents = AGENTS_BILLING
+        elif dept_type == 'insurance': target_agents = AGENTS_INSURANCE
+        elif dept_type == 'design': target_agents = AGENTS_DESIGN
+        elif dept_type == 'ebook': target_agents = AGENTS_EBOOK
+        
+        breakdown = {agent: 0.0 for agent in target_agents}
+        
+        # Add Revenue
+        total_revenue = 0
+        for r in results:
+            breakdown[r["_id"]] = breakdown.get(r["_id"], 0) + r["total"]
+            total_revenue += r["total"]
+
+        # Subtract Chargebacks
+        total_cb = 0
+        for r in cb_results:
+            agent = r["_id"]
+            amount = r["total"]
+            # Subtract the calculated deduction from the agent's total
+            breakdown[agent] = breakdown.get(agent, 0) - amount
+            total_cb += amount
+
+        final_total = total_revenue - total_cb
+
+        return {
+            "total": round(final_total, 2),
+            "breakdown": breakdown,
+            "today": round(final_total, 2), 
+            "night": round(final_total, 2)
+        }
+
+    except Exception as e:
+        print(f"Stats Error ({dept_type}): {e}")
+        return {"total": 0, "breakdown": {}, "today": 0, "night": 0}
+
+# 3. New Endpoint with Auto-Logic
+@app.post("/api/manager/log_chargeback")
+async def log_chargeback(
+    original_id: str = Form(...),
+    agent: str = Form(...),
+    amount: str = Form(...),
+    dept: str = Form(...),
+    client: str = Form(...)
+):
+    try:
+        # Select Target Collection
+        target_col = None
+        if dept == 'billing': target_col = billing_col
+        elif dept == 'insurance': target_col = insurance_col
+        elif dept == 'design': target_col = design_col
+        elif dept == 'ebook': target_col = ebook_col
+
+        # Fetch Original Record to check Date
+        original_record = target_col.find_one({"record_id": original_id})
+        if not original_record:
+            return JSONResponse({"status": "error", "message": "Original Record Not Found"}, 404)
+
+        # Determine Dates
+        now = datetime.now(TZ_KARACHI)
+        orig_date = original_record.get('created_at')
+        if not orig_date: orig_date = now # Fallback
+
+        # Check if sale belongs to current month/year
+        is_current_month = (orig_date.month == now.month and orig_date.year == now.year)
+        
+        principal_amount = float(str(amount).replace('$', '').replace(',', '').strip())
+        penalty = 35.00
+        
+        final_deduction = 0.0
+        note = ""
+
+        if is_current_month:
+            # SCENARIO 1: CURRENT MONTH
+            # Principal removed automatically via status change. We only deduct Penalty.
+            final_deduction = penalty
+            note = f"Current Month CB. Principal Removed. Penalty: -${penalty}"
+        else:
+            # SCENARIO 2: PREVIOUS MONTH
+            # Principal + Penalty deducted from today.
+            final_deduction = principal_amount + penalty
+            note = f"Previous Month CB. Principal (${principal_amount}) + Penalty ($35): -${final_deduction}"
+
+        # Create Chargeback Record
+        date_str, timestamp_str, ts_obj = get_timestamp()
+        doc = {
+            "original_record_id": original_id,
+            "agent": agent,
+            "amount": final_deduction, 
+            "dept": dept,
+            "client_name": client,
+            "note": note,
+            "created_at": ts_obj,
+            "date_str": date_str
+        }
+        chargeback_col.insert_one(doc)
+        
+        # AUTOMATICALLY UPDATE ORIGINAL LEAD STATUS
+        target_col.update_one({"record_id": original_id}, {"$set": {"status": "Charge Back"}})
+
+        # Notify
+        pusher_client.trigger('techware-channel', 'status-update', {
+            'id': original_id, 'status': 'Charge Back', 'type': dept,
+            'agent': agent, 'client': client, 'message': f"⚠️ {note}"
+        })
+
+        return {"status": "success", "message": f"Applied: {note}"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.get("/api/manager/recent_chargebacks")
+async def get_recent_chargebacks():
+    docs = list(chargeback_col.find().sort("created_at", -1).limit(20))
+    for d in docs: d['_id'] = str(d['_id'])
+    return {"status": "success", "data": docs}
 
 
 
