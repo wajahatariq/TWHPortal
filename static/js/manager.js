@@ -1070,3 +1070,139 @@ async function processLeadWithLLC(type, id, status, btn) {
         }
     }, 1000);
 })();
+
+/* =========================================
+   CHARGEBACK MANAGER LOGIC (FINAL)
+   ========================================= */
+
+window.switchMainTab = function(tab) {
+    const tabs = ['viewStats', 'viewPending', 'viewAnalysis', 'viewEdit', 'viewDaily', 'viewChargebacks'];
+    const navs = ['navStats', 'navPending', 'navAnalysis', 'navEdit', 'navDaily', 'navChargebacks'];
+
+    tabs.forEach(id => { const el = document.getElementById(id); if(el) el.classList.add('hidden'); });
+    navs.forEach(id => { 
+        const el = document.getElementById(id); 
+        if(el) {
+            el.classList.remove('bg-blue-600', 'bg-red-600', 'text-white'); 
+            el.classList.add('text-slate-400');
+            if(id === 'navChargebacks') el.classList.add('text-red-400');
+        }
+    });
+
+    const viewId = 'view' + tab.charAt(0).toUpperCase() + tab.slice(1);
+    const navId = 'nav' + tab.charAt(0).toUpperCase() + tab.slice(1);
+    const viewEl = document.getElementById(viewId);
+    const navEl = document.getElementById(navId);
+
+    if(viewEl) viewEl.classList.remove('hidden');
+    if(navEl) {
+        navEl.classList.remove('text-slate-400', 'text-red-400');
+        if(tab === 'chargebacks') {
+            navEl.classList.add('bg-red-600', 'text-white');
+            loadRecentChargebacks();
+        } else {
+            navEl.classList.add('bg-blue-600', 'text-white');
+        }
+    }
+    if(tab === 'pending') renderPendingCards();
+    if(tab === 'analysis') { updateAgentSelector(); renderAnalysis(); }
+    if(tab === 'daily') updateDepartmentTotals(); 
+};
+
+async function searchForChargeback() {
+    const type = document.getElementById('cb_sheet_type').value;
+    const id = document.getElementById('cb_search_id').value.trim();
+    if(!id) return alert("Enter ID");
+
+    try {
+        const res = await fetch(`/api/get-lead?type=${type}&id=${id}`);
+        const json = await res.json();
+
+        if(json.status === 'success') {
+            const d = json.data;
+            document.getElementById('chargebackForm').classList.remove('hidden');
+            
+            document.getElementById('cb_real_id').value = d['Record_ID'] || d['record_id'] || id;
+            document.getElementById('cb_agent').value = d['Agent Name'] || d['agent'] || 'Unknown';
+            document.getElementById('cb_client').value = d['Name'] || d['Client Name'] || 'Unknown';
+            
+            const rawCharge = d['Charge'] || d['Charge Amount'] || d['charge_str'] || '0';
+            const cleanCharge = parseFloat(String(rawCharge).replace(/[^0-9.]/g, '')) || 0;
+            document.getElementById('cb_amount').value = cleanCharge.toFixed(2);
+
+            // DATE LOGIC
+            const leadDateStr = d['Timestamp'] || d['timestamp_str']; 
+            const leadDate = new Date(leadDateStr);
+            const now = new Date();
+            
+            const isCurrentMonth = (leadDate.getMonth() === now.getMonth() && leadDate.getFullYear() === now.getFullYear());
+            
+            const penalty = 35.00;
+            let deduction = 0;
+            let actionText = "";
+
+            if(isCurrentMonth) {
+                deduction = penalty;
+                actionText = "Present Month: Principal Removed + $35 Penalty Applied.";
+                document.getElementById('cb_date_display').value = `${leadDateStr} (PRESENT)`;
+            } else {
+                deduction = cleanCharge + penalty;
+                actionText = "Previous Month: Deducting Principal + $35 Penalty.";
+                document.getElementById('cb_date_display').value = `${leadDateStr} (PREVIOUS)`;
+            }
+
+            document.getElementById('cb_action_text').innerText = actionText;
+            document.getElementById('cb_final_deduction').innerText = `-$${deduction.toFixed(2)}`;
+
+        } else {
+            alert("Record not found.");
+            document.getElementById('chargebackForm').classList.add('hidden');
+        }
+    } catch(e) { console.error(e); alert("Search Error"); }
+}
+
+const cbForm = document.getElementById('chargebackForm');
+if(cbForm) {
+    cbForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const finalDed = document.getElementById('cb_final_deduction').innerText;
+        // Explicit Confirmation
+        if(!confirm(`CONFIRM CHARGEBACK?\n\nIncludes $35 Penalty.\nTotal Deduction: ${finalDed}\n\nProceed?`)) return;
+
+        const formData = new FormData(e.target);
+        formData.append('dept', document.getElementById('cb_sheet_type').value);
+
+        try {
+            const res = await fetch('/api/manager/log_chargeback', { method: 'POST', body: formData });
+            const data = await res.json();
+            
+            if(data.status === 'success') {
+                alert("Success: " + data.message);
+                cbForm.classList.add('hidden');
+                document.getElementById('cb_search_id').value = "";
+                loadRecentChargebacks();
+                fetchData(); 
+            } else { alert("Error: " + data.message); }
+        } catch(e) { alert("Submission Failed"); }
+    });
+}
+
+async function loadRecentChargebacks() {
+    const container = document.getElementById('cbLogContainer');
+    if(!container) return;
+    try {
+        const res = await fetch('/api/manager/recent_chargebacks');
+        const json = await res.json();
+        container.innerHTML = '';
+        if(json.data && json.data.length > 0) {
+            json.data.forEach(cb => {
+                const div = document.createElement('div');
+                div.className = "flex justify-between items-center bg-red-900/20 border border-red-900/30 p-3 rounded-lg text-sm";
+                div.innerHTML = `
+                    <div><span class="font-bold text-white">${cb.agent}</span> <span class="text-red-300">(${cb.client_name})</span><div class="text-[10px] text-slate-400">${cb.note || 'Chargeback'}</div></div>
+                    <div class="font-mono font-bold text-red-500">-$${cb.amount.toFixed(2)}</div>`;
+                container.appendChild(div);
+            });
+        } else { container.innerHTML = '<div class="text-slate-500 italic">No recent chargebacks.</div>'; }
+    } catch(e) {}
+}
