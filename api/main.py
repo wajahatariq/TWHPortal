@@ -742,17 +742,18 @@ async def get_history_totals():
         return {"status": "error", "message": str(e)}
 
 # ==========================================
-# TWH CHARGEBACK SYSTEM (STANDALONE WITH SHIFT LOGIC)
+# TWH CHARGEBACK SYSTEM (NON-DESTRUCTIVE + CUSTOM DATE)
 # ==========================================
 
 # 1. New Separate Collection
 twh_cb_col = db["twh_chargebacks"]
 
-# 2. Endpoint to Mark (Copy to TWH_Chargebacks + Update Status)
+# 2. Endpoint to Copy to Chargebacks DB (Does NOT touch original)
 @app.post("/api/manager/mark_twh_chargeback")
 async def mark_twh_chargeback(
     record_id: str = Form(...),
-    dept: str = Form(...)
+    dept: str = Form(...),
+    cb_date: str = Form(...) # User selected date
 ):
     try:
         # Select Source Collection
@@ -762,7 +763,7 @@ async def mark_twh_chargeback(
         elif dept == 'design': col = design_col
         elif dept == 'ebook': col = ebook_col
 
-        # Find Record (Try ID string first, then ObjectId)
+        # Find Original Record
         sale = col.find_one({"record_id": record_id})
         if not sale:
             try: sale = col.find_one({"_id": ObjectId(record_id)})
@@ -771,10 +772,17 @@ async def mark_twh_chargeback(
         if not sale:
             return {"status": "error", "message": "Record not found"}
 
-        # COPY to twh_chargebacks (Exact Copy, No Auto-Penalty)
-        date_str, _, ts_obj = get_timestamp()
-        
-        # We store the exact amount of the sale
+        # Parse User's Custom Date
+        # Expected format: "YYYY-MM-DDTHH:MM" (from HTML datetime-local input)
+        try:
+            ts_obj = datetime.strptime(cb_date, "%Y-%m-%dT%H:%M")
+            # Localize if naive (assuming input is Karachi time)
+            # If your server is UTC, you might want to adjust, but usually straight conversion works for reporting
+            date_str = ts_obj.strftime("%Y-%m-%d")
+        except:
+            return {"status": "error", "message": "Invalid Date Format"}
+
+        # COPY to twh_chargebacks
         try:
             amount = float(sale.get('charge_amount', 0))
         except:
@@ -786,22 +794,16 @@ async def mark_twh_chargeback(
             "client_name": sale.get('client_name'),
             "amount": amount,
             "dept": dept,
-            "created_at": ts_obj, # Timestamp is NOW
+            "created_at": ts_obj, # Uses YOUR selected date
             "date_str": date_str,
-            "original_date": sale.get('date_str')
+            "note": "Manual Copy"
         }
         twh_cb_col.insert_one(cb_doc)
 
-        # Update Original Status in Main DB (Standard Practice)
-        col.update_one({"_id": sale["_id"]}, {"$set": {"status": "Charge Back"}})
+        # NOTE: We specifically DO NOT update the original collection status.
+        # The original record remains "Charged" (or whatever it was).
 
-        # Notify
-        pusher_client.trigger('techware-channel', 'status-update', {
-            'id': record_id, 'status': 'Charge Back', 'type': dept,
-            'agent': sale.get('agent'), 'message': "⚠️ Marked as Chargeback"
-        })
-
-        return {"status": "success", "message": "Copied to Chargebacks Database"}
+        return {"status": "success", "message": "Copied to Chargeback DB"}
 
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -818,6 +820,7 @@ async def get_twh_chargebacks():
             # Normalize fields for the frontend
             d['Agent Name'] = d.get('agent')
             d['Charge'] = f"${d.get('amount', 0)}"
+            # Return timestamp in a friendly string format
             d['Timestamp'] = d.get('created_at').strftime("%Y-%m-%d %H:%M:%S") if d.get('created_at') else ""
             results.append(d)
             
