@@ -110,7 +110,7 @@ def get_worksheet(sheet_type):
 
 # --- CONSTANTS ---
 AGENTS_BILLING = ["Arham Kaleem", "Arham Ali", "Haziq", "Hasnain"]
-AGENTS_TELECOM = ["Names"]
+AGENTS_TELECOM = ["Danny", "Hussein", "Brekel" , "Saad"]
 AGENTS_INSURANCE = ["Saad"]
 AGENTS_DESIGN = ["Taha"]
 AGENTS_EBOOK = ["Huzaifa","Asad"]
@@ -849,4 +849,5 @@ async def get_twh_chargebacks():
         return {"status": "success", "data": results}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
