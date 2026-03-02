@@ -1404,3 +1404,172 @@ function updateCbFilterAgents() {
     });
     sel.value = current;
 }
+
+/* =========================================
+   FINAL TOTAL AFTER CHARGEBACKS LOGIC
+   ========================================= */
+(function() {
+    // 1. Move HTML elements to correct places inside the dashboard
+    const navTarget = document.getElementById('navChargebacks');
+    const navBtn = document.getElementById('navFinalTotal');
+    if(navTarget && navBtn) navTarget.parentNode.insertBefore(navBtn, navTarget.nextSibling);
+
+    const viewTarget = document.getElementById('viewChargebacks');
+    const viewDiv = document.getElementById('viewFinalTotal');
+    if(viewTarget && viewDiv) viewTarget.parentNode.insertBefore(viewDiv, viewTarget.nextSibling);
+
+    // Set default dates to today
+    const today = new Date().toISOString().split('T')[0];
+    const ftDateStart = document.getElementById('ftDateStart');
+    const ftDateEnd = document.getElementById('ftDateEnd');
+    if(ftDateStart) ftDateStart.value = today;
+    if(ftDateEnd) ftDateEnd.value = today;
+
+    // 2. Safely Update switchMainTab to include the new tab
+    window.switchMainTab = function(tab) {
+        const tabs = ['viewStats', 'viewPending', 'viewAnalysis', 'viewEdit', 'viewDaily', 'viewChargebacks', 'viewFinalTotal'];
+        const navs = ['navStats', 'navPending', 'navAnalysis', 'navEdit', 'navDaily', 'navChargebacks', 'navFinalTotal'];
+
+        tabs.forEach(id => { const el = document.getElementById(id); if(el) el.classList.add('hidden'); });
+        navs.forEach(id => { 
+            const el = document.getElementById(id); 
+            if(el) {
+                el.classList.remove('bg-blue-600', 'bg-red-600', 'bg-emerald-600', 'text-white'); 
+                el.classList.add('text-slate-400');
+                if(id === 'navChargebacks') el.classList.add('text-red-400');
+                if(id === 'navFinalTotal') el.classList.add('text-emerald-400');
+            }
+        });
+
+        const viewId = 'view' + tab.charAt(0).toUpperCase() + tab.slice(1);
+        const navId = 'nav' + tab.charAt(0).toUpperCase() + tab.slice(1);
+        
+        const viewEl = document.getElementById(viewId);
+        if(viewEl) viewEl.classList.remove('hidden');
+        
+        const navEl = document.getElementById(navId);
+        if(navEl) {
+            navEl.classList.remove('text-slate-400', 'text-red-400', 'text-emerald-400');
+            if(tab === 'chargebacks') {
+                navEl.classList.add('bg-red-600', 'text-white');
+                if(typeof fetchChargebackData === 'function') fetchChargebackData();
+            } else if(tab === 'finalTotal') {
+                navEl.classList.add('bg-emerald-600', 'text-white');
+                if(typeof fetchChargebackData === 'function') fetchChargebackData();
+                setTimeout(renderFinalTotal, 500); // Wait for data to sync before rendering
+            } else {
+                navEl.classList.add('bg-blue-600', 'text-white');
+            }
+        }
+
+        if(tab === 'pending') renderPendingCards();
+        if(tab === 'analysis') { updateAgentSelector(); renderAnalysis(); }
+        if(tab === 'daily') updateDepartmentTotals(); 
+    };
+})();
+
+// 3. Calculation and Rendering Logic
+window.renderFinalTotal = function() {
+    // Get Filters
+    const dStartVal = document.getElementById('ftDateStart').value;
+    const tStartVal = document.getElementById('ftTimeStart').value;
+    const dEndVal = document.getElementById('ftDateEnd').value;
+    const tEndVal = document.getElementById('ftTimeEnd').value;
+    const agentVal = document.getElementById('ftFilterAgent').value;
+    const deptVal = document.getElementById('ftFilterDept').value;
+    
+    const dStart = new Date(`${dStartVal}T${tStartVal}`);
+    const dEnd = new Date(`${dEndVal}T${tEndVal}`);
+
+    // Set to capture unique agents for dropdown
+    const agentsSet = new Set();
+    
+    // --- STEP A: CALCULATE GROSS SALES ---
+    let grossSales = 0;
+    const allSalesDepts = ['billing', 'insurance', 'design', 'ebook'];
+    
+    allSalesDepts.forEach(dept => {
+        if(deptVal !== 'all' && deptVal !== dept) return;
+        
+        const data = allData[dept] || [];
+        data.forEach(row => {
+            const agentName = row['Agent Name'] || row['agent'] || 'Unknown';
+            agentsSet.add(agentName);
+
+            const t = new Date(row['Timestamp']);
+            const shiftDate = new Date(t.getTime() - 21600000); // Adjusting 8-6 shift (-6 hours)
+
+            if (shiftDate >= dStart && shiftDate <= dEnd) {
+                if (agentVal === 'all' || agentName === agentVal) {
+                    
+                    let shouldCount = false;
+                    if(dept === 'design' || dept === 'ebook') shouldCount = true;
+                    else if(row['Status'] === 'Charged') shouldCount = true;
+
+                    if(shouldCount) {
+                        const raw = String(row['Charge']).replace(/[^0-9.]/g, '');
+                        grossSales += (parseFloat(raw) || 0);
+                    }
+                }
+            }
+        });
+    });
+
+    // Update Agent Dropdown Options Dynamically
+    const agentSelect = document.getElementById('ftFilterAgent');
+    const currentAgent = agentSelect.value;
+    agentSelect.innerHTML = '<option value="all">All Agents</option>';
+    Array.from(agentsSet).sort().forEach(a => {
+        if(a) {
+            const opt = document.createElement('option');
+            opt.value = a; opt.innerText = a;
+            agentSelect.appendChild(opt);
+        }
+    });
+    agentSelect.value = currentAgent;
+
+    // --- STEP B: CALCULATE CHARGEBACKS ---
+    let cbAmount = 0;
+    let cbCount = 0;
+    const penaltyPerCb = 35.00; // Your formula's 35 multiplier
+
+    if (typeof twhCbData !== 'undefined') {
+        twhCbData.forEach(row => {
+            if(deptVal !== 'all' && row['dept'] !== deptVal) return;
+
+            const t = new Date(row['Timestamp']); 
+            const shiftDate = new Date(t.getTime() - 21600000); 
+
+            if (shiftDate >= dStart && shiftDate <= dEnd) {
+                if (agentVal === 'all' || row['Agent Name'] === agentVal) {
+                    const amountVal = parseFloat(String(row.amount || row.Charge).replace(/[^0-9.]/g, '')) || 0;
+                    cbAmount += amountVal;
+                    cbCount++;
+                }
+            }
+        });
+    }
+
+    // --- STEP C: APPLY FORMULA ---
+    // Formula: Total - (CB Amount + (CB Count * 35))
+    const totalPenalty = cbCount * penaltyPerCb;
+    const totalDeductions = cbAmount + totalPenalty;
+    const netTotal = grossSales - totalDeductions;
+
+    // --- STEP D: UPDATE UI ---
+    document.getElementById('ftGrossSales').innerText = '$' + grossSales.toLocaleString('en-US', {minimumFractionDigits: 2});
+    document.getElementById('ftTotalDeductions').innerText = '-$' + totalDeductions.toLocaleString('en-US', {minimumFractionDigits: 2});
+    document.getElementById('ftCbBreakdown').innerText = `${cbCount} CBs ($${cbAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}) + $${totalPenalty.toLocaleString('en-US', {minimumFractionDigits: 2})} in Penalties`;
+    
+    const netTotalEl = document.getElementById('ftNetTotal');
+    netTotalEl.innerText = (netTotal < 0 ? '-$' : '$') + Math.abs(netTotal).toLocaleString('en-US', {minimumFractionDigits: 2});
+    
+    // Change color to red if they fall into the negative
+    if (netTotal < 0) {
+        netTotalEl.classList.remove('text-emerald-500');
+        netTotalEl.classList.add('text-red-500');
+    } else {
+        netTotalEl.classList.remove('text-red-500');
+        netTotalEl.classList.add('text-emerald-500');
+    }
+};
