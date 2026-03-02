@@ -42,6 +42,7 @@ try:
     
     billing_col = db["billing"]
     insurance_col = db["insurance"]
+    telecom_col = db["telecom"]
     design_col = db["design"]
     ebook_col = db["ebook"]
     
@@ -109,6 +110,7 @@ def get_worksheet(sheet_type):
 
 # --- CONSTANTS ---
 AGENTS_BILLING = ["Arham Kaleem", "Arham Ali", "Haziq", "Hasnain"]
+AGENTS_TELECOM = ["Names"]
 AGENTS_INSURANCE = ["Saad"]
 AGENTS_DESIGN = ["Taha"]
 AGENTS_EBOOK = ["Huzaifa","Asad"]
@@ -151,7 +153,7 @@ def calculate_mongo_stats(collection, dept_type):
         # Status Rules:
         # Billing/Insurance -> Count 'Charged' only
         # Design/Ebook      -> Count ALL (Pending, Declined, etc.)
-        if dept_type in ['billing', 'insurance']:
+        if dept_type in ['billing', 'insurance', 'telecom']:
             status_filter = {"status": "Charged"}
         else:
             status_filter = {} 
@@ -173,6 +175,7 @@ def calculate_mongo_stats(collection, dept_type):
         target_agents = []
         if dept_type == 'billing': target_agents = AGENTS_BILLING
         elif dept_type == 'insurance': target_agents = AGENTS_INSURANCE
+        elif dept_type == 'telecom': target_agents = AGENTS_TELECOM  
         elif dept_type == 'design': target_agents = AGENTS_DESIGN
         elif dept_type == 'ebook': target_agents = AGENTS_EBOOK
         
@@ -207,6 +210,13 @@ async def view_billing(request: Request):
         "llcs": LLC_SPEC, "pusher_key": PUSHER_KEY, "pusher_cluster": PUSHER_CLUSTER
     })
 
+@app.get("/telecom", response_class=HTMLResponse)
+async def view_telecom(request: Request):
+    return templates.TemplateResponse("telecom.html", {
+        "request": request, "agents": AGENTS_TELECOM, "providers": PROVIDERS, 
+        "llcs": LLC_SPEC, "pusher_key": PUSHER_KEY, "pusher_cluster": PUSHER_CLUSTER
+    })
+  
 @app.get("/insurance", response_class=HTMLResponse)
 async def view_insurance(request: Request):
     return templates.TemplateResponse("insurance.html", {
@@ -236,6 +246,7 @@ async def view_manager(request: Request):
 async def get_public_stats():
     return {
         "billing": calculate_mongo_stats(billing_col, 'billing'),
+        "telecom": calculate_mongo_stats(telecom_col, 'telecom'),
         "insurance": calculate_mongo_stats(insurance_col, 'insurance'),
         "design": calculate_mongo_stats(design_col, 'design'),
         "ebook": calculate_mongo_stats(ebook_col, 'ebook')
@@ -313,6 +324,7 @@ async def save_lead(
         unique_id = str(order_id).strip() if type == 'billing' else str(record_id).strip()
         
         if type == 'billing': target_col = billing_col
+        elif type == 'telecom': target_col = telecom_col  
         elif type == 'insurance': target_col = insurance_col
         elif type == 'design': target_col = design_col
         elif type == 'ebook': target_col = ebook_col
@@ -370,7 +382,7 @@ async def save_lead(
             ws = get_worksheet(type)
             if ws:
                 # Append row always adds to the bottom, never overwrites
-                if type == 'billing':
+                if type in ['billing', 'telecom']:
                     row_data = [unique_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge_str, llc, provider, date_str, "Pending", timestamp_str, pin_code or account_number]
                 elif type == 'insurance':
                    row_data = [unique_id, agent, client_name, phone, address, email, card_holder, str(card_number), str(exp_date), str(cvc), final_charge_str, llc, date_str, "Pending", timestamp_str]
@@ -409,6 +421,7 @@ async def update_field_inline(
         if type == 'design': col = design_col
         elif type == 'ebook': col = ebook_col
         elif type == 'billing': col = billing_col
+        elif type == 'telecom': col = telecom_col  
         elif type == 'insurance': col = insurance_col
         else: return JSONResponse({"status": "error", "message": "Invalid Type"}, 400)
 
@@ -620,26 +633,31 @@ async def get_manager_data(token: str):
             return docs
 
         bill_data = clean_docs(billing_col.find().sort("created_at", -1).limit(1000))
+        telecom_data = clean_docs(telecom_col.find().sort("created_at", -1).limit(1000))
         ins_data = clean_docs(insurance_col.find().sort("created_at", -1).limit(1000))
         design_data = clean_docs(design_col.find().sort("created_at", -1).limit(1000))
         ebook_data = clean_docs(ebook_col.find().sort("created_at", -1).limit(1000))
         
         stats_bill = calculate_mongo_stats(billing_col, 'billing')
+        stats_telecom = calculate_mongo_stats(telecom_col, 'telecom')
         stats_ins = calculate_mongo_stats(insurance_col, 'insurance')
         stats_design = calculate_mongo_stats(design_col, 'design')
         stats_ebook = calculate_mongo_stats(ebook_col, 'ebook')
         
         p_bill = billing_col.count_documents({"status": "Pending"})
+        p_telecom = telecom_col.count_documents({"status": "Pending"})
         p_ins = insurance_col.count_documents({"status": "Pending"})
         p_design = design_col.count_documents({"status": "Pending"})
         p_ebook = ebook_col.count_documents({"status": "Pending"})
 
         return {
             "billing": bill_data, 
+            "telecom": telecom_data,
             "insurance": ins_data,
             "design": design_data,
             "ebook": ebook_data,
             "stats_bill": {**stats_bill, "pending": p_bill}, 
+            "stats_telecom": {**stats_telecom, "pending": p_telecom},
             "stats_ins": {**stats_ins, "pending": p_ins},
             "stats_design": {**stats_design, "pending": p_design},
             "stats_ebook": {**stats_ebook, "pending": p_ebook}
@@ -657,6 +675,7 @@ async def update_status(
 ):
     try:
         if type == 'billing': col = billing_col
+        elif type == 'telecom': col = telecom_col  
         elif type == 'insurance': col = insurance_col
         elif type == 'design': col = design_col
         elif type == 'ebook': col = ebook_col
@@ -719,22 +738,24 @@ async def get_history_totals():
 
         # Billing/Insurance = Charged Only | Design/Ebook = All
         bill_sums = get_daily_sums(billing_col, use_status_filter=True)
+        telecom_sums = get_daily_sums(telecom_col, use_status_filter=True)
         ins_sums = get_daily_sums(insurance_col, use_status_filter=True)
         design_sums = get_daily_sums(design_col, use_status_filter=False)
         ebook_sums = get_daily_sums(ebook_col, use_status_filter=False)
 
         # Merge and sort dates
-        all_dates = sorted(list(set(list(bill_sums.keys()) + list(ins_sums.keys()) + list(design_sums.keys()) + list(ebook_sums.keys()))), reverse=True)
+        all_dates = sorted(list(set(list(bill_sums.keys()) + list(telecom_sums.keys()) + list(ins_sums.keys()) + list(design_sums.keys()) + list(ebook_sums.keys()))), reverse=True)
         
         history = []
         for d in all_dates:
             history.append({
                 "date": d,
                 "billing": round(bill_sums.get(d, 0), 2),
+                "telecom": round(telecom_sums.get(d, 0), 2),
                 "insurance": round(ins_sums.get(d, 0), 2),
                 "design": round(design_sums.get(d, 0), 2),
                 "ebook": round(ebook_sums.get(d, 0), 2),
-                "total": round(bill_sums.get(d, 0) + ins_sums.get(d, 0) + design_sums.get(d, 0) + ebook_sums.get(d, 0), 2)
+                "total": round(bill_sums.get(d, 0) + telecom_sums.get(d, 0) + ins_sums.get(d, 0) + design_sums.get(d, 0) + ebook_sums.get(d, 0), 2)
             })
             
         return {"status": "success", "data": history}
@@ -760,6 +781,7 @@ async def mark_twh_chargeback(
         col = None
         if dept == 'billing': col = billing_col
         elif dept == 'insurance': col = insurance_col
+        elif dept == 'telecom': col = telecom_col
         elif dept == 'design': col = design_col
         elif dept == 'ebook': col = ebook_col
 
@@ -827,3 +849,4 @@ async def get_twh_chargebacks():
         return {"status": "success", "data": results}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
