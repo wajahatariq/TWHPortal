@@ -72,6 +72,7 @@
                     <h2 class="text-3xl font-bold text-white">Live Overview</h2>
                     <select id="statsSelector" onchange="updateDashboardStats()" class="bg-slate-800 text-white border border-slate-600 rounded-lg px-4 py-2 outline-none font-bold">
                         <option value="billing">Billing Dept</option>
+                        <option value="telecom">Telecom Dept</option>
                         <option value="insurance">Insurance Dept</option>
                     </select>
                 </div>
@@ -115,6 +116,7 @@
                     <h2 class="text-3xl font-bold text-white">Pending Approvals</h2>
                     <div class="flex gap-4 ml-auto">
                         <button id="subBill" onclick="switchPendingSubTab('billing')" class="text-lg font-bold text-blue-400 border-b-2 border-blue-400 pb-1">Billing</button>
+                        <button id="subTelecom" onclick="switchPendingSubTab('telecom')" class="text-lg font-bold text-slate-500 hover:text-white pb-1">Telecom</button>
                         <button id="subIns" onclick="switchPendingSubTab('insurance')" class="text-lg font-bold text-slate-500 hover:text-white pb-1">Insurance</button>
                     </div>
                 </div>
@@ -143,6 +145,7 @@
                     <div class="flex gap-2 w-full xl:w-auto flex-wrap">
                         <select id="analysisSheetSelector" onchange="updateAgentSelector(); renderAnalysis()" class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 text-sm outline-none font-bold">
                             <option value="billing">Billing</option>
+                            <option value="telecom">Telecom</option>
                             <option value="insurance">Insurance</option>
                             <option value="design">Design</option>
                             <option value="ebook">E-Book</option>
@@ -166,7 +169,7 @@
                 <div class="bg-slate-800 p-8 rounded-2xl border border-slate-700 shadow-2xl">
                     <h2 class="text-2xl font-bold mb-6 text-red-400 border-b border-red-500/30 pb-4">Edit or Delete Record</h2>
                     <div class="flex gap-2 mb-6">
-                        <select id="editSheetType" class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 outline-none"><option value="billing">Billing</option><option value="insurance">Insurance</option></select>
+                        <select id="editSheetType" class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 outline-none"><option value="billing">Billing</option><option value="telecom">Telecom</option><option value="insurance">Insurance</option></select>
                         <input type="text" id="editSearchId" placeholder="Enter ID to find..." class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 w-full outline-none">
                         <button onclick="searchForEdit()" class="bg-blue-600 hover:bg-blue-500 px-6 rounded font-bold text-white shadow-lg shadow-blue-500/30">Search</button>
                     </div>
@@ -201,6 +204,13 @@
                         <div class="text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">Billing Total</div>
                         <div id="totalBilling" class="text-4xl font-black text-white relative z-10">$0.00</div>
                     </div>
+                    
+                    <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg relative overflow-hidden group hover:border-cyan-500/50 transition">
+                        <div class="absolute -right-4 -top-4 text-slate-700/20 text-9xl group-hover:scale-110 transition">📡</div>
+                        <div class="text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">Telecom Total</div>
+                        <div id="totalTelecom" class="text-4xl font-black text-white relative z-10">$0.00</div>
+                    </div>
+                    
                     <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg relative overflow-hidden group hover:border-green-500/50 transition">
                         <div class="absolute -right-4 -top-4 text-slate-700/20 text-9xl group-hover:scale-110 transition">🛡️</div>
                         <div class="text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">Insurance Total</div>
@@ -229,6 +239,7 @@
                                 <tr>
                                     <th class="p-4">Date</th>
                                     <th class="p-4 text-blue-400">Billing</th>
+                                    <th class="p-4 text-cyan-400">Telecom</th>
                                     <th class="p-4 text-green-400">Insurance</th>
                                     <th class="p-4 text-purple-400">Design</th>
                                     <th class="p-4 text-orange-400">E-Book</th>
@@ -269,6 +280,7 @@
                 <div class="flex gap-2">
                     <select id="cbSearchDept" class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 outline-none">
                         <option value="billing">Billing</option>
+                        <option value="telecom">Telecom</option>
                         <option value="insurance">Insurance</option>
                         <option value="design">Design</option>
                         <option value="ebook">E-Book</option>
@@ -396,6 +408,7 @@
                     <select id="ftFilterDept" onchange="renderFinalTotal()" class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 text-sm outline-none">
                         <option value="all">All Departments</option>
                         <option value="billing">Billing</option>
+                        <option value="telecom">Telecom</option>
                         <option value="insurance">Insurance</option>
                         <option value="design">Design</option>
                         <option value="ebook">E-Book</option>
@@ -446,6 +459,7 @@
 </script>    
 </body>
 </html>
+
 
 
 
