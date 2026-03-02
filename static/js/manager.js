@@ -1,6 +1,7 @@
 let allData = { 
-    billing: [], insurance: [], design: [], ebook: [], 
+    billing: [], telecom: [], insurance: [], design: [], ebook: [], 
     stats_bill: {today:0, night:0, pending:0, breakdown:{}}, 
+    stats_telecom: {today:0, night:0, pending:0, breakdown:{}},
     stats_ins: {today:0, night:0, pending:0, breakdown:{}},
     stats_design: {total:0, breakdown:{}},
     stats_ebook: {total:0, breakdown:{}}
@@ -41,11 +42,13 @@ async function fetchData() {
     const json = await res.json();
     
     allData.billing = json.billing || [];
+    allData.telecom = json.telecom || [];
     allData.insurance = json.insurance || [];
     allData.design = json.design || [];
     allData.ebook = json.ebook || [];
     
     allData.stats_bill = json.stats_bill || {today:0, night:0, pending:0, breakdown:{}};
+    allData.stats_telecom = json.stats_telecom || {today:0, night:0, pending:0, breakdown:{}};
     allData.stats_ins = json.stats_ins || {today:0, night:0, pending:0, breakdown:{}};
     allData.stats_design = json.stats_design || {total:0, breakdown:{}};
     allData.stats_ebook = json.stats_ebook || {total:0, breakdown:{}};
@@ -59,7 +62,7 @@ async function fetchData() {
 
 function updateDashboardStats() {
     const dept = document.getElementById('statsSelector').value;
-    const stats = dept === 'billing' ? allData.stats_bill : allData.stats_ins;
+    const stats = dept === 'billing' ? allData.stats_bill : (dept === 'telecom' ? allData.stats_telecom : allData.stats_ins);
     document.getElementById('dispToday').innerText = '$' + (stats.today || 0).toFixed(2);
     document.getElementById('dispNight').innerText = '$' + (stats.night || 0).toFixed(2);
     document.getElementById('dispPending').innerText = stats.pending || 0;
@@ -120,10 +123,16 @@ function updateDashboardStats() {
 
 function updateDepartmentTotals() {
     const billTotal = allData.stats_bill?.total || 0;
+    const telecomTotal = allData.stats_telecom?.total || 0;
     const insTotal = allData.stats_ins?.total || 0;
+    
+    const ttEl = document.getElementById('totalTelecom');
+    if(ttEl) ttEl.innerText = '$' + telecomTotal.toFixed(2);
+    
     const designTotal = allData.stats_design?.total || 0;
     const ebookTotal = allData.stats_ebook?.total || 0;
-
+    
+    
     document.getElementById('totalBilling').innerText = '$' + billTotal.toFixed(2);
     document.getElementById('totalInsurance').innerText = '$' + insTotal.toFixed(2);
     document.getElementById('totalDesign').innerText = '$' + designTotal.toFixed(2);
@@ -151,14 +160,16 @@ function switchMainTab(tab) {
 function switchPendingSubTab(tab) {
     pendingSubTab = tab;
     const btnBill = document.getElementById('subBill');
+    const btnTelecom = document.getElementById('subTelecom');
     const btnIns = document.getElementById('subIns');
-    if(tab === 'billing') {
-        btnBill.className = "text-lg font-bold text-blue-400 border-b-2 border-blue-400 pb-1";
-        btnIns.className = "text-lg font-bold text-slate-500 hover:text-white pb-1";
-    } else {
-        btnIns.className = "text-lg font-bold text-green-400 border-b-2 border-green-400 pb-1";
-        btnBill.className = "text-lg font-bold text-slate-500 hover:text-white pb-1";
-    }
+    
+    [btnBill, btnTelecom, btnIns].forEach(b => {
+        if(b) b.className = "text-lg font-bold text-slate-500 hover:text-white pb-1";
+    });
+
+    if(tab === 'billing') btnBill.className = "text-lg font-bold text-blue-400 border-b-2 border-blue-400 pb-1";
+    if(tab === 'telecom') btnTelecom.className = "text-lg font-bold text-cyan-400 border-b-2 border-cyan-400 pb-1";
+    if(tab === 'insurance') btnIns.className = "text-lg font-bold text-green-400 border-b-2 border-green-400 pb-1";
     renderPendingCards();
 }
 
@@ -175,7 +186,11 @@ function switchPendingSubTab(tab) {
 function renderPendingCards() {
     const container = document.getElementById('pendingContainer');
     container.innerHTML = '';
-    const rawData = pendingSubTab === 'billing' ? allData.billing : allData.insurance;
+    let rawData = [];
+    if(pendingSubTab === 'billing') rawData = allData.billing;
+    else if(pendingSubTab === 'telecom') rawData = allData.telecom;
+    else rawData = allData.insurance;
+
     const data = rawData.filter(row => row['Status'] === 'Pending').slice().reverse();
 
     if(data.length === 0) {
@@ -184,9 +199,9 @@ function renderPendingCards() {
     }
 
     // Options derived from your original code
-    const llcOptions = pendingSubTab === 'billing' 
+    const llcOptions = (pendingSubTab === 'billing' || pendingSubTab === 'telecom')
         ? ["Secure Claim Solutions-NMI", "Visionary Pathways-Authorize", "Visionary Pathways-Chase", "TS", "Zelle", "Venmo"] 
-        : ["Secure Claim Solutions-NMI"];
+        : ["Secure Claim Solutions-NMI"];;
 
     data.forEach(row => {
         // We capture both IDs here
@@ -366,7 +381,7 @@ function renderAnalysis() {
 
     // --- Render Table Columns ---
     let columns = [];
-    if (type === 'billing') {
+    if (type === 'billing' || type === 'telecom') {
         columns = ["Record_ID", "Agent Name", "Name", "Phone", "Email", "Address", "Card Number", "Exp Date", "CVC", "Charge", "Status", "LLC", "Provider", "PIN/Acc", "Timestamp"];
     } else if (type === 'insurance') {
         columns = ["Record_ID", "Agent Name", "Name", "Phone", "Email", "Address", "Card Number", "Exp Date", "CVC", "Charge", "Status", "LLC", "Timestamp"];
@@ -585,6 +600,7 @@ async function loadHistory() {
                 tr.innerHTML = `
                     <td class="p-4 font-mono text-slate-300">${row.date}</td>
                     <td class="p-4 font-bold text-blue-400">$${row.billing.toLocaleString()}</td>
+                    <td class="p-4 font-bold text-cyan-400">$${(row.telecom || 0).toLocaleString()}</td>
                     <td class="p-4 font-bold text-green-400">$${row.insurance.toLocaleString()}</td>
                     <td class="p-4 font-bold text-purple-400">$${row.design.toLocaleString()}</td>
                     <td class="p-4 font-bold text-orange-400">$${row.ebook.toLocaleString()}</td>
@@ -1486,7 +1502,7 @@ window.renderFinalTotal = function() {
     
     // --- STEP A: CALCULATE GROSS SALES ---
     let grossSales = 0;
-    const allSalesDepts = ['billing', 'insurance', 'design', 'ebook'];
+    const allSalesDepts = ['billing', 'telecom', 'insurance', 'design', 'ebook'];
     
     allSalesDepts.forEach(dept => {
         if(deptVal !== 'all' && deptVal !== dept) return;
@@ -1573,3 +1589,4 @@ window.renderFinalTotal = function() {
         netTotalEl.classList.add('text-emerald-500');
     }
 };
+
