@@ -342,84 +342,6 @@ if(newLeadBtn) {
 
 /* =========================================
    COPY & PASTE THIS AT THE END OF billing.js
-   "The S.D.E. Monitor" (Gen Z Vulgar Roast)
-   ========================================= */
-(function() {
-    // 1. The "Gen Z" Roast Menu (Double Entendres)
-    const sdeRoasts = [
-        "It's not the size of the boat... (Copium) 🚤",
-        "Performance anxiety? Take a pill. 💊",
-        "Bro is softer than a marshmallow right now. ☁️",
-        "Is it in yet? (The sale, I mean). 🧐",
-        "Compensating with that loud keyboard? ⌨️",
-        "Giving massive 'Bottom' energy today. 🍑",
-        "Just the tip? That's all you got? 📉",
-        "I swear it's usually bigger... 🤥",
-        "Maybe it's just really cold in the office? ❄️",
-        "Glazing the leads won't make it grow. 🍩",
-        "Erectile dysfunction of the wallet. 🥀",
-        "You vs The Guy she told you not to worry about. 💅",
-        "My grandma has more girth than these sales. 👵",
-        "Down bad tremendously. 📉"
-    ];
-
-    // 2. Logic
-    function updateSDE() {
-        const widgetSelect = document.getElementById('nightWidgetSelect');
-        const type = widgetSelect ? widgetSelect.value : 'billing';
-        
-        // Safety check for the stats object
-        if (typeof nightStats === 'undefined' || !nightStats[type]) return;
-
-        const data = nightStats[type];
-        const sdeDiv = document.getElementById('sdeWidget');
-        const agentDiv = document.getElementById('sdeAgent');
-        const sizeDiv = document.getElementById('sdeSize');
-        const roastDiv = document.getElementById('sdeRoast');
-
-        if (!data.breakdown || Object.keys(data.breakdown).length === 0) {
-            if(sdeDiv) sdeDiv.classList.add('hidden');
-            return;
-        }
-        if(sdeDiv) sdeDiv.classList.remove('hidden');
-
-        // 3. Find the "Softest" Performer (Lowest > 0 is usually best, but 0 is funniest)
-        const entries = Object.entries(data.breakdown);
-        // Sort Ascending (Smallest First)
-        entries.sort((a, b) => a[1] - b[1]);
-
-        const loserName = entries[0][0];
-        const loserAmount = entries[0][1];
-
-        // 4. Calculate "Size" based on performance (Inverse Logic)
-        // Less Money = Smaller Size
-        let sizeInches = "Inverted";
-        if(loserAmount > 500) sizeInches = "Average (6')";
-        else if(loserAmount > 200) sizeInches = "3 inches";
-        else if(loserAmount > 50) sizeInches = "1 inch";
-        else sizeInches = "Inverted 🔍";
-
-        // 5. Render
-        if(agentDiv) {
-            // Check if it changed to animate
-            if(sdeDiv.dataset.lastLoser !== loserName) {
-                agentDiv.innerText = loserName;
-                sdeDiv.dataset.lastLoser = loserName;
-                
-                // New Roast
-                const randomRoast = sdeRoasts[Math.floor(Math.random() * sdeRoasts.length)];
-                if(roastDiv) roastDiv.innerText = `"${randomRoast}"`;
-            }
-            if(sizeDiv) sizeDiv.innerText = `Sales: $${loserAmount} (${sizeInches})`;
-        }
-    }
-
-    // Run every 3 seconds
-    setInterval(updateSDE, 3000); 
-})();
-
-/* =========================================
-   COPY & PASTE THIS AT THE END OF billing.js
    "The $1000 Gold Rush" (Theme Only - Widgets Safe)
    ========================================= */
 (function() {
@@ -910,4 +832,5 @@ if(newLeadBtn) {
         }
     }, 500);
 })();
+
 
