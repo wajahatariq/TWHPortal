@@ -1592,7 +1592,7 @@ window.renderFinalTotal = function() {
 
 /* =========================================
    COPY & PASTE THIS AT THE END OF manager.js
-   "Download Excel/CSV Function with Chargeback Overwrite & Colors"
+   "Download Excel/CSV Function with Strict Overwrite & Dataset Merge"
    ========================================= */
 window.downloadCSV = function() {
     const type = document.getElementById('analysisSheetSelector').value;
@@ -1605,93 +1605,144 @@ window.downloadCSV = function() {
     }
 
     // 1. Find Column Indexes
-    let recordIdIdx = -1, nameIdx = -1, chargeIdx = -1, statusIdx = -1;
+    let recordIdIdx = -1, nameIdx = -1, chargeIdx = -1, statusIdx = -1, agentIdx = -1;
     const ths = thead.querySelectorAll('th');
     ths.forEach((th, i) => {
         const text = th.innerText.trim().toLowerCase();
-        if (text === 'record_id') recordIdIdx = i;
+        if (text === 'record_id' || text === 'order id') recordIdIdx = i;
         if (text === 'name' || text === 'client name') nameIdx = i;
-        if (text === 'charge') chargeIdx = i;
+        if (text === 'charge' || text === 'amount') chargeIdx = i;
         if (text === 'status') statusIdx = i;
+        if (text === 'agent name' || text === 'agent') agentIdx = i;
     });
 
-    // 2. Start HTML formatting for Excel
-    let excelHTML = `
-        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-        <head><meta charset="utf-8"></head><body>
-        <table border="1">
-    `;
+    let excelHTML = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+    excelHTML += '<head><meta charset="utf-8"></head><body><table border="1">';
 
-    // 3. Setup Headers
+    // 2. Setup Headers
     excelHTML += "<tr>";
     ths.forEach(th => {
         excelHTML += `<th style="background-color: #1e293b; color: #ffffff; font-weight: bold; padding: 8px;">${th.innerText.trim()}</th>`;
     });
     excelHTML += "</tr>";
 
-    // 4. Process Rows & Match Chargebacks
+    let matchedCbIndexes = new Set();
+
+    // 3. Process Existing Portal Rows & Overwrite Matched Chargebacks
     const trs = tbody.querySelectorAll('tr');
     trs.forEach(tr => {
         const tds = tr.querySelectorAll('td');
-        if (tds.length === 1) return; // Skip empty rows
+        if (tds.length <= 1) return; // Skip empty rows
 
         let recId = recordIdIdx > -1 ? tds[recordIdIdx].innerText.trim() : '';
         let name = nameIdx > -1 ? tds[nameIdx].innerText.trim() : '';
         let chargeRaw = chargeIdx > -1 ? tds[chargeIdx].innerText.trim() : '';
-        let chargeNum = parseFloat(chargeRaw.replace(/[^0-9.]/g, '')) || 0;
+        let chargeNum = parseFloat(chargeRaw.replace(/[^0-9.-]/g, '')) || 0;
         let currentStatus = statusIdx > -1 ? tds[statusIdx].innerText.trim() : '';
+        let agent = agentIdx > -1 ? tds[agentIdx].innerText.trim() : '';
 
-        // --- CHECK AGAINST CHARGEBACK DATABASE ---
         let isChargeback = false;
+        
         if (typeof twhCbData !== 'undefined' && twhCbData.length > 0) {
-            isChargeback = twhCbData.some(cb => {
-                const cbRecId = cb.original_record_id || '';
-                const cbName = cb.client_name || '';
-                const cbAmount = parseFloat(cb.amount || 0);
-                
-                // Overwrite if OrderID matches OR (Name + Charge Amount matches)
-                if (recId && cbRecId && recId === cbRecId) return true;
-                if (name && cbName && name.toLowerCase() === cbName.toLowerCase() && Math.abs(chargeNum - cbAmount) < 0.1) return true;
-                return false;
-            });
+            for (let j = 0; j < twhCbData.length; j++) {
+                let cb = twhCbData[j];
+                const cbRecId = cb.original_record_id || cb.record_id || cb.order_id || '';
+                const cbName = cb.client_name || cb.name || '';
+                const cbAmount = parseFloat(cb.amount || String(cb.Charge || '0').replace(/[^0-9.-]/g, '')) || 0;
+                const cbAgent = cb.agent || cb['Agent Name'] || '';
+
+                // Strict AND matching all 4 parameters
+                if (
+                    recId && cbRecId && recId === cbRecId &&
+                    name && cbName && name.toLowerCase() === cbName.toLowerCase() &&
+                    agent && cbAgent && agent.toLowerCase() === cbAgent.toLowerCase() &&
+                    Math.abs(chargeNum - cbAmount) < 0.1
+                ) {
+                    isChargeback = true;
+                    matchedCbIndexes.add(j); // Mark this chargeback as successfully merged/overwritten
+                    break;
+                }
+            }
         }
 
-        // Apply overwrite to status
         if (isChargeback && statusIdx > -1) {
             currentStatus = 'Charge Back';
         }
 
-        // --- APPLY COLORS BASED ON STATUS ---
-        let rowStyle = "background-color: #ffffff; color: #000000;"; // Simple Default (Declined or other)
+        let rowStyle = "background-color: #ffffff; color: #000000;"; 
         let stLow = currentStatus.toLowerCase();
         
         if (stLow === 'charged') {
-            rowStyle = "background-color: #dcfce7; color: #166534;"; // Green
+            rowStyle = "background-color: #dcfce7; color: #166534;"; 
         } else if (stLow.includes('charge back') || stLow === 'chargeback') {
-            rowStyle = "background-color: #fee2e2; color: #991b1b;"; // Red
+            rowStyle = "background-color: #fee2e2; color: #991b1b;"; 
         }
 
         excelHTML += `<tr style="${rowStyle}">`;
-        
         tds.forEach((td, i) => {
             let cellText = td.innerText.trim();
-            // Inject the overridden status into the Excel cell
             if (i === statusIdx) {
                 cellText = currentStatus;
             }
             excelHTML += `<td style="padding: 5px;">${cellText}</td>`;
         });
-        
         excelHTML += "</tr>";
     });
 
+    // 4. Append Unmatched Chargebacks from the Date Frame
+    if (typeof twhCbData !== 'undefined' && twhCbData.length > 0) {
+        // Read UI Date filters if they exist to match the date frame
+        let startDateInput = document.getElementById('startDate');
+        let endDateInput = document.getElementById('endDate');
+        let startStr = startDateInput ? startDateInput.value : '';
+        let endStr = endDateInput ? endDateInput.value : '';
+        
+        let start = startStr ? new Date(startStr) : null;
+        if(start) start.setHours(0,0,0,0);
+        let end = endStr ? new Date(endStr) : null;
+        if(end) end.setHours(23,59,59,999);
+
+        twhCbData.forEach((cb, j) => {
+            if (!matchedCbIndexes.has(j)) {
+                let cbDateStr = cb.date || cb.created_at || cb.Date || '';
+                let cbDate = cbDateStr ? new Date(cbDateStr) : null;
+                
+                let inDateFrame = true;
+                if (start && cbDate && cbDate < start) inDateFrame = false;
+                if (end && cbDate && cbDate > end) inDateFrame = false;
+
+                if (inDateFrame) {
+                    let rowStyle = "background-color: #fee2e2; color: #991b1b;";
+                    excelHTML += `<tr style="${rowStyle}">`;
+                    
+                    ths.forEach(th => {
+                        let header = th.innerText.trim().toLowerCase();
+                        let val = '';
+                        
+                        if (header.includes('date')) val = cbDateStr;
+                        else if (header === 'record_id' || header === 'order id') val = cb.original_record_id || cb.record_id || cb.order_id || '';
+                        else if (header === 'name' || header === 'client name') val = cb.client_name || cb.name || '';
+                        else if (header === 'agent name' || header === 'agent') val = cb.agent || cb['Agent Name'] || '';
+                        else if (header === 'charge' || header === 'amount') val = cb.amount || cb.Charge || '';
+                        else if (header.includes('phone')) val = cb.phone || cb.Phone || '';
+                        else if (header === 'status') val = 'Charge Back';
+                        
+                        excelHTML += `<td style="padding: 5px;">${val}</td>`;
+                    });
+                    
+                    excelHTML += "</tr>";
+                }
+            }
+        });
+    }
+
     excelHTML += "</table></body></html>";
 
-    // 5. Trigger File Download as .xls
+    // 5. Trigger File Download
     const blob = new Blob([excelHTML], { type: 'application/vnd.ms-excel' });
     const url = URL.createObjectURL(blob);
     const dateStr = new Date().toISOString().split('T')[0];
-    const filename = `TWH_${type.toUpperCase()}_Report_${dateStr}.xls`;
+    const filename = `TWH_${type.toUpperCase()}_Merged_Report_${dateStr}.xls`;
 
     const link = document.createElement("a");
     link.href = url;
