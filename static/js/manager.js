@@ -1592,19 +1592,24 @@ window.renderFinalTotal = function() {
 
 /* =========================================
    COPY & PASTE THIS AT THE END OF manager.js
-   "Download Merged Report with Strict Overwrite"
+   "Final Merged Download with Flexible Dept Match"
    ========================================= */
 window.downloadCSV = function() {
     const type = document.getElementById('analysisSheetSelector').value;
     const thead = document.getElementById('analysisHeader');
     const tbody = document.getElementById('analysisBody');
 
-    if (!tbody || tbody.innerText.includes('No records found')) {
-        alert('No data to download!');
+    if (twhCbData === null) {
+        alert("Chargeback data is still loading from the server. Please wait a moment and try again.");
         return;
     }
 
-    // 1. Map Columns
+    if (!tbody || tbody.innerText.includes('No records found')) {
+        alert('No portal data found to download!');
+        return;
+    }
+
+    // 1. Identify Columns
     let recordIdIdx = -1, nameIdx = -1, chargeIdx = -1, statusIdx = -1, agentIdx = -1;
     const ths = thead.querySelectorAll('th');
     ths.forEach((th, i) => {
@@ -1621,12 +1626,12 @@ window.downloadCSV = function() {
 
     // Headers
     excelHTML += "<tr>";
-    ths.forEach(th => excelHTML += `<th style="background-color: #1e293b; color: #ffffff; font-weight: bold;">${th.innerText.trim()}</th>`);
+    ths.forEach(th => excelHTML += `<th style="background-color: #1e293b; color: #ffffff; font-weight: bold; padding: 10px;">${th.innerText.trim()}</th>`);
     excelHTML += "</tr>";
 
     let matchedCbIds = new Set();
 
-    // 2. Process Portal Rows (With Strict Overwrite)
+    // 2. Process Portal Rows (Overwrite matches)
     const trs = tbody.querySelectorAll('tr');
     trs.forEach(tr => {
         const tds = tr.querySelectorAll('td');
@@ -1639,28 +1644,25 @@ window.downloadCSV = function() {
         let chargeNum = parseFloat(chargeRaw.replace(/[^0-9.-]/g, '')) || 0;
         let currentStatus = statusIdx > -1 ? tds[statusIdx].innerText.trim() : '';
 
-        // Strict Check: ALL 4 must match
         let isMatch = false;
-        if (typeof twhCbData !== 'undefined') {
-            twhCbData.forEach(cb => {
-                const cbRecId = cb.original_record_id || cb.record_id || '';
-                const cbName = cb.client_name || '';
-                const cbAgent = cb.agent || '';
-                const cbAmount = parseFloat(cb.amount || 0);
+        twhCbData.forEach(cb => {
+            const cbRecId = cb.original_record_id || cb.record_id || '';
+            const cbName = cb.client_name || '';
+            const cbAgent = cb.agent || '';
+            const cbAmount = parseFloat(cb.amount || 0);
 
-                if (recId === cbRecId && 
-                    name.toLowerCase() === cbName.toLowerCase() && 
-                    agent.toLowerCase() === cbAgent.toLowerCase() && 
-                    Math.abs(chargeNum - cbAmount) < 0.1) {
-                    isMatch = true;
-                    matchedCbIds.add(cb._id); // Mark as used
-                }
-            });
-        }
+            // Strict AND Condition: ID + Name + Agent + Amount
+            if (recId === cbRecId && 
+                name.toLowerCase() === cbName.toLowerCase() && 
+                agent.toLowerCase() === cbAgent.toLowerCase() && 
+                Math.abs(chargeNum - cbAmount) < 0.1) {
+                isMatch = true;
+                matchedCbIds.add(cb._id); 
+            }
+        });
 
         if (isMatch) currentStatus = 'Charge Back';
 
-        // Styling
         let rowStyle = "background-color: #ffffff;"; 
         if (currentStatus === 'Charged') rowStyle = "background-color: #dcfce7; color: #166534;";
         if (currentStatus === 'Charge Back') rowStyle = "background-color: #fee2e2; color: #991b1b;";
@@ -1668,38 +1670,39 @@ window.downloadCSV = function() {
         excelHTML += `<tr style="${rowStyle}">`;
         tds.forEach((td, i) => {
             let val = (i === statusIdx) ? currentStatus : td.innerText.trim();
-            excelHTML += `<td>${val}</td>`;
+            excelHTML += `<td style="padding: 5px;">${val}</td>`;
         });
         excelHTML += "</tr>";
     });
 
-    // 3. Append Remaining Chargebacks (Merge)
-    if (typeof twhCbData !== 'undefined') {
-        twhCbData.forEach(cb => {
-            // Only add if it wasn't used for an overwrite and matches the current department
-            if (!matchedCbIds.has(cb._id) && cb.dept === type) {
-                excelHTML += `<tr style="background-color: #fee2e2; color: #991b1b;">`;
-                ths.forEach(th => {
-                    let h = th.innerText.trim().toLowerCase();
-                    let val = '';
-                    if (h.includes('date')) val = cb.date_str || '';
-                    else if (h.includes('id')) val = cb.original_record_id || '';
-                    else if (h.includes('name')) val = cb.client_name || '';
-                    else if (h.includes('agent')) val = cb.agent || '';
-                    else if (h.includes('charge') || h.includes('amount')) val = `$${cb.amount}`;
-                    else if (h === 'status') val = 'Charge Back';
-                    excelHTML += `<td>${val}</td>`;
-                });
-                excelHTML += "</tr>";
-            }
-        });
-    }
+    // 3. Merge: Append remaining Chargebacks for this department
+    twhCbData.forEach(cb => {
+        const cbDept = (cb.dept || "").toLowerCase();
+        const activeType = type.toLowerCase();
+
+        // Check if it belongs to this department and wasn't already used to overwrite a row
+        if (!matchedCbIds.has(cb._id) && cbDept === activeType) {
+            excelHTML += `<tr style="background-color: #fee2e2; color: #991b1b;">`;
+            ths.forEach(th => {
+                let h = th.innerText.trim().toLowerCase();
+                let val = '';
+                if (h.includes('date')) val = cb.date_str || '';
+                else if (h.includes('id')) val = cb.original_record_id || '';
+                else if (h.includes('name')) val = cb.client_name || '';
+                else if (h.includes('agent')) val = cb.agent || '';
+                else if (h.includes('charge') || h.includes('amount')) val = `$${cb.amount}`;
+                else if (h === 'status') val = 'Charge Back';
+                excelHTML += `<td style="padding: 5px;">${val}</td>`;
+            });
+            excelHTML += "</tr>";
+        }
+    });
 
     excelHTML += "</table></body></html>";
 
     const blob = new Blob([excelHTML], { type: 'application/vnd.ms-excel' });
     const url = URL.createObjectURL(blob);
-    const filename = `TWH_Merged_Report_${new Date().toISOString().split('T')[0]}.xls`;
+    const filename = `TWH_${type.toUpperCase()}_Merged_Report_${new Date().toISOString().split('T')[0]}.xls`;
     const link = document.createElement("a");
     link.href = url; link.download = filename;
     link.click();
