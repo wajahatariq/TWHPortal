@@ -1590,3 +1590,113 @@ window.renderFinalTotal = function() {
     }
 };
 
+/* =========================================
+   COPY & PASTE THIS AT THE END OF manager.js
+   "Download Excel/CSV Function with Chargeback Overwrite & Colors"
+   ========================================= */
+window.downloadCSV = function() {
+    const type = document.getElementById('analysisSheetSelector').value;
+    const thead = document.getElementById('analysisHeader');
+    const tbody = document.getElementById('analysisBody');
+
+    if (!tbody || tbody.innerText.includes('No records found') || tbody.innerText.includes('Loading')) {
+        alert('No data to download based on current filters!');
+        return;
+    }
+
+    // 1. Find Column Indexes
+    let recordIdIdx = -1, nameIdx = -1, chargeIdx = -1, statusIdx = -1;
+    const ths = thead.querySelectorAll('th');
+    ths.forEach((th, i) => {
+        const text = th.innerText.trim().toLowerCase();
+        if (text === 'record_id') recordIdIdx = i;
+        if (text === 'name' || text === 'client name') nameIdx = i;
+        if (text === 'charge') chargeIdx = i;
+        if (text === 'status') statusIdx = i;
+    });
+
+    // 2. Start HTML formatting for Excel
+    let excelHTML = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <head><meta charset="utf-8"></head><body>
+        <table border="1">
+    `;
+
+    // 3. Setup Headers
+    excelHTML += "<tr>";
+    ths.forEach(th => {
+        excelHTML += `<th style="background-color: #1e293b; color: #ffffff; font-weight: bold; padding: 8px;">${th.innerText.trim()}</th>`;
+    });
+    excelHTML += "</tr>";
+
+    // 4. Process Rows & Match Chargebacks
+    const trs = tbody.querySelectorAll('tr');
+    trs.forEach(tr => {
+        const tds = tr.querySelectorAll('td');
+        if (tds.length === 1) return; // Skip empty rows
+
+        let recId = recordIdIdx > -1 ? tds[recordIdIdx].innerText.trim() : '';
+        let name = nameIdx > -1 ? tds[nameIdx].innerText.trim() : '';
+        let chargeRaw = chargeIdx > -1 ? tds[chargeIdx].innerText.trim() : '';
+        let chargeNum = parseFloat(chargeRaw.replace(/[^0-9.]/g, '')) || 0;
+        let currentStatus = statusIdx > -1 ? tds[statusIdx].innerText.trim() : '';
+
+        // --- CHECK AGAINST CHARGEBACK DATABASE ---
+        let isChargeback = false;
+        if (typeof twhCbData !== 'undefined' && twhCbData.length > 0) {
+            isChargeback = twhCbData.some(cb => {
+                const cbRecId = cb.original_record_id || '';
+                const cbName = cb.client_name || '';
+                const cbAmount = parseFloat(cb.amount || 0);
+                
+                // Overwrite if OrderID matches OR (Name + Charge Amount matches)
+                if (recId && cbRecId && recId === cbRecId) return true;
+                if (name && cbName && name.toLowerCase() === cbName.toLowerCase() && Math.abs(chargeNum - cbAmount) < 0.1) return true;
+                return false;
+            });
+        }
+
+        // Apply overwrite to status
+        if (isChargeback && statusIdx > -1) {
+            currentStatus = 'Charge Back';
+        }
+
+        // --- APPLY COLORS BASED ON STATUS ---
+        let rowStyle = "background-color: #ffffff; color: #000000;"; // Simple Default (Declined or other)
+        let stLow = currentStatus.toLowerCase();
+        
+        if (stLow === 'charged') {
+            rowStyle = "background-color: #dcfce7; color: #166534;"; // Green
+        } else if (stLow.includes('charge back') || stLow === 'chargeback') {
+            rowStyle = "background-color: #fee2e2; color: #991b1b;"; // Red
+        }
+
+        excelHTML += `<tr style="${rowStyle}">`;
+        
+        tds.forEach((td, i) => {
+            let cellText = td.innerText.trim();
+            // Inject the overridden status into the Excel cell
+            if (i === statusIdx) {
+                cellText = currentStatus;
+            }
+            excelHTML += `<td style="padding: 5px;">${cellText}</td>`;
+        });
+        
+        excelHTML += "</tr>";
+    });
+
+    excelHTML += "</table></body></html>";
+
+    // 5. Trigger File Download as .xls
+    const blob = new Blob([excelHTML], { type: 'application/vnd.ms-excel' });
+    const url = URL.createObjectURL(blob);
+    const dateStr = new Date().toISOString().split('T')[0];
+    const filename = `TWH_${type.toUpperCase()}_Report_${dateStr}.xls`;
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+};
