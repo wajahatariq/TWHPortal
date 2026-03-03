@@ -441,27 +441,25 @@
     </div>
 </div>
 <script>
-    (function() {
-        // Move the Final Total Navigation Button
-        const navTarget = document.getElementById('navChargebacks');
-        const navBtn = document.getElementById('navFinalTotal');
-        if(navTarget && navBtn) navTarget.parentNode.insertBefore(navBtn, navTarget.nextSibling);
-
-        // Move the Final Total View Container
-        const viewTarget = document.getElementById('viewChargebacks');
-        const viewDiv = document.getElementById('viewFinalTotal');
-        if(viewTarget && viewDiv) viewTarget.parentNode.insertBefore(viewDiv, viewTarget.nextSibling);
-
-        // Set Default Dates
-        const today = new Date().toISOString().split('T')[0];
-        const ftDateStart = document.getElementById('ftDateStart');
-        const ftDateEnd = document.getElementById('ftDateEnd');
-        if(ftDateStart) ftDateStart.value = today;
-        if(ftDateEnd) ftDateEnd.value = today;
-    })();
-</script>    
+    let twhCbData = [];
+    async function fetchChargebackData() {
+        try {
+            const response = await fetch('/api/manager/twh_chargebacks');
+            const result = await response.json();
+            if (result.status === 'success') {
+                twhCbData = result.data;
+                console.log("TWH Chargeback Data Loaded:", twhCbData.length, "records");
+            }
+        } catch (error) {
+            console.error("Error loading chargeback data:", error);
+        }
+    }
+    // Load data immediately on page open
+    fetchChargebackData();
+</script>  
 </body>
 </html>
+
 
 
 
