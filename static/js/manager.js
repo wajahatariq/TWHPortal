@@ -1591,105 +1591,90 @@ window.renderFinalTotal = function() {
 };
 
 /* =========================================
-   COPY & PASTE THIS AT THE END OF manager.js
-   "Final Merged Download with Flexible Dept Match"
+   FIXED: Strict Date-Filtered Merged Download
    ========================================= */
 window.downloadCSV = function() {
     const type = document.getElementById('analysisSheetSelector').value;
     const thead = document.getElementById('analysisHeader');
     const tbody = document.getElementById('analysisBody');
+    
+    // CORRECTED: Getting date filters from manager.html IDs
+    const startDateVal = document.getElementById('startDate')?.value; // Matches ID in manager.html
+    const endDateVal = document.getElementById('endDate')?.value;     // Matches ID in manager.html
 
     if (twhCbData === null) {
-        alert("Chargeback data is still loading from the server. Please wait a moment and try again.");
+        alert("Chargeback data is still loading. Please wait a few seconds.");
         return;
     }
-
-    if (!tbody || tbody.innerText.includes('No records found')) {
-        alert('No portal data found to download!');
-        return;
-    }
-
-    // 1. Identify Columns
-    let recordIdIdx = -1, nameIdx = -1, chargeIdx = -1, statusIdx = -1, agentIdx = -1;
-    const ths = thead.querySelectorAll('th');
-    ths.forEach((th, i) => {
-        const text = th.innerText.trim().toLowerCase();
-        if (text === 'record_id' || text === 'order id') recordIdIdx = i;
-        if (text === 'name' || text === 'client name') nameIdx = i;
-        if (text === 'charge' || text === 'amount') chargeIdx = i;
-        if (text === 'status') statusIdx = i;
-        if (text === 'agent name' || text === 'agent') agentIdx = i;
-    });
 
     let excelHTML = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
     excelHTML += '<head><meta charset="utf-8"></head><body><table border="1">';
 
-    // Headers
+    // 1. Headers and Column Mapping
+    const ths = thead.querySelectorAll('th');
+    let colMap = {};
     excelHTML += "<tr>";
-    ths.forEach(th => excelHTML += `<th style="background-color: #1e293b; color: #ffffff; font-weight: bold; padding: 10px;">${th.innerText.trim()}</th>`);
+    ths.forEach((th, i) => {
+        const text = th.innerText.trim();
+        colMap[text.toLowerCase()] = i;
+        excelHTML += `<th style="background-color: #1e293b; color: #ffffff; font-weight: bold; padding: 10px;">${text}</th>`;
+    });
     excelHTML += "</tr>";
 
     let matchedCbIds = new Set();
 
-    // 2. Process Portal Rows (Overwrite matches)
+    // 2. Process Portal Rows (Strict Overwrite)
     const trs = tbody.querySelectorAll('tr');
     trs.forEach(tr => {
         const tds = tr.querySelectorAll('td');
         if (tds.length <= 1) return;
 
-        let recId = recordIdIdx > -1 ? tds[recordIdIdx].innerText.trim() : '';
-        let name = nameIdx > -1 ? tds[nameIdx].innerText.trim() : '';
-        let agent = agentIdx > -1 ? tds[agentIdx].innerText.trim() : '';
-        let chargeRaw = chargeIdx > -1 ? tds[chargeIdx].innerText.trim() : '';
-        let chargeNum = parseFloat(chargeRaw.replace(/[^0-9.-]/g, '')) || 0;
-        let currentStatus = statusIdx > -1 ? tds[statusIdx].innerText.trim() : '';
+        let recId = tds[colMap['record_id'] || colMap['order id']]?.innerText.trim();
+        let name = tds[colMap['name'] || colMap['client name']]?.innerText.trim();
+        let agent = tds[colMap['agent name'] || colMap['agent']]?.innerText.trim();
+        let chargeRaw = tds[colMap['charge'] || colMap['amount']]?.innerText.trim();
+        let chargeNum = parseFloat(chargeRaw?.replace(/[^0-9.-]/g, '')) || 0;
+        let currentStatus = tds[colMap['status']]?.innerText.trim();
 
-        let isMatch = false;
         twhCbData.forEach(cb => {
-            const cbRecId = cb.original_record_id || cb.record_id || '';
-            const cbName = cb.client_name || '';
-            const cbAgent = cb.agent || '';
-            const cbAmount = parseFloat(cb.amount || 0);
-
-            // Strict AND Condition: ID + Name + Agent + Amount
-            if (recId === cbRecId && 
-                name.toLowerCase() === cbName.toLowerCase() && 
-                agent.toLowerCase() === cbAgent.toLowerCase() && 
-                Math.abs(chargeNum - cbAmount) < 0.1) {
-                isMatch = true;
-                matchedCbIds.add(cb._id); 
+            if (recId === (cb.original_record_id || cb.record_id) && 
+                name?.toLowerCase() === cb.client_name?.toLowerCase() && 
+                agent?.toLowerCase() === cb.agent?.toLowerCase() && 
+                Math.abs(chargeNum - cb.amount) < 0.1) {
+                currentStatus = 'Charge Back';
+                matchedCbIds.add(cb._id);
             }
         });
 
-        if (isMatch) currentStatus = 'Charge Back';
-
-        let rowStyle = "background-color: #ffffff;"; 
-        if (currentStatus === 'Charged') rowStyle = "background-color: #dcfce7; color: #166534;";
-        if (currentStatus === 'Charge Back') rowStyle = "background-color: #fee2e2; color: #991b1b;";
+        let rowStyle = currentStatus === 'Charged' ? "background-color: #dcfce7; color: #166534;" : 
+                       currentStatus === 'Charge Back' ? "background-color: #fee2e2; color: #991b1b;" : "";
 
         excelHTML += `<tr style="${rowStyle}">`;
         tds.forEach((td, i) => {
-            let val = (i === statusIdx) ? currentStatus : td.innerText.trim();
+            let val = (i === colMap['status']) ? currentStatus : td.innerText.trim();
             excelHTML += `<td style="padding: 5px;">${val}</td>`;
         });
         excelHTML += "</tr>";
     });
 
-    // 3. Merge: Append remaining Chargebacks for this department
+    // 3. Append Unmatched Chargebacks (STRICT DATE & DEPT FILTER)
     twhCbData.forEach(cb => {
+        const cbDate = cb.date_str; // Format is YYYY-MM-DD
         const cbDept = (cb.dept || "").toLowerCase();
-        const activeType = type.toLowerCase();
+        
+        // Logical check for the filters
+        const matchesDate = (!startDateVal || cbDate >= startDateVal) && (!endDateVal || cbDate <= endDateVal);
+        const matchesDept = cbDept === type.toLowerCase();
 
-        // Check if it belongs to this department and wasn't already used to overwrite a row
-        if (!matchedCbIds.has(cb._id) && cbDept === activeType) {
+        if (!matchedCbIds.has(cb._id) && matchesDept && matchesDate) {
             excelHTML += `<tr style="background-color: #fee2e2; color: #991b1b;">`;
             ths.forEach(th => {
                 let h = th.innerText.trim().toLowerCase();
                 let val = '';
-                if (h.includes('date')) val = cb.date_str || '';
-                else if (h.includes('id')) val = cb.original_record_id || '';
-                else if (h.includes('name')) val = cb.client_name || '';
-                else if (h.includes('agent')) val = cb.agent || '';
+                if (h.includes('date')) val = cb.date_str;
+                else if (h.includes('id')) val = cb.original_record_id || cb.record_id;
+                else if (h.includes('name')) val = cb.client_name;
+                else if (h.includes('agent')) val = cb.agent;
                 else if (h.includes('charge') || h.includes('amount')) val = `$${cb.amount}`;
                 else if (h === 'status') val = 'Charge Back';
                 excelHTML += `<td style="padding: 5px;">${val}</td>`;
@@ -1699,11 +1684,10 @@ window.downloadCSV = function() {
     });
 
     excelHTML += "</table></body></html>";
-
     const blob = new Blob([excelHTML], { type: 'application/vnd.ms-excel' });
     const url = URL.createObjectURL(blob);
-    const filename = `TWH_${type.toUpperCase()}_Merged_Report_${new Date().toISOString().split('T')[0]}.xls`;
     const link = document.createElement("a");
-    link.href = url; link.download = filename;
+    link.href = url;
+    link.download = `TWH_${type.toUpperCase()}_Filtered_Report.xls`;
     link.click();
 };
