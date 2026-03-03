@@ -1592,19 +1592,19 @@ window.renderFinalTotal = function() {
 
 /* =========================================
    COPY & PASTE THIS AT THE END OF manager.js
-   "Download Excel/CSV Function with Strict Overwrite & Dataset Merge"
+   "Download Merged Report with Strict Overwrite"
    ========================================= */
 window.downloadCSV = function() {
     const type = document.getElementById('analysisSheetSelector').value;
     const thead = document.getElementById('analysisHeader');
     const tbody = document.getElementById('analysisBody');
 
-    if (!tbody || tbody.innerText.includes('No records found') || tbody.innerText.includes('Loading')) {
-        alert('No data to download based on current filters!');
+    if (!tbody || tbody.innerText.includes('No records found')) {
+        alert('No data to download!');
         return;
     }
 
-    // 1. Find Column Indexes
+    // 1. Map Columns
     let recordIdIdx = -1, nameIdx = -1, chargeIdx = -1, statusIdx = -1, agentIdx = -1;
     const ths = thead.querySelectorAll('th');
     ths.forEach((th, i) => {
@@ -1619,135 +1619,88 @@ window.downloadCSV = function() {
     let excelHTML = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
     excelHTML += '<head><meta charset="utf-8"></head><body><table border="1">';
 
-    // 2. Setup Headers
+    // Headers
     excelHTML += "<tr>";
-    ths.forEach(th => {
-        excelHTML += `<th style="background-color: #1e293b; color: #ffffff; font-weight: bold; padding: 8px;">${th.innerText.trim()}</th>`;
-    });
+    ths.forEach(th => excelHTML += `<th style="background-color: #1e293b; color: #ffffff; font-weight: bold;">${th.innerText.trim()}</th>`);
     excelHTML += "</tr>";
 
-    let matchedCbIndexes = new Set();
+    let matchedCbIds = new Set();
 
-    // 3. Process Existing Portal Rows & Overwrite Matched Chargebacks
+    // 2. Process Portal Rows (With Strict Overwrite)
     const trs = tbody.querySelectorAll('tr');
     trs.forEach(tr => {
         const tds = tr.querySelectorAll('td');
-        if (tds.length <= 1) return; // Skip empty rows
+        if (tds.length <= 1) return;
 
         let recId = recordIdIdx > -1 ? tds[recordIdIdx].innerText.trim() : '';
         let name = nameIdx > -1 ? tds[nameIdx].innerText.trim() : '';
+        let agent = agentIdx > -1 ? tds[agentIdx].innerText.trim() : '';
         let chargeRaw = chargeIdx > -1 ? tds[chargeIdx].innerText.trim() : '';
         let chargeNum = parseFloat(chargeRaw.replace(/[^0-9.-]/g, '')) || 0;
         let currentStatus = statusIdx > -1 ? tds[statusIdx].innerText.trim() : '';
-        let agent = agentIdx > -1 ? tds[agentIdx].innerText.trim() : '';
 
-        let isChargeback = false;
-        
-        if (typeof twhCbData !== 'undefined' && twhCbData.length > 0) {
-            for (let j = 0; j < twhCbData.length; j++) {
-                let cb = twhCbData[j];
-                const cbRecId = cb.original_record_id || cb.record_id || cb.order_id || '';
-                const cbName = cb.client_name || cb.name || '';
-                const cbAmount = parseFloat(cb.amount || String(cb.Charge || '0').replace(/[^0-9.-]/g, '')) || 0;
-                const cbAgent = cb.agent || cb['Agent Name'] || '';
+        // Strict Check: ALL 4 must match
+        let isMatch = false;
+        if (typeof twhCbData !== 'undefined') {
+            twhCbData.forEach(cb => {
+                const cbRecId = cb.original_record_id || cb.record_id || '';
+                const cbName = cb.client_name || '';
+                const cbAgent = cb.agent || '';
+                const cbAmount = parseFloat(cb.amount || 0);
 
-                // Strict AND matching all 4 parameters
-                if (
-                    recId && cbRecId && recId === cbRecId &&
-                    name && cbName && name.toLowerCase() === cbName.toLowerCase() &&
-                    agent && cbAgent && agent.toLowerCase() === cbAgent.toLowerCase() &&
-                    Math.abs(chargeNum - cbAmount) < 0.1
-                ) {
-                    isChargeback = true;
-                    matchedCbIndexes.add(j); // Mark this chargeback as successfully merged/overwritten
-                    break;
+                if (recId === cbRecId && 
+                    name.toLowerCase() === cbName.toLowerCase() && 
+                    agent.toLowerCase() === cbAgent.toLowerCase() && 
+                    Math.abs(chargeNum - cbAmount) < 0.1) {
+                    isMatch = true;
+                    matchedCbIds.add(cb._id); // Mark as used
                 }
-            }
+            });
         }
 
-        if (isChargeback && statusIdx > -1) {
-            currentStatus = 'Charge Back';
-        }
+        if (isMatch) currentStatus = 'Charge Back';
 
-        let rowStyle = "background-color: #ffffff; color: #000000;"; 
-        let stLow = currentStatus.toLowerCase();
-        
-        if (stLow === 'charged') {
-            rowStyle = "background-color: #dcfce7; color: #166534;"; 
-        } else if (stLow.includes('charge back') || stLow === 'chargeback') {
-            rowStyle = "background-color: #fee2e2; color: #991b1b;"; 
-        }
+        // Styling
+        let rowStyle = "background-color: #ffffff;"; 
+        if (currentStatus === 'Charged') rowStyle = "background-color: #dcfce7; color: #166534;";
+        if (currentStatus === 'Charge Back') rowStyle = "background-color: #fee2e2; color: #991b1b;";
 
         excelHTML += `<tr style="${rowStyle}">`;
         tds.forEach((td, i) => {
-            let cellText = td.innerText.trim();
-            if (i === statusIdx) {
-                cellText = currentStatus;
-            }
-            excelHTML += `<td style="padding: 5px;">${cellText}</td>`;
+            let val = (i === statusIdx) ? currentStatus : td.innerText.trim();
+            excelHTML += `<td>${val}</td>`;
         });
         excelHTML += "</tr>";
     });
 
-    // 4. Append Unmatched Chargebacks from the Date Frame
-    if (typeof twhCbData !== 'undefined' && twhCbData.length > 0) {
-        // Read UI Date filters if they exist to match the date frame
-        let startDateInput = document.getElementById('startDate');
-        let endDateInput = document.getElementById('endDate');
-        let startStr = startDateInput ? startDateInput.value : '';
-        let endStr = endDateInput ? endDateInput.value : '';
-        
-        let start = startStr ? new Date(startStr) : null;
-        if(start) start.setHours(0,0,0,0);
-        let end = endStr ? new Date(endStr) : null;
-        if(end) end.setHours(23,59,59,999);
-
-        twhCbData.forEach((cb, j) => {
-            if (!matchedCbIndexes.has(j)) {
-                let cbDateStr = cb.date || cb.created_at || cb.Date || '';
-                let cbDate = cbDateStr ? new Date(cbDateStr) : null;
-                
-                let inDateFrame = true;
-                if (start && cbDate && cbDate < start) inDateFrame = false;
-                if (end && cbDate && cbDate > end) inDateFrame = false;
-
-                if (inDateFrame) {
-                    let rowStyle = "background-color: #fee2e2; color: #991b1b;";
-                    excelHTML += `<tr style="${rowStyle}">`;
-                    
-                    ths.forEach(th => {
-                        let header = th.innerText.trim().toLowerCase();
-                        let val = '';
-                        
-                        if (header.includes('date')) val = cbDateStr;
-                        else if (header === 'record_id' || header === 'order id') val = cb.original_record_id || cb.record_id || cb.order_id || '';
-                        else if (header === 'name' || header === 'client name') val = cb.client_name || cb.name || '';
-                        else if (header === 'agent name' || header === 'agent') val = cb.agent || cb['Agent Name'] || '';
-                        else if (header === 'charge' || header === 'amount') val = cb.amount || cb.Charge || '';
-                        else if (header.includes('phone')) val = cb.phone || cb.Phone || '';
-                        else if (header === 'status') val = 'Charge Back';
-                        
-                        excelHTML += `<td style="padding: 5px;">${val}</td>`;
-                    });
-                    
-                    excelHTML += "</tr>";
-                }
+    // 3. Append Remaining Chargebacks (Merge)
+    if (typeof twhCbData !== 'undefined') {
+        twhCbData.forEach(cb => {
+            // Only add if it wasn't used for an overwrite and matches the current department
+            if (!matchedCbIds.has(cb._id) && cb.dept === type) {
+                excelHTML += `<tr style="background-color: #fee2e2; color: #991b1b;">`;
+                ths.forEach(th => {
+                    let h = th.innerText.trim().toLowerCase();
+                    let val = '';
+                    if (h.includes('date')) val = cb.date_str || '';
+                    else if (h.includes('id')) val = cb.original_record_id || '';
+                    else if (h.includes('name')) val = cb.client_name || '';
+                    else if (h.includes('agent')) val = cb.agent || '';
+                    else if (h.includes('charge') || h.includes('amount')) val = `$${cb.amount}`;
+                    else if (h === 'status') val = 'Charge Back';
+                    excelHTML += `<td>${val}</td>`;
+                });
+                excelHTML += "</tr>";
             }
         });
     }
 
     excelHTML += "</table></body></html>";
 
-    // 5. Trigger File Download
     const blob = new Blob([excelHTML], { type: 'application/vnd.ms-excel' });
     const url = URL.createObjectURL(blob);
-    const dateStr = new Date().toISOString().split('T')[0];
-    const filename = `TWH_${type.toUpperCase()}_Merged_Report_${dateStr}.xls`;
-
+    const filename = `TWH_Merged_Report_${new Date().toISOString().split('T')[0]}.xls`;
     const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
+    link.href = url; link.download = filename;
     link.click();
-    document.body.removeChild(link);
 };
