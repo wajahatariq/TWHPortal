@@ -240,21 +240,21 @@
         }
     </script>
     <script>
-    let twhCbData = [];
-    async function fetchChargebackData() {
-        try {
-            const response = await fetch('/api/manager/twh_chargebacks');
-            const result = await response.json();
-            if (result.status === 'success') {
-                twhCbData = result.data;
-                console.log("TWH Chargeback Data Loaded:", twhCbData.length, "records");
+        let twhCbData = [];
+        async function fetchChargebackData() {
+            try {
+                const response = await fetch('/api/manager/twh_chargebacks');
+                const result = await response.json();
+                if (result.status === 'success') {
+                    twhCbData = result.data;
+                    console.log("TWH Chargeback Data Loaded:", twhCbData.length, "records");
+                }
+            } catch (error) {
+                console.error("Error loading chargeback data:", error);
             }
-        } catch (error) {
-            console.error("Error loading chargeback data:", error);
         }
-    }
-    // Load data immediately on page open
-    fetchChargebackData();
+        // Load data immediately on page open
+        fetchChargebackData();
     </script>
 </body>
 </html>
