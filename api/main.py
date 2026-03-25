@@ -201,47 +201,48 @@ def calculate_mongo_stats(collection, dept_type):
 # --- ROUTES ---
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request): return templates.TemplateResponse("index.html", {"request": request})
+async def index(request: Request): 
+    return templates.TemplateResponse(request=request, name="index.html", context={"request": request})
 
 @app.get("/billing", response_class=HTMLResponse)
 async def view_billing(request: Request):
-    return templates.TemplateResponse("billing.html", {
+    return templates.TemplateResponse(request=request, name="billing.html", context={
         "request": request, "agents": AGENTS_BILLING, "providers": PROVIDERS, 
         "llcs": LLC_SPEC, "pusher_key": PUSHER_KEY, "pusher_cluster": PUSHER_CLUSTER
     })
 
 @app.get("/telecom", response_class=HTMLResponse)
 async def view_telecom(request: Request):
-    return templates.TemplateResponse("telecom.html", {
+    return templates.TemplateResponse(request=request, name="telecom.html", context={
         "request": request, "agents": AGENTS_TELECOM, "providers": PROVIDERS, 
         "llcs": LLC_SPEC, "pusher_key": PUSHER_KEY, "pusher_cluster": PUSHER_CLUSTER
     })
   
 @app.get("/insurance", response_class=HTMLResponse)
 async def view_insurance(request: Request):
-    return templates.TemplateResponse("insurance.html", {
+    return templates.TemplateResponse(request=request, name="insurance.html", context={
         "request": request, "agents": AGENTS_INSURANCE, "llcs": LLC_INS,
         "pusher_key": PUSHER_KEY, "pusher_cluster": PUSHER_CLUSTER
     })
 
 @app.get("/design", response_class=HTMLResponse)
 async def view_design(request: Request):
-    return templates.TemplateResponse("design.html", {
+    return templates.TemplateResponse(request=request, name="design.html", context={
         "request": request, "agents": AGENTS_DESIGN, "pusher_key": PUSHER_KEY, "pusher_cluster": PUSHER_CLUSTER
     })
 
 @app.get("/ebook", response_class=HTMLResponse)
 async def view_ebook(request: Request):
-    return templates.TemplateResponse("ebook.html", {
+    return templates.TemplateResponse(request=request, name="ebook.html", context={
         "request": request, "agents": AGENTS_EBOOK, "pusher_key": PUSHER_KEY, "pusher_cluster": PUSHER_CLUSTER
     })
 
 @app.get("/manager", response_class=HTMLResponse)
 async def view_manager(request: Request):
-    return templates.TemplateResponse("manager.html", {
+    return templates.TemplateResponse(request=request, name="manager.html", context={
         "request": request, "pusher_key": PUSHER_KEY, "pusher_cluster": PUSHER_CLUSTER
     })
-
+  
 @app.get("/api/public/night-stats")
 async def get_public_stats():
     return {
