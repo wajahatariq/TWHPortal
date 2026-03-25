@@ -201,7 +201,7 @@ function renderPendingCards() {
     // Options derived from your original code
     const llcOptions = (pendingSubTab === 'billing' || pendingSubTab === 'telecom')
         ? ["Secure Claim Solutions-NMI", "Secure Claim Solution-Authorize", "Visionary Pathways-Chase", "TS", "Zelle", "Venmo"] 
-        : ["Secure Claim Solutions-NMI", "Secure Claim Solution-Authorize"];;
+        : ["Secure Claim Solutions-NMI", "Secure Claim Solution-Authorize"];
 
     data.forEach(row => {
         // We capture both IDs here
